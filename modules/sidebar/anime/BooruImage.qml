@@ -100,6 +100,45 @@ Button {
             }
         }
 
+        // GIF preview (shown while loading)
+        Image {
+            id: gifPreview
+            anchors.fill: parent
+            visible: root.isGif && gifObject.status !== AnimatedImage.Ready
+            fillMode: Image.PreserveAspectCrop
+            source: root.isGif ? (modelData.preview_url ?? "") : ""
+            asynchronous: true
+
+            layer.enabled: true
+            layer.effect: OpacityMask {
+                maskSource: Rectangle {
+                    width: gifPreview.width
+                    height: gifPreview.height
+                    radius: imageRadius
+                }
+            }
+
+            // GIF badge
+            Rectangle {
+                anchors.bottom: parent.bottom
+                anchors.left: parent.left
+                anchors.margins: 6
+                width: gifLabel.width + 8
+                height: 18
+                radius: 4
+                color: Qt.rgba(0, 0, 0, 0.6)
+
+                StyledText {
+                    id: gifLabel
+                    anchors.centerIn: parent
+                    text: "GIF"
+                    font.pixelSize: 10
+                    font.bold: true
+                    color: "#ffffff"
+                }
+            }
+        }
+
         // GIF display - cache: true required for looping from network sources
         AnimatedImage {
             id: gifObject
@@ -113,6 +152,15 @@ Button {
 
             opacity: status === AnimatedImage.Ready ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 200 } }
+
+            layer.enabled: true
+            layer.effect: OpacityMask {
+                maskSource: Rectangle {
+                    width: gifObject.width
+                    height: gifObject.height
+                    radius: imageRadius
+                }
+            }
         }
 
         // Video display (MediaPlayer + VideoOutput)
@@ -137,6 +185,15 @@ Button {
                 id: videoOutput
                 anchors.fill: parent
                 fillMode: VideoOutput.PreserveAspectCrop
+
+                layer.enabled: true
+                layer.effect: OpacityMask {
+                    maskSource: Rectangle {
+                        width: videoOutput.width
+                        height: videoOutput.height
+                        radius: imageRadius
+                    }
+                }
             }
 
             // Play icon overlay (shown when paused)
@@ -157,7 +214,7 @@ Button {
             }
         }
 
-        // Loading indicator
+        // Loading indicator (static images)
         Rectangle {
             anchors.fill: parent
             radius: imageRadius
@@ -167,6 +224,20 @@ Button {
             StyledText {
                 anchors.centerIn: parent
                 text: "..."
+                color: Appearance.m3colors.m3secondaryText
+            }
+        }
+
+        // Loading indicator (GIFs - when both preview and GIF are loading)
+        Rectangle {
+            anchors.fill: parent
+            radius: imageRadius
+            color: Appearance.colors.colLayer2
+            visible: root.isGif && gifPreview.status !== Image.Ready && gifObject.status !== AnimatedImage.Ready
+
+            StyledText {
+                anchors.centerIn: parent
+                text: "GIF..."
                 color: Appearance.m3colors.m3secondaryText
             }
         }

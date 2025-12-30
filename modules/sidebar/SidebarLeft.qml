@@ -45,14 +45,20 @@ Scope {
                 item: sidebarBackground
             }
 
+            property bool pinned: false
+
             HyprlandFocusGrab {
                 id: grab
                 windows: [sidebarRoot]
-                active: sidebarRoot.visible
+                active: sidebarRoot.visible && !sidebarRoot.pinned
                 onActiveChanged: {
-                    if (active) sidebarBackground.forceActiveFocus()
+                    if (active) {
+                        sidebarBackground.forceActiveFocus()
+                    }
                 }
-                onCleared: sidebarRoot.hide()
+                onCleared: {
+                    if (!sidebarRoot.pinned) sidebarRoot.hide()
+                }
             }
 
             // Shadow
@@ -85,6 +91,29 @@ Scope {
                         sidebarRoot.hide();
                         event.accepted = true;
                     }
+                }
+
+                // Pin button
+                RippleButton {
+                    id: pinButton
+                    anchors.top: parent.top
+                    anchors.right: parent.right
+                    anchors.margins: 8
+                    implicitWidth: 28
+                    implicitHeight: 28
+                    buttonRadius: Appearance.rounding.full
+                    colBackground: sidebarRoot.pinned ? Appearance.colors.colLayer2Active : Qt.rgba(0, 0, 0, 0.2)
+                    colBackgroundHover: Appearance.colors.colLayer2Hover
+                    z: 10
+
+                    contentItem: MaterialSymbol {
+                        horizontalAlignment: Text.AlignHCenter
+                        iconSize: 16
+                        color: sidebarRoot.pinned ? Appearance.m3colors.m3onSurface : Appearance.m3colors.m3secondaryText
+                        text: sidebarRoot.pinned ? "push_pin" : "push_pin"
+                    }
+
+                    onClicked: sidebarRoot.pinned = !sidebarRoot.pinned
                 }
 
                 // Content
