@@ -1,0 +1,22 @@
+# Cache files
+*.qmlc
+*.jsc
+.qmlls.ini
+
+# Logs
+*.log
+*.qslog
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Local config overrides
+config.local.json

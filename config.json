@@ -1,0 +1,19 @@
+{
+  "booru": {
+    "defaultProvider": "yandere",
+    "nsfw": false,
+    "downloadPath": "~/Pictures/booru",
+    "nsfwPath": "~/Pictures/booru/nsfw"
+  },
+  "appearance": {
+    "transparency": 0.5,
+    "sidebarWidth": 420
+  },
+  "font": {
+    "family": {
+      "uiFont": "Open Sans",
+      "iconFont": "Material Symbols Rounded",
+      "codeFont": "JetBrains Mono NF"
+    }
+  }
+}

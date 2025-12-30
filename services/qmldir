@@ -1,0 +1,3 @@
+module services
+singleton Booru 1.0 Booru.qml
+BooruResponseData 1.0 BooruResponseData.qml
