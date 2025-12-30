@@ -19,6 +19,7 @@ Singleton {
     property string failMessage: "That didn't work. Tips:\n- Check your tags and NSFW settings\n- If you don't have a tag in mind, type a page number"
     property var responses: []
     property int runningRequests: 0
+    property bool replaceOnNextResponse: false  // When true, replace responses instead of appending
     property string defaultUserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
     property var providerList: Object.keys(providers).filter(provider => provider !== "system" && providers[provider].api)
 
@@ -299,13 +300,23 @@ Singleton {
                     newResponse.message = root.failMessage
                 } finally {
                     root.runningRequests--;
-                    root.responses = [...root.responses, newResponse]
+                    if (root.replaceOnNextResponse) {
+                        root.responses = [newResponse]
+                        root.replaceOnNextResponse = false
+                    } else {
+                        root.responses = [...root.responses, newResponse]
+                    }
                 }
             } else if (xhr.readyState === XMLHttpRequest.DONE) {
                 console.log("[Booru] Request failed with status: " + xhr.status)
                 newResponse.message = root.failMessage
                 root.runningRequests--;
-                root.responses = [...root.responses, newResponse]
+                if (root.replaceOnNextResponse) {
+                    root.responses = [newResponse]
+                    root.replaceOnNextResponse = false
+                } else {
+                    root.responses = [...root.responses, newResponse]
+                }
             }
             root.responseFinished()
         }

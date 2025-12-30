@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import Quickshell
 import "../common"
 import "../common/widgets"
+import "../common/functions/file_utils.js" as FileUtils
 import "./anime"
 import "../../services"
 
@@ -17,8 +18,9 @@ Item {
     property var inputField: null
     readonly property var responses: Booru.responses
     property string previewDownloadPath: Directories.cacheDir + "/booru/previews"
-    property string downloadPath: Directories.homeDir + "/Pictures/booru"
-    property string nsfwPath: Directories.homeDir + "/Pictures/booru/nsfw"
+    // homeDir has file:// prefix, must trim for shell commands
+    property string downloadPath: FileUtils.trimFileProtocol(Directories.homeDir) + "/Pictures/booru"
+    property string nsfwPath: FileUtils.trimFileProtocol(Directories.homeDir) + "/Pictures/booru/nsfw"
     property string commandPrefix: "/"
     property int tagSuggestionDelay: 250
     property var suggestionList: []
@@ -98,6 +100,10 @@ Item {
                 previewDownloadPath: root.previewDownloadPath
                 downloadPath: root.downloadPath
                 nsfwPath: root.nsfwPath
+            }
+
+            ScrollBar.vertical: ScrollBar {
+                policy: ScrollBar.AsNeeded
             }
 
             // Placeholder

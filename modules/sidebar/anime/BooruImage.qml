@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Qt5Compat.GraphicalEffects
+import QtMultimedia
 import Quickshell
 import Quickshell.Hyprland
 import "../../common"
@@ -25,6 +26,16 @@ Button {
 
     property bool showActions: false
 
+    // Video detection - fallback to extracting from URL if file_ext not provided
+    property string fileExt: {
+        let ext = (imageData.file_ext ?? "").toLowerCase()
+        if (!ext && imageData.file_url) {
+            ext = imageData.file_url.split('.').pop().toLowerCase()
+        }
+        return ext
+    }
+    property bool isVideo: ["mp4", "webm"].includes(fileExt)
+
     ImageDownloaderProcess {
         id: imageDownloader
         enabled: root.manualDownload
@@ -42,12 +53,16 @@ Button {
     }
 
     StyledToolTip {
-        text: root.imageData.tags ?? ""
+        // Show first 5 tags, truncated to max 200 chars
+        property var tagList: (root.imageData.tags ?? "").split(" ").filter(t => t.length > 0)
+        property string rawContent: tagList.slice(0, 5).join(", ") + (tagList.length > 5 ? " ..." : "")
+        content: rawContent.length > 200 ? rawContent.substring(0, 200) + "..." : rawContent
     }
 
     padding: 0
     implicitWidth: root.rowHeight * (modelData.aspect_ratio || 1)
     implicitHeight: root.rowHeight
+    z: showActions ? 100 : 0
 
     background: Rectangle {
         implicitWidth: root.rowHeight * (modelData.aspect_ratio || 1)
@@ -59,13 +74,15 @@ Button {
     contentItem: Item {
         anchors.fill: parent
 
+        // Image display (for non-video content)
         Image {
             id: imageObject
             anchors.fill: parent
+            visible: !root.isVideo
             width: root.rowHeight * (modelData.aspect_ratio || 1)
             height: root.rowHeight
             fillMode: Image.PreserveAspectCrop
-            source: modelData.preview_url ?? ""
+            source: root.isVideo ? "" : (modelData.preview_url ?? "")
             sourceSize.width: root.rowHeight * (modelData.aspect_ratio || 1)
             sourceSize.height: root.rowHeight
             asynchronous: true
@@ -84,16 +101,58 @@ Button {
             }
         }
 
+        // Video display (Qt6: MediaPlayer + VideoOutput)
+        Item {
+            id: videoContainer
+            anchors.fill: parent
+            visible: root.isVideo
+
+            MediaPlayer {
+                id: mediaPlayer
+                source: root.isVideo ? (root.imageData.file_url ?? "") : ""
+                loops: MediaPlayer.Infinite
+                audioOutput: AudioOutput { muted: true }
+                videoOutput: videoOutput
+
+                Component.onCompleted: {
+                    if (root.isVideo) play()
+                }
+            }
+
+            VideoOutput {
+                id: videoOutput
+                anchors.fill: parent
+                fillMode: VideoOutput.PreserveAspectCrop
+            }
+
+            // Play icon overlay (shown when paused)
+            Rectangle {
+                anchors.centerIn: parent
+                width: 40
+                height: 40
+                radius: 20
+                color: Qt.rgba(0, 0, 0, 0.6)
+                visible: mediaPlayer.playbackState !== MediaPlayer.PlayingState
+
+                MaterialSymbol {
+                    anchors.centerIn: parent
+                    iconSize: 24
+                    color: "#ffffff"
+                    text: "play_arrow"
+                }
+            }
+        }
+
         // Loading indicator
         Rectangle {
             anchors.fill: parent
             radius: imageRadius
             color: Appearance.colors.colLayer2
-            visible: imageObject.status !== Image.Ready
+            visible: !root.isVideo && imageObject.status !== Image.Ready
 
             StyledText {
                 anchors.centerIn: parent
-                text: imageObject.status === Image.Loading ? "..." : ""
+                text: "..."
                 color: Appearance.m3colors.m3secondaryText
             }
         }
@@ -121,80 +180,127 @@ Button {
             onClicked: root.showActions = !root.showActions
         }
 
-        // Context menu
-        Loader {
-            id: contextMenuLoader
-            active: root.showActions
-            anchors.top: menuButton.bottom
-            anchors.right: parent.right
-            anchors.margins: 4
+        // Context menu popup - renders in overlay layer above all content
+        Popup {
+            id: contextMenuPopup
+            visible: root.showActions
+            y: menuButton.y + menuButton.height + 4
+            x: Math.max(4, Math.min(parent.width - 164, menuButton.x + menuButton.width - 160))
+            width: 160
+            height: menuColumn.implicitHeight + 16
+            padding: 0
+            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+            onClosed: root.showActions = false
 
-            sourceComponent: Rectangle {
-                id: contextMenu
-                width: 160
-                height: menuColumn.implicitHeight + 16
+            background: Rectangle {
                 radius: Appearance.rounding.small
                 color: Appearance.m3colors.m3layerBackground2
+            }
 
-                Column {
-                    id: menuColumn
-                    anchors.centerIn: parent
+            contentItem: Column {
+                id: menuColumn
+                width: 152
+                spacing: 2
+                padding: 4
+
+                RippleButton {
                     width: parent.width - 8
-                    spacing: 2
+                    implicitHeight: 36
+                    buttonRadius: 4
 
-                    RippleButton {
-                        width: parent.width
-                        implicitHeight: 36
-                        buttonRadius: 4
-
-                        contentItem: StyledText {
-                            anchors.centerIn: parent
-                            text: "Open file link"
-                            font.pixelSize: Appearance.font.pixelSize.textSmall
-                        }
-
-                        onClicked: {
-                            root.showActions = false
-                            Qt.openUrlExternally(root.imageData.file_url)
-                        }
+                    contentItem: StyledText {
+                        anchors.centerIn: parent
+                        text: "Open file link"
+                        font.pixelSize: Appearance.font.pixelSize.textSmall
                     }
 
-                    RippleButton {
-                        visible: root.imageData.source && root.imageData.source.length > 0
-                        width: parent.width
-                        implicitHeight: 36
-                        buttonRadius: 4
+                    onClicked: {
+                        root.showActions = false
+                        Qt.openUrlExternally(root.imageData.file_url)
+                    }
+                }
 
-                        contentItem: StyledText {
-                            anchors.centerIn: parent
-                            text: "Go to source"
-                            font.pixelSize: Appearance.font.pixelSize.textSmall
-                        }
+                RippleButton {
+                    width: parent.width - 8
+                    implicitHeight: 36
+                    buttonRadius: 4
 
-                        onClicked: {
-                            root.showActions = false
-                            Qt.openUrlExternally(root.imageData.source)
-                        }
+                    contentItem: StyledText {
+                        anchors.centerIn: parent
+                        text: root.isVideo ? "Play in mpv" : "Open in viewer"
+                        font.pixelSize: Appearance.font.pixelSize.textSmall
                     }
 
-                    RippleButton {
-                        width: parent.width
-                        implicitHeight: 36
-                        buttonRadius: 4
-
-                        contentItem: StyledText {
-                            anchors.centerIn: parent
-                            text: "Download"
-                            font.pixelSize: Appearance.font.pixelSize.textSmall
-                        }
-
-                        onClicked: {
-                            root.showActions = false
-                            const targetPath = root.imageData.is_nsfw ? root.nsfwPath : root.downloadPath
+                    onClicked: {
+                        root.showActions = false
+                        if (root.isVideo) {
+                            // mpv can stream URLs directly
+                            Quickshell.execDetached(["mpv", "--loop", root.imageData.file_url])
+                        } else {
+                            // Download to temp and open with system default
+                            const tmpFile = `/tmp/booru_${root.fileName}`
                             Quickshell.execDetached(["bash", "-c",
-                                `mkdir -p '${targetPath}' && curl -sL '${root.imageData.file_url}' -o '${targetPath}/${root.fileName}' && notify-send 'Download complete' '${targetPath}/${root.fileName}' -a 'Booru'`
+                                `curl -sL '${root.imageData.file_url}' -o '${tmpFile}' && xdg-open '${tmpFile}'`
                             ])
                         }
+                    }
+                }
+
+                RippleButton {
+                    visible: root.imageData.source && root.imageData.source.length > 0
+                    width: parent.width - 8
+                    implicitHeight: 36
+                    buttonRadius: 4
+
+                    contentItem: StyledText {
+                        anchors.centerIn: parent
+                        text: "Go to source"
+                        font.pixelSize: Appearance.font.pixelSize.textSmall
+                    }
+
+                    onClicked: {
+                        root.showActions = false
+                        Qt.openUrlExternally(root.imageData.source)
+                    }
+                }
+
+                RippleButton {
+                    width: parent.width - 8
+                    implicitHeight: 36
+                    buttonRadius: 4
+
+                    contentItem: StyledText {
+                        anchors.centerIn: parent
+                        text: "Download"
+                        font.pixelSize: Appearance.font.pixelSize.textSmall
+                    }
+
+                    onClicked: {
+                        root.showActions = false
+                        const targetPath = root.imageData.is_nsfw ? root.nsfwPath : root.downloadPath
+                        Quickshell.execDetached(["bash", "-c",
+                            `mkdir -p '${targetPath}' && curl -sL '${root.imageData.file_url}' -o '${targetPath}/${root.fileName}' && notify-send 'Download complete' '${targetPath}/${root.fileName}' -a 'Booru'`
+                        ])
+                    }
+                }
+
+                RippleButton {
+                    width: parent.width - 8
+                    implicitHeight: 36
+                    buttonRadius: 4
+
+                    contentItem: StyledText {
+                        anchors.centerIn: parent
+                        text: "Save as wallpaper"
+                        font.pixelSize: Appearance.font.pixelSize.textSmall
+                    }
+
+                    onClicked: {
+                        root.showActions = false
+                        const wallpaperPath = root.downloadPath.replace(/\/booru$/, '/wallpapers')
+                        Quickshell.execDetached(["bash", "-c",
+                            `mkdir -p '${wallpaperPath}' && curl -sL '${root.imageData.file_url}' -o '${wallpaperPath}/${root.fileName}' && notify-send 'Wallpaper saved' '${wallpaperPath}/${root.fileName}' -a 'Booru'`
+                        ])
                     }
                 }
             }

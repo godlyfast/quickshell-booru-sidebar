@@ -105,9 +105,49 @@ Singleton {
         obj[keys[keys.length - 1]] = convertedValue;
     }
 
+    property Component configWriterComponent: Component {
+        Process {
+            property string jsonContent: ""
+            property string targetPath: ""
+            command: ["dd", "status=none", "of=" + targetPath]
+            stdinEnabled: true
+            Component.onCompleted: {
+                console.log("[ConfigLoader] Writer process created, target:", targetPath);
+                console.log("[ConfigLoader] Command:", JSON.stringify(command));
+            }
+            onStarted: {
+                console.log("[ConfigLoader] Writer process started");
+                if (jsonContent.length > 0) {
+                    write(jsonContent);
+                    console.log("[ConfigLoader] Wrote", jsonContent.length, "bytes, closing stdin");
+                    stdinEnabled = false;  // Close stdin to signal EOF
+                }
+            }
+            onExited: (code) => {
+                if (code === 0) {
+                    console.log("[ConfigLoader] Config saved successfully to:", targetPath);
+                } else {
+                    console.error("[ConfigLoader] Failed to save config, exit code:", code);
+                }
+                this.destroy();
+            }
+        }
+    }
+
     function saveConfig() {
         const plainConfig = ObjectUtils.toPlainObject(ConfigOptions);
-        Hyprland.dispatch(`exec echo '${StringUtils.shellSingleQuoteEscape(JSON.stringify(plainConfig, null, 2))}' > '${root.filePath}'`)
+        const jsonContent = JSON.stringify(plainConfig, null, 2);
+        console.log("[ConfigLoader] saveConfig called, path:", root.filePath);
+        console.log("[ConfigLoader] JSON content length:", jsonContent.length);
+        // Create fresh Process for each save to avoid stdin closure issues
+        const writer = configWriterComponent.createObject(root, {
+            jsonContent: jsonContent,
+            targetPath: root.filePath,
+            running: true
+        });
+        if (!writer) {
+            console.error("[ConfigLoader] Failed to create writer process");
+        }
     }
 
     Timer {

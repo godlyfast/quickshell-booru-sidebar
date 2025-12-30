@@ -205,37 +205,80 @@ Rectangle {
             }
         }
 
-        // Next page button
-        RippleButton {
+        // Pagination buttons
+        RowLayout {
             visible: root.responseData.page > 0
-            Layout.alignment: Qt.AlignRight
-            implicitHeight: 32
-            implicitWidth: nextPageRow.implicitWidth + 20
-            buttonRadius: Appearance.rounding.small
-            colBackground: Appearance.colors.colLayer2
+            Layout.fillWidth: true
+            spacing: 8
 
-            onClicked: {
-                if (root.tagInputField) {
-                    root.tagInputField.text = (root.responseData.tags || []).join(" ") + " " + (parseInt(root.responseData.page) + 1)
-                    root.tagInputField.accepted()
+            // Previous page button
+            RippleButton {
+                visible: root.responseData.page > 1
+                implicitHeight: 32
+                implicitWidth: prevPageRow.implicitWidth + 20
+                buttonRadius: Appearance.rounding.small
+                colBackground: Appearance.colors.colLayer2
+
+                onClicked: {
+                    if (root.tagInputField) {
+                        Booru.replaceOnNextResponse = true
+                        root.tagInputField.text = (root.responseData.tags || []).join(" ") + " " + (parseInt(root.responseData.page) - 1)
+                        root.tagInputField.accepted()
+                    }
+                }
+
+                contentItem: Row {
+                    id: prevPageRow
+                    anchors.centerIn: parent
+                    spacing: 4
+
+                    MaterialSymbol {
+                        iconSize: 18
+                        color: Appearance.m3colors.m3surfaceText
+                        text: "chevron_left"
+                    }
+
+                    StyledText {
+                        text: "Prev"
+                        font.pixelSize: Appearance.font.pixelSize.textSmall
+                        color: Appearance.m3colors.m3surfaceText
+                    }
                 }
             }
 
-            contentItem: Row {
-                id: nextPageRow
-                anchors.centerIn: parent
-                spacing: 4
+            Item { Layout.fillWidth: true }
 
-                StyledText {
-                    text: "Next page"
-                    font.pixelSize: Appearance.font.pixelSize.textSmall
-                    color: Appearance.m3colors.m3surfaceText
+            // Next page button
+            RippleButton {
+                implicitHeight: 32
+                implicitWidth: nextPageRow.implicitWidth + 20
+                buttonRadius: Appearance.rounding.small
+                colBackground: Appearance.colors.colLayer2
+
+                onClicked: {
+                    if (root.tagInputField) {
+                        Booru.replaceOnNextResponse = true
+                        root.tagInputField.text = (root.responseData.tags || []).join(" ") + " " + (parseInt(root.responseData.page) + 1)
+                        root.tagInputField.accepted()
+                    }
                 }
 
-                MaterialSymbol {
-                    iconSize: 18
-                    color: Appearance.m3colors.m3surfaceText
-                    text: "chevron_right"
+                contentItem: Row {
+                    id: nextPageRow
+                    anchors.centerIn: parent
+                    spacing: 4
+
+                    StyledText {
+                        text: "Next"
+                        font.pixelSize: Appearance.font.pixelSize.textSmall
+                        color: Appearance.m3colors.m3surfaceText
+                    }
+
+                    MaterialSymbol {
+                        iconSize: 18
+                        color: Appearance.m3colors.m3surfaceText
+                        text: "chevron_right"
+                    }
                 }
             }
         }
