@@ -8,14 +8,17 @@ import QtQuick
 import Quickshell
 
 /**
- * Booru Sidebar shell entry point.
- * Run with: qs -c /path/to/quickshell-booru-sidebar
- *
- * Or symlink to ~/.config/quickshell/booru-sidebar and run: qs -c booru-sidebar
+ * Sidebar shell entry point.
+ * Run with: qs -c sidebar
  */
 ShellRoot {
-    // Sidebar state
+    // GlobalStates must be defined here since it's a singleton
     property bool __sidebarLeftOpen: false
+
+    // Force ConfigLoader to initialize and load config.json
+    Component.onCompleted: {
+        ConfigLoader.loadConfig()
+    }
 
     SidebarLeft {
         sidebarOpen: __sidebarLeftOpen
