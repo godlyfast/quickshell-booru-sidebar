@@ -41,4 +41,9 @@ Singleton {
     property QtObject bar: QtObject {
     property bool bottom: false // Instead of top
     }
+
+    property QtObject booru: QtObject {
+        property string gelbooruApiKey: ""
+        property string gelbooruUserId: ""
+    }
 }

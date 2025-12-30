@@ -27,6 +27,11 @@ Singleton {
     property bool allowNsfw: false
     property int limit: 20
 
+    // Gelbooru API credentials (configured in config.json under "booru")
+    // Get your key at: https://gelbooru.com/index.php?page=account&s=options
+    property string gelbooruApiKey: ConfigOptions.booru?.gelbooruApiKey ?? ""
+    property string gelbooruUserId: ConfigOptions.booru?.gelbooruUserId ?? ""
+
     property var providers: {
         "system": { "name": "System" },
         "yandere": {
@@ -199,7 +204,11 @@ Singleton {
         provider = provider.toLowerCase()
         if (providerList.indexOf(provider) !== -1) {
             root.currentProvider = provider
-            root.addSystemMessage("Provider set to " + providers[provider].name)
+            var msg = "Provider set to " + providers[provider].name
+            if (provider === "gelbooru" && (!gelbooruApiKey || !gelbooruUserId)) {
+                msg += "\n⚠️ Gelbooru requires API key. Get yours at:\ngelbooru.com/index.php?page=account&s=options"
+            }
+            root.addSystemMessage(msg)
         } else {
             root.addSystemMessage("Invalid API provider. Supported:\n- " + providerList.join("\n- "))
         }
@@ -245,6 +254,11 @@ Singleton {
             params.push("limit=" + limit)
             if (currentProvider == "gelbooru") {
                 params.push("pid=" + page)
+                // Gelbooru requires API key authentication
+                if (gelbooruApiKey && gelbooruUserId) {
+                    params.push("api_key=" + gelbooruApiKey)
+                    params.push("user_id=" + gelbooruUserId)
+                }
             } else {
                 params.push("page=" + page)
             }
@@ -317,6 +331,11 @@ Singleton {
         if (!provider.tagSearchTemplate) return
 
         var url = provider.tagSearchTemplate.replace("{{query}}", encodeURIComponent(query))
+
+        // Add Gelbooru API credentials for tag search
+        if (currentProvider === "gelbooru" && gelbooruApiKey && gelbooruUserId) {
+            url += "&api_key=" + gelbooruApiKey + "&user_id=" + gelbooruUserId
+        }
 
         var xhr = new XMLHttpRequest()
         currentTagRequest = xhr

@@ -3,7 +3,9 @@
     "defaultProvider": "yandere",
     "nsfw": false,
     "downloadPath": "~/Pictures/booru",
-    "nsfwPath": "~/Pictures/booru/nsfw"
+    "nsfwPath": "~/Pictures/booru/nsfw",
+    "gelbooruApiKey": "",
+    "gelbooruUserId": ""
   },
   "appearance": {
     "transparency": 0.5,

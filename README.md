@@ -115,7 +115,9 @@ Edit `config.json` to customize:
     "defaultProvider": "yandere",
     "nsfw": false,
     "downloadPath": "~/Pictures/booru",
-    "nsfwPath": "~/Pictures/booru/nsfw"
+    "nsfwPath": "~/Pictures/booru/nsfw",
+    "gelbooruApiKey": "",
+    "gelbooruUserId": ""
   },
   "appearance": {
     "transparency": 0.5,
@@ -133,13 +135,31 @@ Edit `config.json` to customize:
 
 ## Supported Booru APIs
 
-| Provider | API Type | NSFW Support |
-|----------|----------|--------------|
-| yande.re | Moebooru | Yes |
-| Konachan | Moebooru | Yes |
-| Danbooru | Danbooru | Yes |
-| Gelbooru | Gelbooru | Yes |
-| waifu.im | REST | Yes |
+| Provider | API Type | NSFW Support | Auth Required |
+|----------|----------|--------------|---------------|
+| yande.re | Moebooru | Yes | No |
+| Konachan | Moebooru | Yes | No |
+| Danbooru | Danbooru | Yes | No |
+| Gelbooru | Gelbooru | Yes | **Yes** |
+| waifu.im | REST | Yes | No |
+
+### Gelbooru API Key
+
+Gelbooru requires API authentication. To use Gelbooru:
+
+1. Create an account at [gelbooru.com](https://gelbooru.com)
+2. Go to [Account Options](https://gelbooru.com/index.php?page=account&s=options)
+3. Copy your **API Key** and **User ID**
+4. Add them to your `config.json`:
+
+```json
+{
+  "booru": {
+    "gelbooruApiKey": "your_api_key_here",
+    "gelbooruUserId": "your_user_id_here"
+  }
+}
+```
 
 ## IPC Commands
 

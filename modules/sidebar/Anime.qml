@@ -14,7 +14,7 @@ Item {
     id: root
     property real padding: 8
 
-    property var inputField: tagInputField
+    property var inputField: null
     readonly property var responses: Booru.responses
     property string previewDownloadPath: Directories.cacheDir + "/booru/previews"
     property string downloadPath: Directories.homeDir + "/Pictures/booru"
@@ -291,6 +291,10 @@ Item {
                         onAccepted: {
                             root.handleInput(text);
                             text = "";
+                        }
+
+                        Component.onCompleted: {
+                            root.inputField = tagInputField;
                         }
                     }
 
