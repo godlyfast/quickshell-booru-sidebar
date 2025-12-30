@@ -35,6 +35,7 @@ Button {
         return ext
     }
     property bool isVideo: ["mp4", "webm"].includes(fileExt)
+    property bool isGif: fileExt === "gif"
 
     ImageDownloaderProcess {
         id: imageDownloader
@@ -74,15 +75,13 @@ Button {
     contentItem: Item {
         anchors.fill: parent
 
-        // Image display (for non-video content)
+        // Static image display (non-GIF, non-video)
         Image {
             id: imageObject
             anchors.fill: parent
-            visible: !root.isVideo
-            width: root.rowHeight * (modelData.aspect_ratio || 1)
-            height: root.rowHeight
+            visible: !root.isVideo && !root.isGif
             fillMode: Image.PreserveAspectCrop
-            source: root.isVideo ? "" : (modelData.preview_url ?? "")
+            source: (root.isVideo || root.isGif) ? "" : (modelData.preview_url ?? "")
             sourceSize.width: root.rowHeight * (modelData.aspect_ratio || 1)
             sourceSize.height: root.rowHeight
             asynchronous: true
@@ -101,7 +100,22 @@ Button {
             }
         }
 
-        // Video display (Qt6: MediaPlayer + VideoOutput)
+        // GIF display - cache: true required for looping from network sources
+        AnimatedImage {
+            id: gifObject
+            anchors.fill: parent
+            visible: root.isGif
+            fillMode: Image.PreserveAspectCrop
+            source: root.isGif ? (modelData.file_url ?? "") : ""
+            asynchronous: true
+            cache: true  // Required for looping from network sources per Qt docs
+            playing: true
+
+            opacity: status === AnimatedImage.Ready ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 200 } }
+        }
+
+        // Video display (MediaPlayer + VideoOutput)
         Item {
             id: videoContainer
             anchors.fill: parent
@@ -148,7 +162,7 @@ Button {
             anchors.fill: parent
             radius: imageRadius
             color: Appearance.colors.colLayer2
-            visible: !root.isVideo && imageObject.status !== Image.Ready
+            visible: !root.isVideo && !root.isGif && imageObject.status !== Image.Ready
 
             StyledText {
                 anchors.centerIn: parent
