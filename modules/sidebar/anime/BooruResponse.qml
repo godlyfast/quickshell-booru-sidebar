@@ -195,7 +195,7 @@ Rectangle {
                         required property var modelData
                         imageData: modelData
                         rowHeight: imageRow.rowHeight
-                        imageRadius: imageRow.modelData.images.length == 1 ? 30 : Appearance.rounding.normal
+                        imageRadius: Appearance.rounding.small
                         manualDownload: ["danbooru", "waifu.im"].includes(root.responseData.provider)
                         previewDownloadPath: root.previewDownloadPath
                         downloadPath: root.downloadPath
