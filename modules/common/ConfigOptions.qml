@@ -45,5 +45,7 @@ Singleton {
     property QtObject booru: QtObject {
         property string gelbooruApiKey: ""
         property string gelbooruUserId: ""
+        property string rule34ApiKey: ""
+        property string rule34UserId: ""
     }
 }

@@ -20,28 +20,31 @@ Button {
     property string previewDownloadPath
     property string downloadPath
     property string nsfwPath
-    property string fileName: decodeURIComponent((imageData.file_url ?? "").substring((imageData.file_url ?? "").lastIndexOf('/') + 1))
-    property string filePath: `${root.previewDownloadPath}/${root.fileName}`
+    property string fileName: {
+        var url = imageData.file_url ? imageData.file_url : ""
+        return decodeURIComponent(url.substring(url.lastIndexOf('/') + 1))
+    }
+    property string filePath: root.previewDownloadPath + "/" + root.fileName
     property real imageRadius: Appearance.rounding.small
 
     property bool showActions: false
 
     // Video detection - fallback to extracting from URL if file_ext not provided
     property string fileExt: {
-        let ext = (imageData.file_ext ?? "").toLowerCase()
+        var ext = imageData.file_ext ? imageData.file_ext.toLowerCase() : ""
         if (!ext && imageData.file_url) {
             ext = imageData.file_url.split('.').pop().toLowerCase()
         }
         return ext
     }
-    property bool isVideo: ["mp4", "webm"].includes(fileExt)
+    property bool isVideo: (fileExt === "mp4" || fileExt === "webm")
     property bool isGif: fileExt === "gif"
 
     ImageDownloaderProcess {
         id: imageDownloader
         enabled: root.manualDownload
         filePath: root.filePath
-        sourceUrl: root.imageData.preview_url ?? root.imageData.sample_url
+        sourceUrl: root.imageData.preview_url ? root.imageData.preview_url : root.imageData.sample_url
         onDone: (path, width, height) => {
             imageObject.source = ""
             imageObject.source = "file://" + path
@@ -55,7 +58,7 @@ Button {
 
     StyledToolTip {
         // Show first 5 tags, truncated to max 200 chars
-        property var tagList: (root.imageData.tags ?? "").split(" ").filter(t => t.length > 0)
+        property var tagList: (root.imageData.tags ? root.imageData.tags : "").split(" ").filter(t => t.length > 0)
         property string rawContent: tagList.slice(0, 5).join(", ") + (tagList.length > 5 ? " ..." : "")
         content: rawContent.length > 200 ? rawContent.substring(0, 200) + "..." : rawContent
     }
@@ -81,7 +84,7 @@ Button {
             anchors.fill: parent
             visible: !root.isVideo && !root.isGif
             fillMode: Image.PreserveAspectCrop
-            source: (root.isVideo || root.isGif) ? "" : (modelData.preview_url ?? "")
+            source: (root.isVideo || root.isGif) ? "" : (modelData.preview_url ? modelData.preview_url : "")
             sourceSize.width: root.rowHeight * (modelData.aspect_ratio || 1)
             sourceSize.height: root.rowHeight
             asynchronous: true
@@ -106,7 +109,7 @@ Button {
             anchors.fill: parent
             visible: root.isGif && gifObject.status !== AnimatedImage.Ready
             fillMode: Image.PreserveAspectCrop
-            source: root.isGif ? (modelData.preview_url ?? "") : ""
+            source: root.isGif ? (modelData.preview_url ? modelData.preview_url : "") : ""
             asynchronous: true
 
             layer.enabled: true
@@ -145,7 +148,7 @@ Button {
             anchors.fill: parent
             visible: root.isGif
             fillMode: Image.PreserveAspectCrop
-            source: root.isGif ? (modelData.file_url ?? "") : ""
+            source: root.isGif ? (modelData.file_url ? modelData.file_url : "") : ""
             asynchronous: true
             cache: true  // Required for looping from network sources per Qt docs
             playing: true
@@ -171,7 +174,7 @@ Button {
 
             MediaPlayer {
                 id: mediaPlayer
-                source: root.isVideo ? (root.imageData.file_url ?? "") : ""
+                source: root.isVideo ? (root.imageData.file_url ? root.imageData.file_url : "") : ""
                 loops: MediaPlayer.Infinite
                 audioOutput: AudioOutput { muted: true }
                 videoOutput: videoOutput

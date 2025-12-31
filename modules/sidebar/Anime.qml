@@ -350,11 +350,13 @@ Item {
                     StyledText {
                         text: "•"
                         color: Appearance.m3colors.m3secondaryText
+                        visible: Booru.providerSupportsNsfw
                     }
 
-                    // NSFW toggle
+                    // NSFW toggle (hidden for SFW-only providers like safebooru, e926, nekos.best, konachan.net)
                     Row {
                         spacing: 4
+                        visible: Booru.providerSupportsNsfw
 
                         StyledText {
                             anchors.verticalCenter: parent.verticalCenter

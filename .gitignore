@@ -20,3 +20,7 @@ Thumbs.db
 
 # Local config overrides
 config.local.json
+
+# Test symlinks
+modules/modules
+services/services
