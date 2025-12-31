@@ -571,6 +571,7 @@ Singleton {
             // purity: 100=sfw, 010=sketchy, 001=nsfw, combine for multiple
             params.push("purity=" + (nsfw ? "111" : "100"))
             params.push("sorting=random")
+            params.push("atleast=3840x2160")  // Only 4K+ wallpapers
             params.push("page=" + page)
         } else if (currentProvider === "nekos_best") {
             // nekos.best uses amount parameter, ignores tags
