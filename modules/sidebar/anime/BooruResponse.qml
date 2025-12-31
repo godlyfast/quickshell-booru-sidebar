@@ -23,8 +23,8 @@ Rectangle {
     property real imageSpacing: 5
     property real responsePadding: 8
 
-    anchors.left: parent?.left
-    anchors.right: parent?.right
+    anchors.left: parent ? parent.left : undefined
+    anchors.right: parent ? parent.right : undefined
     implicitHeight: columnLayout.implicitHeight + root.responsePadding * 2
 
     Component.onCompleted: {
@@ -70,7 +70,10 @@ Rectangle {
                     anchors.centerIn: parent
                     font.pixelSize: Appearance.font.pixelSize.textSmall
                     color: Appearance.m3colors.m3accentPrimaryText
-                    text: Booru.providers[root.responseData.provider]?.name ?? root.responseData.provider
+                    text: {
+                        var p = Booru.providers[root.responseData.provider]
+                        return p && p.name ? p.name : root.responseData.provider
+                    }
                 }
             }
 

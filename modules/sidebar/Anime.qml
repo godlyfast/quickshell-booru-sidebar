@@ -169,7 +169,7 @@ Item {
             spacing: 4
 
             Repeater {
-                model: root.suggestionList.slice(0, 8)
+                model: root.suggestionList.slice(0, 12)
 
                 RippleButton {
                     implicitHeight: 28
@@ -183,7 +183,7 @@ Item {
 
                         StyledText {
                             id: suggestionText
-                            text: modelData.displayName ?? modelData.name
+                            text: modelData.displayName ? modelData.displayName : modelData.name
                             font.pixelSize: Appearance.font.pixelSize.textSmall
                             color: Appearance.m3colors.m3surfaceText
                         }
@@ -191,7 +191,7 @@ Item {
                         StyledText {
                             id: countText
                             visible: modelData.count !== undefined
-                            text: modelData.count ?? ""
+                            text: modelData.count !== undefined ? modelData.count : ""
                             font.pixelSize: 10
                             color: Appearance.m3colors.m3secondaryText
                         }
@@ -258,7 +258,8 @@ Item {
                             }
 
                             if (text.startsWith(`${root.commandPrefix}mode`)) {
-                                const query = text.split(" ")[1] ?? "";
+                                var parts = text.split(" ");
+                                const query = parts.length > 1 ? parts[1] : "";
                                 root.suggestionList = Booru.providerList
                                     .filter(p => p.includes(query.toLowerCase()))
                                     .map(p => ({
@@ -343,7 +344,10 @@ Item {
                             anchors.centerIn: parent
                             font.pixelSize: 11
                             color: Appearance.m3colors.m3secondaryText
-                            text: Booru.providers[Booru.currentProvider]?.name ?? "yande.re"
+                            text: {
+                                var p = Booru.providers[Booru.currentProvider]
+                                return p && p.name ? p.name : "yande.re"
+                            }
                         }
                     }
 
@@ -353,7 +357,7 @@ Item {
                         visible: Booru.providerSupportsNsfw
                     }
 
-                    // NSFW toggle (hidden for SFW-only providers like safebooru, e926, nekos.best, konachan.net)
+                    // NSFW toggle (hidden for SFW-only providers like safebooru, e926, nekos.best)
                     Row {
                         spacing: 4
                         visible: Booru.providerSupportsNsfw
