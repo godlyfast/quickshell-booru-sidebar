@@ -28,6 +28,39 @@ Singleton {
     property bool allowNsfw: false
     property int limit: 20
 
+    // Wallhaven sorting options (legacy, kept for backwards compatibility)
+    property string wallhavenSorting: "toplist"  // date_added, relevance, random, views, favorites, toplist
+    property string wallhavenOrder: "desc"       // desc, asc
+    property var wallhavenSortOptions: ["toplist", "random", "date_added", "relevance", "views", "favorites"]
+
+    // Universal sorting - works with all providers that support it
+    property string currentSorting: ""  // Empty = provider default
+
+    // Per-provider sort options (empty array = no sorting support)
+    property var providerSortOptions: ({
+        "yandere": ["score", "score_asc", "id", "id_desc", "mpixels", "landscape", "portrait"],
+        "konachan": ["score", "score_asc", "id", "id_desc", "mpixels", "landscape", "portrait"],
+        "konachan_com": ["score", "score_asc", "id", "id_desc", "mpixels", "landscape", "portrait"],
+        "danbooru": ["rank", "score", "id", "id_desc"],
+        "e621": ["score", "favcount", "id"],
+        "e926": ["score", "favcount", "id"],
+        "gelbooru": ["score", "score:desc", "score:asc", "id", "updated"],
+        "safebooru": ["score", "score:desc", "score:asc", "id", "updated"],
+        "rule34": ["score", "score:desc", "score:asc", "id", "updated"],
+        "wallhaven": ["toplist", "random", "date_added", "relevance", "views", "favorites"],
+        "waifu.im": [],
+        "nekos_best": []
+    })
+
+    // Get sort options for current provider
+    function getSortOptions() {
+        var options = providerSortOptions[currentProvider]
+        return options ? options : []
+    }
+
+    // Check if current provider supports sorting
+    property bool providerSupportsSorting: getSortOptions().length > 0
+
     // SFW-only providers where NSFW toggle doesn't apply
     // safebooru.org, e926.net, nekos.best, konachan.net are all SFW-only by design
     property var sfwOnlyProviders: ["safebooru", "e926", "nekos_best", "konachan"]
@@ -541,6 +574,27 @@ Singleton {
         var url = baseUrl
         var tagString = tags.join(" ")
 
+        // Inject sort metatag for providers that use tag-based sorting
+        if (currentSorting && currentSorting.length > 0) {
+            // Moebooru sites (yandere, konachan, konachan_com) use order:X
+            if (currentProvider === "yandere" || currentProvider === "konachan" || currentProvider === "konachan_com") {
+                tagString = "order:" + currentSorting + " " + tagString
+            }
+            // Danbooru uses order:X
+            else if (currentProvider === "danbooru") {
+                tagString = "order:" + currentSorting + " " + tagString
+            }
+            // e621/e926 use order:X
+            else if (currentProvider === "e621" || currentProvider === "e926") {
+                tagString = "order:" + currentSorting + " " + tagString
+            }
+            // Gelbooru-based sites use sort:X
+            else if (currentProvider === "gelbooru" || currentProvider === "safebooru" || currentProvider === "rule34") {
+                tagString = "sort:" + currentSorting + " " + tagString
+            }
+            // Wallhaven handled separately via URL params below
+        }
+
         // Handle NSFW filtering per provider
         // Skip for SFW-only providers, NSFW-only providers, and those with own params (waifu.im)
         var skipNsfwFilter = (currentProvider === "waifu.im" ||
@@ -570,7 +624,10 @@ Singleton {
             params.push("q=" + encodeURIComponent(tagString))
             // purity: 100=sfw, 010=sketchy, 001=nsfw, combine for multiple
             params.push("purity=" + (nsfw ? "111" : "100"))
-            params.push("sorting=random")
+            // Use currentSorting if set, otherwise fall back to wallhavenSorting
+            var sorting = (currentSorting && currentSorting.length > 0) ? currentSorting : wallhavenSorting
+            params.push("sorting=" + sorting)
+            params.push("order=" + wallhavenOrder)
             params.push("atleast=3840x2160")  // Only 4K+ wallpapers
             params.push("page=" + page)
         } else if (currentProvider === "nekos_best") {

@@ -34,6 +34,7 @@ Item {
 
     property var allCommands: [
         { name: "mode", description: "Set the API provider" },
+        { name: "sort", description: "Set result sorting" },
         { name: "clear", description: "Clear image list" },
         { name: "next", description: "Get next page" },
         { name: "safe", description: "Disable NSFW" },
@@ -60,6 +61,51 @@ Item {
             } else if (command === "lewd") {
                 Booru.allowNsfw = true;
                 Booru.addSystemMessage("NSFW content enabled");
+            } else if (command === "sort" && args.length > 0) {
+                var sortArg = args[0].toLowerCase();
+                var sortOptions = Booru.getSortOptions();
+
+                // Check if provider supports sorting
+                if (sortOptions.length === 0) {
+                    var providerObj = Booru.providers[Booru.currentProvider]
+                    var providerName = providerObj && providerObj.name ? providerObj.name : Booru.currentProvider
+                    Booru.addSystemMessage(providerName + " does not support sorting");
+                }
+                // Handle "default" or "none" to clear sorting
+                else if (sortArg === "default" || sortArg === "none" || sortArg === "clear") {
+                    Booru.currentSorting = "";
+                    Booru.addSystemMessage("Sorting reset to default");
+                }
+                // Handle Wallhaven order specifically
+                else if (Booru.currentProvider === "wallhaven" && (sortArg === "asc" || sortArg === "desc")) {
+                    Booru.wallhavenOrder = sortArg;
+                    Booru.addSystemMessage("Wallhaven order: " + sortArg);
+                }
+                // Check if sort option is valid for current provider
+                else if (sortOptions.indexOf(sortArg) !== -1) {
+                    Booru.currentSorting = sortArg;
+                    var providerObj2 = Booru.providers[Booru.currentProvider]
+                    var providerName2 = providerObj2 && providerObj2.name ? providerObj2.name : Booru.currentProvider
+                    Booru.addSystemMessage(providerName2 + " sorting: " + sortArg);
+                }
+                // Invalid sort option
+                else {
+                    var validOptions = sortOptions.join(", ");
+                    if (Booru.currentProvider === "wallhaven") {
+                        validOptions += ", asc, desc";
+                    }
+                    Booru.addSystemMessage("Unknown sort option. Use: " + validOptions + ", default");
+                }
+            } else if (command === "sort") {
+                // No argument - show current sorting
+                var currentSort = Booru.currentSorting ? Booru.currentSorting : "default";
+                var providerObj3 = Booru.providers[Booru.currentProvider]
+                var providerName3 = providerObj3 && providerObj3.name ? providerObj3.name : Booru.currentProvider
+                if (Booru.getSortOptions().length === 0) {
+                    Booru.addSystemMessage(providerName3 + " does not support sorting");
+                } else {
+                    Booru.addSystemMessage(providerName3 + " sort: " + currentSort);
+                }
             } else {
                 Booru.addSystemMessage("Unknown command: " + command);
             }
@@ -267,6 +313,53 @@ Item {
                                         displayName: Booru.providers[p].name,
                                         description: Booru.providers[p].description
                                     }));
+                                searchTimer.stop();
+                                return;
+                            }
+
+                            if (text.startsWith(`${root.commandPrefix}sort`)) {
+                                var sortParts = text.split(" ");
+                                const sortQuery = sortParts.length > 1 ? sortParts[1] : "";
+                                var providerOptions = Booru.getSortOptions();
+
+                                // If provider doesn't support sorting, show message
+                                if (providerOptions.length === 0) {
+                                    var noSortProvider = Booru.providers[Booru.currentProvider]
+                                    var noSortName = noSortProvider && noSortProvider.name ? noSortProvider.name : Booru.currentProvider
+                                    root.suggestionList = [{
+                                        name: "/sort",
+                                        displayName: "No sorting",
+                                        description: noSortName + " does not support sorting"
+                                    }];
+                                    searchTimer.stop();
+                                    return;
+                                }
+
+                                // Build options list: provider options + "default" + Wallhaven order (if applicable)
+                                var allSortOptions = providerOptions.slice();
+                                allSortOptions.push("default");
+                                if (Booru.currentProvider === "wallhaven") {
+                                    allSortOptions.push("asc");
+                                    allSortOptions.push("desc");
+                                }
+
+                                root.suggestionList = allSortOptions
+                                    .filter(function(s) { return s.indexOf(sortQuery.toLowerCase()) !== -1; })
+                                    .map(function(s) {
+                                        var desc = "";
+                                        if (s === Booru.currentSorting) {
+                                            desc = "(current)";
+                                        } else if (s === "default" && (!Booru.currentSorting || Booru.currentSorting.length === 0)) {
+                                            desc = "(current)";
+                                        } else if (Booru.currentProvider === "wallhaven" && s === Booru.wallhavenOrder) {
+                                            desc = "(current order)";
+                                        }
+                                        return {
+                                            name: "/sort " + s,
+                                            displayName: s,
+                                            description: desc
+                                        };
+                                    });
                                 searchTimer.stop();
                                 return;
                             }
