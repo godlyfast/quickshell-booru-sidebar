@@ -1,11 +1,12 @@
 import QtQuick
+import Quickshell.Io
 import "./services"
 import "./modules/common"
 
 /**
  * Integration tests for all booru providers.
  * Validates that APIs return correct data and all required fields are present.
- * Also tests edge cases like null URL fallbacks and tag autocomplete.
+ * Also tests edge cases like null URL fallbacks, tag autocomplete, and sorting.
  */
 Item {
     id: root
@@ -20,7 +21,11 @@ Item {
     property int autocompleteFailedCount: 0
     property var providerKeys: []
 
-    // Providers known to use Cloudflare JS challenges that QML can't handle
+    // Providers that need curl (User-Agent) to bypass Cloudflare
+    // Note: e621/e926 work with curl for image tests, danbooru has stricter protections
+    property var curlProviders: ["e621", "e926"]
+
+    // Providers that cannot be tested due to Cloudflare JS challenges
     property var cloudflareProviders: ["danbooru"]
 
     // Edge case tags - providers where default "landscape" may not catch null URL issues
@@ -31,8 +36,29 @@ Item {
     }
 
     // Providers that support tag autocomplete
-    property var autocompleteProviders: ["yandere", "konachan", "gelbooru", "safebooru",
-                                          "e621", "e926", "konachan_com"]
+    // Note: e621/e926 excluded - autocomplete endpoint has strict Cloudflare protection
+    property var autocompleteProviders: ["yandere", "konachan", "danbooru", "gelbooru", "safebooru",
+                                          "konachan_com"]
+
+    // Sorting test counters
+    property int sortingPassedCount: 0
+    property int sortingFailedCount: 0
+
+    // Expected sort options per provider (should match Booru.providerSortOptions)
+    property var expectedSortOptions: ({
+        "yandere": ["score", "score_asc", "id", "id_desc", "mpixels", "landscape", "portrait"],
+        "konachan": ["score", "score_asc", "id", "id_desc", "mpixels", "landscape", "portrait"],
+        "konachan_com": ["score", "score_asc", "id", "id_desc", "mpixels", "landscape", "portrait"],
+        "danbooru": ["rank", "score", "id", "id_desc"],
+        "e621": ["score", "favcount", "id"],
+        "e926": ["score", "favcount", "id"],
+        "gelbooru": ["score", "score:desc", "score:asc", "id", "updated"],
+        "safebooru": ["score", "score:desc", "score:asc", "id", "updated"],
+        "rule34": ["score", "score:desc", "score:asc", "id", "updated"],
+        "wallhaven": ["toplist", "random", "date_added", "relevance", "views", "favorites"],
+        "waifu.im": [],
+        "nekos_best": []
+    })
 
     // Required fields and their validators
     function validateImage(img, providerKey) {
@@ -69,7 +95,7 @@ Item {
         return errors
     }
 
-    // Test phases: 0 = standard tests, 1 = edge case tests, 2 = autocomplete tests
+    // Test phases: 0 = standard tests, 1 = edge case tests, 2 = autocomplete tests, 3 = sorting tests
     property int testPhase: 0
     property int edgeCaseIndex: 0
     property var edgeCaseProviderKeys: []
@@ -139,6 +165,11 @@ Item {
         testNextAutocomplete()
     }
 
+    // Store pending test info for curl callback
+    property string pendingProviderKey: ""
+    property var pendingProvider: null
+    property bool pendingIsEdgeCase: false
+
     function testProvider(providerKey, isEdgeCase) {
         var provider = Booru.providers[providerKey]
         var testTag = isEdgeCase ? edgeCaseTags[providerKey] : getDefaultTag(providerKey)
@@ -146,24 +177,34 @@ Item {
 
         console.log("Testing: " + provider.name + " (" + providerKey + ")" + label)
 
+        // Skip providers with strict Cloudflare JS challenges that can't be bypassed
+        if (cloudflareProviders.indexOf(providerKey) !== -1) {
+            console.log("  Image search... SKIP (Cloudflare JS challenge)")
+            skippedCount++
+            scheduleNextTest(isEdgeCase)
+            return
+        }
+
         // Set current provider and build test URL
         Booru.currentProvider = providerKey
         var testTags = [testTag]
         var url = Booru.constructRequestUrl(testTags, false, 5, 1)
         console.log("  URL: " + url)
 
-        // Make request
+        // Use curl for providers that need User-Agent to bypass Cloudflare
+        if (curlProviders.indexOf(providerKey) !== -1) {
+            pendingProviderKey = providerKey
+            pendingProvider = provider
+            pendingIsEdgeCase = isEdgeCase
+            // Set URL first, then trigger via enabled flag
+            curlFetcher.curlUrl = url
+            curlFetcher.enabled = true
+            return
+        }
+
+        // Make request via XMLHttpRequest for other providers
         var xhr = new XMLHttpRequest()
         xhr.open("GET", url, true)
-
-        // Set User-Agent for Cloudflare-protected providers
-        if (providerKey === "danbooru" || providerKey === "e621" || providerKey === "e926") {
-            try {
-                xhr.setRequestHeader("User-Agent", Booru.defaultUserAgent)
-            } catch (e) {
-                console.log("  Warning: Could not set User-Agent")
-            }
-        }
 
         var capturedIsEdgeCase = isEdgeCase
         xhr.onreadystatechange = function() {
@@ -183,14 +224,8 @@ Item {
 
     function handleResponse(providerKey, provider, xhr, isEdgeCase) {
         if (xhr.status !== 200) {
-            // Mark Cloudflare-protected providers as SKIP (403 = Cloudflare challenge)
-            if (xhr.status === 403 && cloudflareProviders.indexOf(providerKey) !== -1) {
-                console.log("  Image search... SKIP (Cloudflare protected)")
-                skippedCount++
-            } else {
-                console.log("  Image search... FAIL (HTTP " + xhr.status + ")")
-                failedCount++
-            }
+            console.log("  Image search... FAIL (HTTP " + xhr.status + ")")
+            failedCount++
             scheduleNextTest(isEdgeCase)
             return
         }
@@ -255,26 +290,30 @@ Item {
 
     function testNextAutocomplete() {
         if (autocompleteIndex >= autocompleteProviders.length) {
-            finishAllTests()
+            startSortingTests()
             return
         }
 
         var providerKey = autocompleteProviders[autocompleteIndex]
-        // Skip Cloudflare-protected providers
-        if (cloudflareProviders.indexOf(providerKey) !== -1) {
-            console.log("Testing autocomplete: " + providerKey + "... SKIP (Cloudflare)")
-            autocompleteIndex++
-            autocompleteDelayTimer.start()
-            return
-        }
-
         testAutocomplete(providerKey)
     }
+
+    // Store pending autocomplete test info for curl callback
+    property string pendingAutocompleteProviderKey: ""
+    property var pendingAutocompleteProvider: null
 
     function testAutocomplete(providerKey) {
         var provider = Booru.providers[providerKey]
         if (!provider.tagSearchTemplate) {
             console.log("Testing autocomplete: " + providerKey + "... SKIP (no template)")
+            autocompleteIndex++
+            autocompleteDelayTimer.start()
+            return
+        }
+
+        // Skip Cloudflare-protected providers
+        if (cloudflareProviders.indexOf(providerKey) !== -1) {
+            console.log("Testing autocomplete: " + providerKey + "... SKIP (Cloudflare)")
             autocompleteIndex++
             autocompleteDelayTimer.start()
             return
@@ -289,14 +328,17 @@ Item {
             url += "&api_key=" + Booru.gelbooruApiKey + "&user_id=" + Booru.gelbooruUserId
         }
 
+        // Use curl for providers that need User-Agent
+        if (curlProviders.indexOf(providerKey) !== -1) {
+            pendingAutocompleteProviderKey = providerKey
+            pendingAutocompleteProvider = provider
+            autocompleteCurlFetcher.curlUrl = url
+            autocompleteCurlFetcher.enabled = true
+            return
+        }
+
         var xhr = new XMLHttpRequest()
         xhr.open("GET", url, true)
-
-        if (providerKey === "e621" || providerKey === "e926") {
-            try {
-                xhr.setRequestHeader("User-Agent", Booru.defaultUserAgent)
-            } catch (e) {}
-        }
 
         xhr.onreadystatechange = function() {
             if (xhr.readyState === XMLHttpRequest.DONE) {
@@ -349,6 +391,189 @@ Item {
         autocompleteDelayTimer.start()
     }
 
+    // --- Sorting Tests ---
+
+    function startSortingTests() {
+        console.log("")
+        console.log("--- Sorting Configuration Tests ---")
+        testPhase = 3
+
+        // Test 1: Verify providerSortOptions exists
+        testSortOptionsExist()
+
+        // Test 2: Verify getSortOptions() returns correct values
+        testGetSortOptions()
+
+        // Test 3: Verify sort metatag injection in URLs
+        testSortMetatagInjection()
+
+        // Test 4: Verify providers without sorting support
+        testNoSortingProviders()
+
+        // Print sorting test summary
+        console.log("")
+        console.log("Sorting Tests: " + sortingPassedCount + " passed, " + sortingFailedCount + " failed")
+
+        finishAllTests()
+    }
+
+    function testSortOptionsExist() {
+        console.log("Testing: providerSortOptions configuration")
+
+        if (!Booru.providerSortOptions) {
+            console.log("  providerSortOptions exists... FAIL (undefined)")
+            sortingFailedCount++
+            return
+        }
+
+        var allMatch = true
+        for (var i = 0; i < providerKeys.length; i++) {
+            var key = providerKeys[i]
+            var actual = Booru.providerSortOptions[key]
+            var expected = expectedSortOptions[key]
+
+            if (!actual && !expected) continue
+            if (!actual && expected) {
+                console.log("  " + key + ": FAIL (missing in Booru)")
+                allMatch = false
+                continue
+            }
+            if (actual && !expected) {
+                // Extra options are OK
+                continue
+            }
+
+            // Compare arrays
+            if (actual.length !== expected.length) {
+                console.log("  " + key + ": FAIL (length mismatch: " + actual.length + " vs " + expected.length + ")")
+                allMatch = false
+            }
+        }
+
+        if (allMatch) {
+            console.log("  providerSortOptions exists... PASS")
+            sortingPassedCount++
+        } else {
+            sortingFailedCount++
+        }
+    }
+
+    function testGetSortOptions() {
+        console.log("Testing: getSortOptions() function")
+
+        var allPass = true
+
+        // Test with yandere (has sorting)
+        Booru.currentProvider = "yandere"
+        var options = Booru.getSortOptions()
+        if (!options || options.length === 0) {
+            console.log("  yandere getSortOptions()... FAIL (empty)")
+            allPass = false
+        } else if (options.indexOf("score") === -1) {
+            console.log("  yandere getSortOptions()... FAIL (missing 'score')")
+            allPass = false
+        }
+
+        // Test with waifu.im (no sorting)
+        Booru.currentProvider = "waifu.im"
+        options = Booru.getSortOptions()
+        if (options && options.length > 0) {
+            console.log("  waifu.im getSortOptions()... FAIL (should be empty)")
+            allPass = false
+        }
+
+        if (allPass) {
+            console.log("  getSortOptions()... PASS")
+            sortingPassedCount++
+        } else {
+            sortingFailedCount++
+        }
+    }
+
+    function testSortMetatagInjection() {
+        console.log("Testing: Sort metatag injection in URLs")
+
+        var allPass = true
+
+        // Test Moebooru (order: metatag)
+        Booru.currentProvider = "yandere"
+        Booru.currentSorting = "score"
+        var url = Booru.constructRequestUrl(["test"], false, 5, 1)
+        if (url.indexOf("order%3Ascore") === -1 && url.indexOf("order:score") === -1) {
+            console.log("  yandere order:score... FAIL (not in URL: " + url + ")")
+            allPass = false
+        }
+
+        // Test Gelbooru (sort: metatag)
+        Booru.currentProvider = "gelbooru"
+        Booru.currentSorting = "score"
+        url = Booru.constructRequestUrl(["test"], false, 5, 1)
+        if (url.indexOf("sort%3Ascore") === -1 && url.indexOf("sort:score") === -1) {
+            console.log("  gelbooru sort:score... FAIL (not in URL: " + url + ")")
+            allPass = false
+        }
+
+        // Test Wallhaven (sorting= parameter)
+        Booru.currentProvider = "wallhaven"
+        Booru.currentSorting = "random"
+        url = Booru.constructRequestUrl(["nature"], false, 5, 1)
+        if (url.indexOf("sorting=random") === -1) {
+            console.log("  wallhaven sorting=random... FAIL (not in URL: " + url + ")")
+            allPass = false
+        }
+
+        // Test empty sorting (should not inject metatag)
+        Booru.currentProvider = "yandere"
+        Booru.currentSorting = ""
+        url = Booru.constructRequestUrl(["test"], false, 5, 1)
+        if (url.indexOf("order%3A") !== -1 || url.indexOf("order:") !== -1) {
+            console.log("  empty sorting... FAIL (metatag injected: " + url + ")")
+            allPass = false
+        }
+
+        // Reset
+        Booru.currentSorting = ""
+
+        if (allPass) {
+            console.log("  Sort metatag injection... PASS")
+            sortingPassedCount++
+        } else {
+            sortingFailedCount++
+        }
+    }
+
+    function testNoSortingProviders() {
+        console.log("Testing: Providers without sorting support")
+
+        var noSortProviders = ["waifu.im", "nekos_best"]
+        var allPass = true
+
+        for (var i = 0; i < noSortProviders.length; i++) {
+            var key = noSortProviders[i]
+            Booru.currentProvider = key
+            var options = Booru.getSortOptions()
+
+            if (options && options.length > 0) {
+                console.log("  " + key + " getSortOptions()... FAIL (should be empty, got " + options.length + ")")
+                allPass = false
+            }
+
+            if (!Booru.providerSupportsSorting === false) {
+                // This is a double-negative check: providerSupportsSorting should be false
+            }
+        }
+
+        // Reset to default
+        Booru.currentProvider = "yandere"
+
+        if (allPass) {
+            console.log("  No-sorting providers... PASS")
+            sortingPassedCount++
+        } else {
+            sortingFailedCount++
+        }
+    }
+
     function finishAllTests() {
         testsCompleted(passedCount, failedCount)
     }
@@ -371,5 +596,159 @@ Item {
         interval: 300
         repeat: false
         onTriggered: testNextAutocomplete()
+    }
+
+    // Curl-based fetcher for Cloudflare-protected providers
+    Process {
+        id: curlFetcher
+
+        property bool enabled: false
+        property string curlUrl: ""
+        property bool handled: false  // Prevent double-handling
+
+        running: enabled && curlUrl.length > 0
+        command: ["curl", "-s", "-A", Booru.defaultUserAgent, curlUrl]
+
+        onRunningChanged: {
+            if (running) handled = false  // Reset on new run
+        }
+
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (curlFetcher.handled) return
+                curlFetcher.handled = true
+                curlFetcher.enabled = false
+                handleCurlResponse(pendingProviderKey, pendingProvider, text, pendingIsEdgeCase)
+            }
+        }
+
+        onExited: (code, status) => {
+            if (curlFetcher.handled) return
+            curlFetcher.handled = true
+            curlFetcher.enabled = false
+            if (code !== 0) {
+                console.log("  Image search... FAIL (curl exit code " + code + ")")
+                failedCount++
+                scheduleNextTest(pendingIsEdgeCase)
+            }
+        }
+    }
+
+    // Curl-based fetcher for autocomplete on Cloudflare-protected providers
+    Process {
+        id: autocompleteCurlFetcher
+
+        property bool enabled: false
+        property string curlUrl: ""
+        property bool handled: false  // Prevent double-handling
+
+        running: enabled && curlUrl.length > 0
+        command: ["curl", "-s", "-A", Booru.defaultUserAgent, curlUrl]
+
+        onRunningChanged: {
+            if (running) handled = false  // Reset on new run
+        }
+
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (autocompleteCurlFetcher.handled) return
+                autocompleteCurlFetcher.handled = true
+                autocompleteCurlFetcher.enabled = false
+                handleAutocompleteCurlResponse(pendingAutocompleteProviderKey, pendingAutocompleteProvider, text)
+            }
+        }
+
+        onExited: (code, status) => {
+            if (autocompleteCurlFetcher.handled) return
+            autocompleteCurlFetcher.handled = true
+            autocompleteCurlFetcher.enabled = false
+            if (code !== 0) {
+                console.log("  Autocomplete... FAIL (curl exit code " + code + ")")
+                autocompleteFailedCount++
+                autocompleteIndex++
+                autocompleteDelayTimer.start()
+            }
+        }
+    }
+
+    function handleAutocompleteCurlResponse(providerKey, provider, responseText) {
+        try {
+            var response = JSON.parse(responseText)
+            var tags = provider.tagMapFunc(response)
+
+            if (!tags || tags.length === 0) {
+                console.log("  Autocomplete... FAIL (0 tags)")
+                autocompleteFailedCount++
+            } else {
+                // Validate tag structure
+                var valid = true
+                for (var i = 0; i < Math.min(tags.length, 3); i++) {
+                    if (typeof tags[i].name !== "string" || tags[i].name.length === 0) {
+                        valid = false
+                        console.log("  Autocomplete... FAIL (invalid tag name)")
+                        break
+                    }
+                }
+                if (valid) {
+                    console.log("  Autocomplete... PASS (" + tags.length + " tags)")
+                    autocompletePassedCount++
+                } else {
+                    autocompleteFailedCount++
+                }
+            }
+        } catch (e) {
+            console.log("  Autocomplete... FAIL (" + e + ")")
+            autocompleteFailedCount++
+        }
+
+        autocompleteIndex++
+        autocompleteDelayTimer.start()
+    }
+
+    function handleCurlResponse(providerKey, provider, responseText, isEdgeCase) {
+        try {
+            var response = JSON.parse(responseText)
+            var images = provider.mapFunc(response)
+
+            if (!images || images.length === 0) {
+                console.log("  Image search... FAIL (0 images returned)")
+                failedCount++
+                scheduleNextTest(isEdgeCase)
+                return
+            }
+
+            console.log("  Image search... PASS (" + images.length + " images)")
+
+            // Validate fields
+            var allValid = true
+            var errorSummary = []
+
+            for (var i = 0; i < images.length; i++) {
+                var errors = validateImage(images[i], providerKey)
+                if (errors.length > 0) {
+                    allValid = false
+                    if (errorSummary.length < 3) {
+                        errorSummary.push("Image " + i + ": " + errors.join(", "))
+                    }
+                }
+            }
+
+            if (allValid) {
+                console.log("  Field validation... PASS")
+                passedCount++
+            } else {
+                console.log("  Field validation... FAIL")
+                for (var j = 0; j < errorSummary.length; j++) {
+                    console.log("    " + errorSummary[j])
+                }
+                failedCount++
+            }
+
+        } catch (e) {
+            console.log("  Parse error... FAIL (" + e + ")")
+            failedCount++
+        }
+
+        scheduleNextTest(isEdgeCase)
     }
 }

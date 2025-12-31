@@ -30,6 +30,8 @@ ShellRoot {
             console.log(summary)
             console.log("Autocomplete: " + testRunner.autocompletePassedCount + " passed, " +
                         testRunner.autocompleteFailedCount + " failed")
+            console.log("Sorting: " + testRunner.sortingPassedCount + " passed, " +
+                        testRunner.sortingFailedCount + " failed")
             console.log("========================================")
             Qt.quit()
         }
