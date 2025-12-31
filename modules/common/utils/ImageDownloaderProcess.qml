@@ -21,7 +21,7 @@ Process {
     command: ["bash", "-c", `
         mkdir -p "$(dirname '${root.filePath}')"
         if [ ! -f '${root.filePath}' ]; then
-            curl -sL '${root.sourceUrl}' -o '${root.filePath}' 2>/dev/null
+            curl -sL -A 'Mozilla/5.0 BooruSidebar/1.0' '${root.sourceUrl}' -o '${root.filePath}' 2>/dev/null
         fi
         if [ -f '${root.filePath}' ]; then
             file '${root.filePath}' | grep -oP '\\d+\\s*x\\s*\\d+' | head -1

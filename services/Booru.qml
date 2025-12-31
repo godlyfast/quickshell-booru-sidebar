@@ -526,13 +526,13 @@ Singleton {
     }
 
     function addSystemMessage(message) {
-        responses = [...responses, root.booruResponseDataComponent.createObject(null, {
+        responses = responses.concat([root.booruResponseDataComponent.createObject(null, {
             "provider": "system",
             "tags": [],
             "page": -1,
             "images": [],
             "message": message
-        })]
+        })])
     }
 
     function constructRequestUrl(tags, nsfw=true, limit=20, page=1) {
@@ -652,7 +652,7 @@ Singleton {
                         root.responses = [newResponse]
                         root.replaceOnNextResponse = false
                     } else {
-                        root.responses = [...root.responses, newResponse]
+                        root.responses = root.responses.concat([newResponse])
                     }
                 }
             } else if (xhr.readyState === XMLHttpRequest.DONE) {
@@ -664,7 +664,7 @@ Singleton {
                     root.responses = [newResponse]
                     root.replaceOnNextResponse = false
                 } else {
-                    root.responses = [...root.responses, newResponse]
+                    root.responses = root.responses.concat([newResponse])
                 }
             }
             root.responseFinished()

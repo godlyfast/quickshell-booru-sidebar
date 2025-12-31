@@ -40,9 +40,10 @@ Button {
     property bool isVideo: (fileExt === "mp4" || fileExt === "webm")
     property bool isGif: fileExt === "gif"
 
+    // Manual download for static images (providers that block direct requests)
     ImageDownloaderProcess {
         id: imageDownloader
-        enabled: root.manualDownload
+        enabled: root.manualDownload && !root.isGif && !root.isVideo
         filePath: root.filePath
         sourceUrl: root.imageData.preview_url ? root.imageData.preview_url : root.imageData.sample_url
         onDone: (path, width, height) => {
@@ -53,6 +54,24 @@ Button {
                 modelData.height = height
                 modelData.aspect_ratio = width / height
             }
+        }
+    }
+
+    // Manual download for GIFs (providers that block direct requests)
+    property string gifFileName: {
+        var url = modelData.file_url ? modelData.file_url : ""
+        return decodeURIComponent(url.substring(url.lastIndexOf('/') + 1))
+    }
+    property string gifFilePath: root.previewDownloadPath + "/gif_" + root.gifFileName
+    property string localGifSource: ""
+
+    ImageDownloaderProcess {
+        id: gifDownloader
+        enabled: root.manualDownload && root.isGif
+        filePath: root.gifFilePath
+        sourceUrl: modelData.file_url ? modelData.file_url : ""
+        onDone: (path, width, height) => {
+            root.localGifSource = "file://" + path
         }
     }
 
@@ -107,9 +126,10 @@ Button {
         Image {
             id: gifPreview
             anchors.fill: parent
-            visible: root.isGif && gifObject.status !== AnimatedImage.Ready
+            // Hide preview for manual download providers (they block direct image requests)
+            visible: root.isGif && !root.manualDownload && gifObject.status !== AnimatedImage.Ready
             fillMode: Image.PreserveAspectCrop
-            source: root.isGif ? (modelData.preview_url ? modelData.preview_url : "") : ""
+            source: (root.isGif && !root.manualDownload) ? (modelData.preview_url ? modelData.preview_url : "") : ""
             asynchronous: true
 
             layer.enabled: true
@@ -148,7 +168,12 @@ Button {
             anchors.fill: parent
             visible: root.isGif
             fillMode: Image.PreserveAspectCrop
-            source: root.isGif ? (modelData.file_url ? modelData.file_url : "") : ""
+            // Use local file if manual download, otherwise direct URL
+            source: {
+                if (!root.isGif) return ""
+                if (root.manualDownload) return root.localGifSource
+                return modelData.file_url ? modelData.file_url : ""
+            }
             asynchronous: true
             cache: true  // Required for looping from network sources per Qt docs
             playing: true
@@ -236,7 +261,14 @@ Button {
             anchors.fill: parent
             radius: imageRadius
             color: Appearance.colors.colLayer2
-            visible: root.isGif && gifPreview.status !== Image.Ready && gifObject.status !== AnimatedImage.Ready
+            visible: {
+                if (!root.isGif) return false
+                if (root.manualDownload) {
+                    // Show while downloading (localGifSource empty) or loading
+                    return root.localGifSource === "" || gifObject.status !== AnimatedImage.Ready
+                }
+                return gifPreview.status !== Image.Ready && gifObject.status !== AnimatedImage.Ready
+            }
 
             StyledText {
                 anchors.centerIn: parent

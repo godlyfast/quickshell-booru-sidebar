@@ -199,7 +199,7 @@ Rectangle {
                         imageData: modelData
                         rowHeight: imageRow.rowHeight
                         imageRadius: Appearance.rounding.small
-                        manualDownload: ["danbooru", "waifu.im"].includes(root.responseData.provider)
+                        manualDownload: ["danbooru", "waifu.im", "e621", "e926"].includes(root.responseData.provider)
                         previewDownloadPath: root.previewDownloadPath
                         downloadPath: root.downloadPath
                         nsfwPath: root.nsfwPath
