@@ -13,9 +13,9 @@
   },
   "font": {
     "family": {
-      "uiFont": "Open Sans",
+      "uiFont": "Noto Sans",
       "iconFont": "Material Symbols Rounded",
-      "codeFont": "JetBrains Mono NF"
+      "codeFont": "JetBrainsMono Nerd Font Mono"
     }
   }
 }
