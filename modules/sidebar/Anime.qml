@@ -81,6 +81,16 @@ Item {
                     Booru.wallhavenOrder = sortArg;
                     Booru.addSystemMessage("Wallhaven order: " + sortArg);
                 }
+                // Handle Wallhaven toprange (e.g., /sort toprange 1w)
+                else if (Booru.currentProvider === "wallhaven" && sortArg === "toprange") {
+                    var rangeArg = args.length > 1 ? args[1] : "";
+                    if (rangeArg && Booru.topRangeOptions.indexOf(rangeArg) !== -1) {
+                        Booru.wallhavenTopRange = rangeArg;
+                        Booru.addSystemMessage("Wallhaven toplist range: " + rangeArg);
+                    } else {
+                        Booru.addSystemMessage("Current toplist range: " + Booru.wallhavenTopRange + ". Options: " + Booru.topRangeOptions.join(", "));
+                    }
+                }
                 // Check if sort option is valid for current provider
                 else if (sortOptions.indexOf(sortArg) !== -1) {
                     Booru.currentSorting = sortArg;
@@ -335,12 +345,29 @@ Item {
                                     return;
                                 }
 
-                                // Build options list: provider options + "default" + Wallhaven order (if applicable)
+                                // Build options list: provider options + "default" + Wallhaven extras (if applicable)
                                 var allSortOptions = providerOptions.slice();
                                 allSortOptions.push("default");
                                 if (Booru.currentProvider === "wallhaven") {
                                     allSortOptions.push("asc");
                                     allSortOptions.push("desc");
+                                    allSortOptions.push("toprange");
+                                }
+
+                                // Check if user is typing "/sort toprange " to show range options
+                                if (Booru.currentProvider === "wallhaven" && sortQuery.toLowerCase().startsWith("toprange ")) {
+                                    var rangeQuery = sortQuery.substring(9).toLowerCase();
+                                    root.suggestionList = Booru.topRangeOptions
+                                        .filter(function(r) { return r.toLowerCase().indexOf(rangeQuery) !== -1; })
+                                        .map(function(r) {
+                                            return {
+                                                name: "/sort toprange " + r,
+                                                displayName: r,
+                                                description: r === Booru.wallhavenTopRange ? "(current)" : ""
+                                            };
+                                        });
+                                    searchTimer.stop();
+                                    return;
                                 }
 
                                 root.suggestionList = allSortOptions
@@ -353,6 +380,8 @@ Item {
                                             desc = "(current)";
                                         } else if (Booru.currentProvider === "wallhaven" && s === Booru.wallhavenOrder) {
                                             desc = "(current order)";
+                                        } else if (s === "toprange") {
+                                            desc = "(" + Booru.wallhavenTopRange + ")";
                                         }
                                         return {
                                             name: "/sort " + s,
@@ -470,6 +499,55 @@ Item {
                     }
 
                     Item { Layout.fillWidth: true }
+
+                    // Sort button
+                    RippleButton {
+                        implicitHeight: 24
+                        implicitWidth: sortText.implicitWidth + 16
+                        buttonRadius: 4
+                        colBackground: Appearance.colors.colLayer1
+                        visible: Booru.providerSupportsSorting
+
+                        contentItem: StyledText {
+                            id: sortText
+                            anchors.centerIn: parent
+                            font.pixelSize: 11
+                            color: Appearance.m3colors.m3secondaryText
+                            text: "/sort"
+                        }
+
+                        onClicked: {
+                            tagInputField.text = "/sort ";
+                            tagInputField.forceActiveFocus();
+                        }
+                    }
+
+                    // Toprange selector (visible when Wallhaven + toplist sorting)
+                    RippleButton {
+                        implicitHeight: 24
+                        implicitWidth: topRangeText.implicitWidth + 16
+                        buttonRadius: 4
+                        colBackground: Appearance.colors.colLayer1
+                        visible: Booru.currentProvider === "wallhaven" &&
+                                 (Booru.currentSorting === "toplist" ||
+                                  (Booru.currentSorting === "" && Booru.wallhavenSorting === "toplist"))
+
+                        contentItem: StyledText {
+                            id: topRangeText
+                            anchors.centerIn: parent
+                            font.pixelSize: 11
+                            color: Appearance.m3colors.m3secondaryText
+                            text: Booru.wallhavenTopRange
+                        }
+
+                        onClicked: {
+                            // Cycle through toprange options
+                            var options = Booru.topRangeOptions
+                            var currentIdx = options.indexOf(Booru.wallhavenTopRange)
+                            var nextIdx = (currentIdx + 1) % options.length
+                            Booru.wallhavenTopRange = options[nextIdx]
+                        }
+                    }
 
                     // Mode button
                     RippleButton {

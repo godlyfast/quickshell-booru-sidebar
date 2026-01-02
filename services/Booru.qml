@@ -33,6 +33,10 @@ Singleton {
     property string wallhavenOrder: "desc"       // desc, asc
     property var wallhavenSortOptions: ["toplist", "random", "date_added", "relevance", "views", "favorites"]
 
+    // Wallhaven toplist time range (only applies when sorting=toplist)
+    property string wallhavenTopRange: "1M"  // 1d, 3d, 1w, 1M, 3M, 6M, 1y
+    readonly property var topRangeOptions: ["1d", "3d", "1w", "1M", "3M", "6M", "1y"]
+
     // Universal sorting - works with all providers that support it
     property string currentSorting: ""  // Empty = provider default
 
@@ -632,6 +636,10 @@ Singleton {
             var sorting = (currentSorting && currentSorting.length > 0) ? currentSorting : wallhavenSorting
             params.push("sorting=" + sorting)
             params.push("order=" + wallhavenOrder)
+            // Add topRange for toplist sorting
+            if (sorting === "toplist") {
+                params.push("topRange=" + wallhavenTopRange)
+            }
             params.push("atleast=3840x2160")  // Only 4K+ wallpapers
             params.push("page=" + page)
             // API key required for NSFW content
