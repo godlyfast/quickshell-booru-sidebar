@@ -1,2 +1,4 @@
 module utils
 ImageDownloaderProcess 1.0 ImageDownloaderProcess.qml
+GrabberDownloader 1.0 GrabberDownloader.qml
+GrabberRequest 1.0 GrabberRequest.qml

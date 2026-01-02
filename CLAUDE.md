@@ -201,6 +201,7 @@ Some providers (e621, e926) require `ImageDownloaderProcess` to curl images with
     "nsfw": false,
     "downloadPath": "~/Pictures/booru",
     "nsfwPath": "~/Pictures/booru/nsfw",
+    "filenameTemplate": "%website% %id% - %artist%.%ext%",
     "gelbooruApiKey": "",
     "gelbooruUserId": "",
     "rule34ApiKey": "",
@@ -244,8 +245,66 @@ Providers skipped in tests: `danbooru` (strict Cloudflare JS challenge)
 
 ## Provider-Specific Notes
 
-- **Danbooru**: Strict Cloudflare protection, often fails automated tests
+- **Danbooru**: Uses Grabber fallback by default (Cloudflare bypass)
 - **e621/e926**: Require User-Agent header; `solo` tag often has null `sample_url`
 - **Wallhaven**: Has separate `order` param (asc/desc) in addition to `sorting`
 - **waifu.im**: Tags returned as objects; only supports specific tag names
 - **nekos_best**: Random images only, ignores search tags
+
+## imgbrd-grabber Integration
+
+The sidebar integrates with [imgbrd-grabber](https://github.com/Bionus/imgbrd-grabber) for enhanced downloads and Cloudflare bypass.
+
+### Components
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| `GrabberDownloader` | `modules/common/utils/` | Downloads with filename templates |
+| `GrabberRequest` | `modules/common/utils/` | Search API fallback |
+
+### Grabber-Enabled Features
+
+**Downloads** (Phase 1):
+- Artist-aware filenames: `%website% %id% - %artist%.%ext%`
+- Token support: `%md5%`, `%copyright%`, `%character%`
+- Automatic duplicate detection with `-n` flag
+- Fallback to curl if Grabber fails or provider unsupported
+
+**Search Fallback** (Phase 2):
+- Danbooru uses Grabber by default (`useGrabberFallback: true`)
+- Bypasses strict Cloudflare JS challenges
+- Returns richer metadata (separated tag categories)
+
+### Configuration
+
+```json
+"booru": {
+    "filenameTemplate": "%website% %id% - %artist%.%ext%"
+}
+```
+
+### Grabber Source Mapping
+
+```javascript
+// services/Booru.qml - grabberSources
+{
+    "yandere": "yande.re",
+    "konachan": "konachan.com",
+    "danbooru": "danbooru.donmai.us",
+    "gelbooru": "gelbooru.com",
+    "e621": "e621.net",
+    "wallhaven": "wallhaven.cc"
+    // waifu.im, nekos_best, tbib, paheal not supported
+}
+```
+
+### CLI Reference
+
+```bash
+# Search with JSON output
+/usr/bin/Grabber -c -s "yande.re" -t "landscape" -m 20 -j --ri --load-details
+
+# Download with template
+/usr/bin/Grabber -c -s "yande.re" -t "id:1249799" -m 1 --download \
+  -l "/path/to/folder" -f "%website% %id% - %artist%.%ext%"
+```

@@ -9,6 +9,7 @@ import Quickshell.Hyprland
 import "../../common"
 import "../../common/widgets"
 import "../../common/utils"
+import "../../../services" as Services
 
 /**
  * Individual booru image card with context menu.
@@ -118,6 +119,51 @@ Button {
             } else {
                 // GIF blocked (Danbooru Cloudflare) - use preview as static fallback
                 root.localGifSource = modelData.preview_url ? modelData.preview_url : ""
+            }
+        }
+    }
+
+    // Grabber-based downloader for high-quality downloads with metadata-aware filenames
+    // Falls back to curl if provider not supported by Grabber
+    property string grabberSource: Services.Booru.getGrabberSource(root.provider)
+    property bool useGrabber: grabberSource && grabberSource.length > 0
+
+    GrabberDownloader {
+        id: grabberDownloader
+        source: root.grabberSource
+        imageId: root.imageData.id ? String(root.imageData.id) : ""
+        filenameTemplate: Services.Booru.filenameTemplate
+
+        onDone: (success, message) => {
+            if (success) {
+                Quickshell.execDetached(["notify-send", "Download complete", message, "-a", "Booru"])
+            } else {
+                // Fallback to curl on Grabber failure
+                console.log("[BooruImage] Grabber failed, falling back to curl: " + message)
+                var targetPath = root.imageData.is_nsfw ? root.nsfwPath : root.downloadPath
+                Quickshell.execDetached(["bash", "-c",
+                    "mkdir -p '" + targetPath + "' && curl -sL '" + root.imageData.file_url + "' -o '" + targetPath + "/" + root.fileName + "' && notify-send 'Download complete' '" + targetPath + "/" + root.fileName + "' -a 'Booru'"
+                ])
+            }
+        }
+    }
+
+    GrabberDownloader {
+        id: wallpaperDownloader
+        source: root.grabberSource
+        imageId: root.imageData.id ? String(root.imageData.id) : ""
+        filenameTemplate: Services.Booru.filenameTemplate
+
+        onDone: (success, message) => {
+            if (success) {
+                Quickshell.execDetached(["notify-send", "Wallpaper saved", message, "-a", "Booru"])
+            } else {
+                // Fallback to curl on Grabber failure
+                console.log("[BooruImage] Grabber wallpaper failed, falling back to curl: " + message)
+                var wallpaperPath = root.downloadPath.replace(/\/booru$/, '/wallpapers')
+                Quickshell.execDetached(["bash", "-c",
+                    "mkdir -p '" + wallpaperPath + "' && curl -sL '" + root.imageData.file_url + "' -o '" + wallpaperPath + "/" + root.fileName + "' && notify-send 'Wallpaper saved' '" + wallpaperPath + "/" + root.fileName + "' -a 'Booru'"
+                ])
             }
         }
     }
@@ -588,10 +634,16 @@ Button {
                     onClicked: {
                         root.showActions = false
                         root.isSavedLocally = true
-                        const targetPath = root.imageData.is_nsfw ? root.nsfwPath : root.downloadPath
-                        Quickshell.execDetached(["bash", "-c",
-                            `mkdir -p '${targetPath}' && curl -sL '${root.imageData.file_url}' -o '${targetPath}/${root.fileName}' && notify-send 'Download complete' '${targetPath}/${root.fileName}' -a 'Booru'`
-                        ])
+                        var targetPath = root.imageData.is_nsfw ? root.nsfwPath : root.downloadPath
+                        if (root.useGrabber) {
+                            grabberDownloader.outputPath = targetPath
+                            grabberDownloader.startDownload()
+                        } else {
+                            // Fallback to curl for unsupported providers
+                            Quickshell.execDetached(["bash", "-c",
+                                "mkdir -p '" + targetPath + "' && curl -sL '" + root.imageData.file_url + "' -o '" + targetPath + "/" + root.fileName + "' && notify-send 'Download complete' '" + targetPath + "/" + root.fileName + "' -a 'Booru'"
+                            ])
+                        }
                     }
                 }
 
@@ -609,10 +661,16 @@ Button {
                     onClicked: {
                         root.showActions = false
                         root.isSavedAsWallpaper = true
-                        const wallpaperPath = root.downloadPath.replace(/\/booru$/, '/wallpapers')
-                        Quickshell.execDetached(["bash", "-c",
-                            `mkdir -p '${wallpaperPath}' && curl -sL '${root.imageData.file_url}' -o '${wallpaperPath}/${root.fileName}' && notify-send 'Wallpaper saved' '${wallpaperPath}/${root.fileName}' -a 'Booru'`
-                        ])
+                        var wallpaperPath = root.downloadPath.replace(/\/booru$/, '/wallpapers')
+                        if (root.useGrabber) {
+                            wallpaperDownloader.outputPath = wallpaperPath
+                            wallpaperDownloader.startDownload()
+                        } else {
+                            // Fallback to curl for unsupported providers
+                            Quickshell.execDetached(["bash", "-c",
+                                "mkdir -p '" + wallpaperPath + "' && curl -sL '" + root.imageData.file_url + "' -o '" + wallpaperPath + "/" + root.fileName + "' && notify-send 'Wallpaper saved' '" + wallpaperPath + "/" + root.fileName + "' -a 'Booru'"
+                            ])
+                        }
                     }
                 }
             }

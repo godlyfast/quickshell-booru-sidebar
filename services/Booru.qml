@@ -2,6 +2,7 @@ pragma Singleton
 pragma ComponentBehavior: Bound
 
 import "../modules/common"
+import "../modules/common/utils"
 import QtQuick
 import Quickshell
 
@@ -119,6 +120,49 @@ Singleton {
     // Get your key at: https://danbooru.donmai.us/profile → API Key
     property string danbooruLogin: (ConfigOptions.booru && ConfigOptions.booru.danbooruLogin) ? ConfigOptions.booru.danbooruLogin : ""
     property string danbooruApiKey: (ConfigOptions.booru && ConfigOptions.booru.danbooruApiKey) ? ConfigOptions.booru.danbooruApiKey : ""
+
+    // Grabber filename template for downloads
+    // Tokens: %website%, %id%, %md5%, %artist%, %copyright%, %character%, %ext%
+    property string filenameTemplate: (ConfigOptions.booru && ConfigOptions.booru.filenameTemplate) ? ConfigOptions.booru.filenameTemplate : "%website% %id%.%ext%"
+
+    // Grabber source names for each provider (used for CLI downloads)
+    // Maps our provider keys to Grabber's expected source names
+    readonly property var grabberSources: ({
+        "yandere": "yande.re",
+        "konachan": "konachan.com",      // Uses .com mirror for Grabber
+        "danbooru": "danbooru.donmai.us",
+        "gelbooru": "gelbooru.com",
+        "safebooru": "safebooru.org",
+        "rule34": "api.rule34.xxx",
+        "e621": "e621.net",
+        "e926": "e621.net",              // Same source, different rating filter
+        "wallhaven": "wallhaven.cc",
+        "xbooru": "xbooru.com",
+        "hypnohub": "hypnohub.net",
+        "aibooru": "aibooru.online"
+        // Note: waifu.im, nekos_best, tbib, paheal not supported by Grabber
+    })
+
+    // Check if provider supports Grabber downloads
+    function getGrabberSource(provider) {
+        return grabberSources[provider] ? grabberSources[provider] : null
+    }
+
+    // Providers that should use Grabber for API requests (bypasses Cloudflare)
+    // Toggle via /grabber command
+    property bool useGrabberFallback: true
+    property var grabberPreferredProviders: ["danbooru"]
+
+    // Check if provider should use Grabber for requests
+    function shouldUseGrabber(provider) {
+        if (!useGrabberFallback) return false
+        return grabberPreferredProviders.indexOf(provider) !== -1 && grabberSources[provider]
+    }
+
+    // Component for creating GrabberRequest instances
+    property Component grabberRequestComponent: Component {
+        GrabberRequest {}
+    }
 
     // Mirror system - tracks current mirror selection per provider
     property var currentMirrors: ({})
@@ -955,6 +999,16 @@ Singleton {
         if (page === 1) {
             clearResponses()
         }
+
+        var requestProvider = currentProvider  // Capture provider at request time
+
+        // Use Grabber for preferred providers (bypasses Cloudflare)
+        if (shouldUseGrabber(requestProvider)) {
+            console.log("[Booru] Using Grabber for " + requestProvider)
+            makeGrabberRequest(tags, nsfw, limit, page, requestProvider)
+            return
+        }
+
         var url = constructRequestUrl(tags, nsfw, limit, page)
         console.log("[Booru] " + currentProvider + " request: " + url)
         if (currentProvider == "rule34") {
@@ -971,7 +1025,6 @@ Singleton {
         })
 
         var xhr = new XMLHttpRequest()
-        var requestProvider = currentProvider  // Capture provider at request time
         xhr.open("GET", url)
         // Danbooru/e621/e926 need User-Agent or Cloudflare blocks them
         if (requestProvider == "danbooru" || requestProvider == "e621" || requestProvider == "e926") {
@@ -1030,6 +1083,79 @@ Singleton {
 
         root.runningRequests++;
         xhr.send()
+    }
+
+    // Make request using Grabber CLI (for providers that block direct API access)
+    function makeGrabberRequest(tags, nsfw, limit, page, requestProvider) {
+        var newResponse = root.booruResponseDataComponent.createObject(null, {
+            "provider": requestProvider,
+            "tags": tags,
+            "page": page,
+            "images": [],
+            "message": ""
+        })
+
+        var source = grabberSources[requestProvider]
+        var tagString = tags.join(" ")
+
+        // Add sort metatag if sorting is set
+        if (currentSorting && currentSorting.length > 0) {
+            if (requestProvider === "danbooru") {
+                tagString = "order:" + currentSorting + " " + tagString
+                if (danbooruAge !== "any") {
+                    tagString = tagString + " age:<" + danbooruAge
+                }
+            }
+        }
+
+        // Grabber handles pagination via page number in tags
+        if (page > 1) {
+            // Most boorus support page:N metatag
+            tagString = tagString + " limit:" + limit + " page:" + page
+        }
+
+        console.log("[Booru] Grabber request: source=" + source + " tags=" + tagString)
+
+        var grabberReq = grabberRequestComponent.createObject(root, {
+            "source": source,
+            "tags": tagString,
+            "limit": limit,
+            "isNsfw": nsfw,
+            "loadDetails": true
+        })
+
+        root.runningRequests++
+
+        grabberReq.finished.connect(function(images) {
+            console.log("[Booru] Grabber returned " + images.length + " images")
+            newResponse.images = images
+            newResponse.message = images.length > 0 ? "" : root.failMessage
+            root.runningRequests--
+            if (root.replaceOnNextResponse) {
+                root.responses = [newResponse]
+                root.replaceOnNextResponse = false
+            } else {
+                root.responses = root.responses.concat([newResponse])
+            }
+            root.responseFinished()
+            grabberReq.destroy()
+        })
+
+        grabberReq.failed.connect(function(error) {
+            console.log("[Booru] Grabber failed: " + error)
+            newResponse.message = root.failMessage + "\n(Grabber: " + error + ")"
+            root.runningRequests--
+            if (root.replaceOnNextResponse) {
+                root.responses = [newResponse]
+                root.replaceOnNextResponse = false
+            } else {
+                root.responses = root.responses.concat([newResponse])
+            }
+            root.responseFinished()
+            grabberReq.destroy()
+        })
+
+        grabberReq.startRequest()
     }
 
     property var currentTagRequest: null

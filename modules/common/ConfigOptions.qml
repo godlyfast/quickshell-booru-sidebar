@@ -43,6 +43,7 @@ Singleton {
     }
 
     property QtObject booru: QtObject {
+        property string filenameTemplate: "%website% %id% - %artist%.%ext%"
         property string gelbooruApiKey: ""
         property string gelbooruUserId: ""
         property string rule34ApiKey: ""

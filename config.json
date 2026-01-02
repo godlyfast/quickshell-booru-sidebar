@@ -4,6 +4,7 @@
     "nsfw": false,
     "downloadPath": "~/Pictures/booru",
     "nsfwPath": "~/Pictures/booru/nsfw",
+    "filenameTemplate": "%website% %id% - %artist%.%ext%",
     "gelbooruApiKey": "",
     "gelbooruUserId": "",
     "wallhavenApiKey": "",
