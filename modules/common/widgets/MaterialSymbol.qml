@@ -20,6 +20,8 @@ Text {
         "menu": "\ue5d2",
         "settings": "\ue8b8",
         "download": "\uf090",
+        "download_done": "\ue2c0",
+        "wallpaper": "\ue1bc",
         "open_in_new": "\ue89e",
         "refresh": "\ue5d5",
         "check": "\ue5ca",

@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import Qt5Compat.GraphicalEffects
 import QtMultimedia
 import Quickshell
+import Quickshell.Io
 import Quickshell.Hyprland
 import "../../common"
 import "../../common/widgets"
@@ -40,6 +41,15 @@ Button {
     property bool isVideo: (fileExt === "mp4" || fileExt === "webm")
     property bool isGif: fileExt === "gif"
 
+    // File paths for download status checks
+    property string savedFilePath: root.downloadPath + "/" + root.fileName
+    property string savedNsfwFilePath: root.nsfwPath + "/" + root.fileName
+    property string wallpaperFilePath: root.downloadPath.replace(/\/booru$/, '/wallpapers') + "/" + root.fileName
+
+    // File existence state (checked async on load)
+    property bool isSavedLocally: false
+    property bool isSavedAsWallpaper: false
+
     // Manual download for static images (providers that block direct requests)
     ImageDownloaderProcess {
         id: imageDownloader
@@ -72,6 +82,53 @@ Button {
         sourceUrl: modelData.file_url ? modelData.file_url : ""
         onDone: (path, width, height) => {
             root.localGifSource = "file://" + path
+        }
+    }
+
+    // Check if file exists locally (downloaded or as wallpaper)
+    // Use Timer to ensure all properties are bound before checking
+    Timer {
+        id: fileCheckTimer
+        interval: 100
+        running: root.fileName.length > 0 && root.downloadPath.length > 0
+        onTriggered: {
+            // Build command dynamically when timer fires to ensure paths are set
+            fileChecker.command = ["bash", "-c",
+                "SAVED=0; WP=0; " +
+                "[ -f '" + root.savedFilePath + "' ] && SAVED=1; " +
+                "[ -f '" + root.savedNsfwFilePath + "' ] && SAVED=1; " +
+                "[ -f '" + root.wallpaperFilePath + "' ] && WP=1; " +
+                "echo $SAVED $WP"
+            ]
+            fileChecker.running = true
+        }
+    }
+
+    Process {
+        id: fileChecker
+        property bool handled: false
+
+        onRunningChanged: {
+            if (running) handled = false
+        }
+
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (fileChecker.handled) return
+                fileChecker.handled = true
+                var parts = text.trim().split(" ")
+                if (parts.length >= 2) {
+                    root.isSavedLocally = (parts[0] === "1")
+                    root.isSavedAsWallpaper = (parts[1] === "1")
+                }
+            }
+        }
+
+        onExited: (code, status) => {
+            // Fallback if stdout didn't fire
+            if (!fileChecker.handled) {
+                fileChecker.handled = true
+            }
         }
     }
 
@@ -300,6 +357,47 @@ Button {
             onClicked: root.showActions = !root.showActions
         }
 
+        // Download status badges (bottom-right corner)
+        Row {
+            anchors.bottom: parent.bottom
+            anchors.right: parent.right
+            anchors.margins: 6
+            spacing: 4
+            z: 5
+
+            // Downloaded badge
+            Rectangle {
+                visible: root.isSavedLocally
+                width: 22
+                height: 22
+                radius: 4
+                color: Qt.rgba(0, 0, 0, 0.6)
+
+                MaterialSymbol {
+                    anchors.centerIn: parent
+                    iconSize: 14
+                    color: "#ffffff"
+                    text: "download_done"
+                }
+            }
+
+            // Wallpaper badge
+            Rectangle {
+                visible: root.isSavedAsWallpaper
+                width: 22
+                height: 22
+                radius: 4
+                color: Qt.rgba(0, 0, 0, 0.6)
+
+                MaterialSymbol {
+                    anchors.centerIn: parent
+                    iconSize: 14
+                    color: "#ffffff"
+                    text: "wallpaper"
+                }
+            }
+        }
+
         // Context menu popup - renders in overlay layer above all content
         Popup {
             id: contextMenuPopup
@@ -397,6 +495,7 @@ Button {
 
                     onClicked: {
                         root.showActions = false
+                        root.isSavedLocally = true
                         const targetPath = root.imageData.is_nsfw ? root.nsfwPath : root.downloadPath
                         Quickshell.execDetached(["bash", "-c",
                             `mkdir -p '${targetPath}' && curl -sL '${root.imageData.file_url}' -o '${targetPath}/${root.fileName}' && notify-send 'Download complete' '${targetPath}/${root.fileName}' -a 'Booru'`
@@ -417,6 +516,7 @@ Button {
 
                     onClicked: {
                         root.showActions = false
+                        root.isSavedAsWallpaper = true
                         const wallpaperPath = root.downloadPath.replace(/\/booru$/, '/wallpapers')
                         Quickshell.execDetached(["bash", "-c",
                             `mkdir -p '${wallpaperPath}' && curl -sL '${root.imageData.file_url}' -o '${wallpaperPath}/${root.fileName}' && notify-send 'Wallpaper saved' '${wallpaperPath}/${root.fileName}' -a 'Booru'`

@@ -10,6 +10,8 @@ ToolTip {
     property bool extraVisibleCondition: true
     property bool alternativeVisibleCondition: false
     property bool internalVisibleCondition: {
+        // Don't show tooltip if content is empty
+        if (!content || content.length === 0) return false
         const ans = (extraVisibleCondition && (parent.hovered === undefined || parent?.hovered)) || alternativeVisibleCondition
         return ans
     }
