@@ -18,6 +18,7 @@ Button {
     property var imageData
     property real rowHeight
     property bool manualDownload: false
+    property string provider: ""
     property string previewDownloadPath
     property string downloadPath
     property string nsfwPath
@@ -81,9 +82,20 @@ Button {
         id: highResDownloader
         enabled: root.manualDownload && !root.isGif && !root.isVideo && imageDownloader.downloadedPath.length > 0
         filePath: root.highResFilePath
-        sourceUrl: root.imageData.file_url ? root.imageData.file_url : ""
+        // Danbooru: use sample_url (large_file_url) - file_url blocked by Cloudflare
+        sourceUrl: {
+            if (root.provider === "danbooru") {
+                return root.imageData.sample_url ? root.imageData.sample_url : ""
+            }
+            return root.imageData.file_url ? root.imageData.file_url : ""
+        }
         onDone: (path, width, height) => {
-            root.localHighResSource = "file://" + path
+            if (path.length > 0) {
+                root.localHighResSource = "file://" + path
+            } else {
+                // High-res blocked - use preview as fallback to clear blur
+                root.localHighResSource = "file://" + imageDownloader.downloadedPath
+            }
         }
     }
 
@@ -101,7 +113,12 @@ Button {
         filePath: root.gifFilePath
         sourceUrl: modelData.file_url ? modelData.file_url : ""
         onDone: (path, width, height) => {
-            root.localGifSource = "file://" + path
+            if (path.length > 0) {
+                root.localGifSource = "file://" + path
+            } else {
+                // GIF blocked (Danbooru Cloudflare) - use preview as static fallback
+                root.localGifSource = modelData.preview_url ? modelData.preview_url : ""
+            }
         }
     }
 

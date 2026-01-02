@@ -6,7 +6,9 @@
     "nsfwPath": "~/Pictures/booru/nsfw",
     "gelbooruApiKey": "",
     "gelbooruUserId": "",
-    "wallhavenApiKey": ""
+    "wallhavenApiKey": "",
+    "danbooruLogin": "",
+    "danbooruApiKey": ""
   },
   "appearance": {
     "transparency": 0.5,

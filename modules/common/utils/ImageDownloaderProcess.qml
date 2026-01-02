@@ -20,10 +20,13 @@ Process {
 
     command: ["bash", "-c", `
         mkdir -p "$(dirname '${root.filePath}')"
-        if [ ! -f '${root.filePath}' ]; then
+        # Download if missing OR if existing file is corrupted (HTML instead of image)
+        if [ ! -f '${root.filePath}' ] || file '${root.filePath}' | grep -q 'HTML'; then
+            rm -f '${root.filePath}'
             curl -sL -A 'Mozilla/5.0 BooruSidebar/1.0' '${root.sourceUrl}' -o '${root.filePath}' 2>/dev/null
         fi
-        if [ -f '${root.filePath}' ]; then
+        # Only output dimensions if it's a valid image
+        if [ -f '${root.filePath}' ] && ! file '${root.filePath}' | grep -q 'HTML'; then
             file '${root.filePath}' | grep -oP '\\d+\\s*x\\s*\\d+' | head -1
         fi
     `]
@@ -31,13 +34,16 @@ Process {
     stdout: StdioCollector {
         onStreamFinished: {
             const output = text.trim()
-            let w = 300, h = 300  // defaults
-            if (output.length > 0) {
-                const dims = output.split(/\s*x\s*/)
-                if (dims.length >= 2) {
-                    w = parseInt(dims[0]) || 300
-                    h = parseInt(dims[1]) || 300
-                }
+            // Empty output = download failed or got HTML (Cloudflare block)
+            if (output.length === 0) {
+                root.done("", 0, 0)
+                return
+            }
+            let w = 300, h = 300
+            const dims = output.split(/\s*x\s*/)
+            if (dims.length >= 2) {
+                w = parseInt(dims[0]) || 300
+                h = parseInt(dims[1]) || 300
             }
             root.imageWidth = w
             root.imageHeight = h

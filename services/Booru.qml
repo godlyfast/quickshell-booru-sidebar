@@ -37,6 +37,16 @@ Singleton {
     property string wallhavenTopRange: "1M"  // 1d, 3d, 1w, 1M, 3M, 6M, 1y
     readonly property var topRangeOptions: ["1d", "3d", "1w", "1M", "3M", "6M", "1y"]
 
+    // Wallhaven minimum resolution filter
+    property string wallhavenResolution: "3840x2160"  // Default: 4K
+    readonly property var resolutionOptions: ["1280x720", "1920x1080", "2560x1440", "3840x2160", "any"]
+    readonly property var resolutionLabels: ({"1280x720": "720p", "1920x1080": "1080p", "2560x1440": "1440p", "3840x2160": "4K", "any": "Any"})
+
+    // Danbooru age filter (prevents timeout on score/favcount sorting)
+    property string danbooruAge: "1month"  // 1day, 1week, 1month, 3months, 1year, any
+    readonly property var danbooruAgeOptions: ["1day", "1week", "1month", "3months", "1year", "any"]
+    readonly property var danbooruAgeLabels: ({"1day": "1d", "1week": "1w", "1month": "1M", "3months": "3M", "1year": "1y", "any": "All"})
+
     // Universal sorting - works with all providers that support it
     property string currentSorting: ""  // Empty = provider default
 
@@ -85,6 +95,11 @@ Singleton {
     // Wallhaven API key (required for NSFW content)
     // Get your key at: https://wallhaven.cc/settings/account
     property string wallhavenApiKey: (ConfigOptions.booru && ConfigOptions.booru.wallhavenApiKey) ? ConfigOptions.booru.wallhavenApiKey : ""
+
+    // Danbooru API credentials (higher rate limits, access to restricted content)
+    // Get your key at: https://danbooru.donmai.us/profile → API Key
+    property string danbooruLogin: (ConfigOptions.booru && ConfigOptions.booru.danbooruLogin) ? ConfigOptions.booru.danbooruLogin : ""
+    property string danbooruApiKey: (ConfigOptions.booru && ConfigOptions.booru.danbooruApiKey) ? ConfigOptions.booru.danbooruApiKey : ""
 
     property var providers: {
         "system": { "name": "System" },
@@ -591,6 +606,10 @@ Singleton {
             // Danbooru uses order:X
             else if (currentProvider === "danbooru") {
                 tagString = "order:" + currentSorting + " " + tagString
+                // Add age filter if not "any" (prevents timeout on heavy sorts)
+                if (danbooruAge !== "any") {
+                    tagString = tagString + " age:<" + danbooruAge
+                }
             }
             // e621/e926 use order:X
             else if (currentProvider === "e621" || currentProvider === "e926") {
@@ -640,7 +659,10 @@ Singleton {
             if (sorting === "toplist") {
                 params.push("topRange=" + wallhavenTopRange)
             }
-            params.push("atleast=3840x2160")  // Only 4K+ wallpapers
+            // Minimum resolution filter (skip if "any")
+            if (wallhavenResolution !== "any") {
+                params.push("atleast=" + wallhavenResolution)
+            }
             params.push("page=" + page)
             // API key required for NSFW content
             if (wallhavenApiKey && wallhavenApiKey.length > 0) {
@@ -666,6 +688,13 @@ Singleton {
                 }
             } else {
                 params.push("page=" + page)
+                // Danbooru API key authentication (higher rate limits)
+                if (currentProvider == "danbooru" && danbooruApiKey) {
+                    if (danbooruLogin) {
+                        params.push("login=" + danbooruLogin)
+                    }
+                    params.push("api_key=" + danbooruApiKey)
+                }
             }
         }
 
@@ -678,6 +707,10 @@ Singleton {
     }
 
     function makeRequest(tags, nsfw=false, limit=20, page=1) {
+        // Clear existing results on new search (page 1)
+        if (page === 1) {
+            clearResponses()
+        }
         var url = constructRequestUrl(tags, nsfw, limit, page)
         console.log("[Booru] " + currentProvider + " request: " + url)
         if (currentProvider == "rule34") {
@@ -765,6 +798,9 @@ Singleton {
         }
         if (currentProvider === "rule34" && rule34ApiKey && rule34UserId) {
             url += "&api_key=" + rule34ApiKey + "&user_id=" + rule34UserId
+        }
+        if (currentProvider === "danbooru" && danbooruApiKey) {
+            url += (danbooruLogin ? "&login=" + danbooruLogin : "") + "&api_key=" + danbooruApiKey
         }
 
         var xhr = new XMLHttpRequest()

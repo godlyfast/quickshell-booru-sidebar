@@ -24,6 +24,7 @@ Item {
     property string commandPrefix: "/"
     property int tagSuggestionDelay: 250
     property var suggestionList: []
+    property bool showControlsMenu: false
 
     Connections {
         target: Booru
@@ -35,6 +36,7 @@ Item {
     property var allCommands: [
         { name: "mode", description: "Set the API provider" },
         { name: "sort", description: "Set result sorting" },
+        { name: "res", description: "Set Wallhaven resolution" },
         { name: "clear", description: "Clear image list" },
         { name: "next", description: "Get next page" },
         { name: "safe", description: "Disable NSFW" },
@@ -115,6 +117,38 @@ Item {
                     Booru.addSystemMessage(providerName3 + " does not support sorting");
                 } else {
                     Booru.addSystemMessage(providerName3 + " sort: " + currentSort);
+                }
+            } else if (command === "res" && args.length > 0) {
+                // Set Wallhaven resolution
+                if (Booru.currentProvider !== "wallhaven") {
+                    Booru.addSystemMessage("Resolution filter only applies to Wallhaven");
+                } else {
+                    var resArg = args[0].toLowerCase();
+                    // Check for friendly names (720p, 1080p, etc)
+                    var resValue = resArg;
+                    for (var key in Booru.resolutionLabels) {
+                        if (Booru.resolutionLabels[key].toLowerCase() === resArg) {
+                            resValue = key;
+                            break;
+                        }
+                    }
+                    if (Booru.resolutionOptions.indexOf(resValue) !== -1) {
+                        Booru.wallhavenResolution = resValue;
+                        var label = Booru.resolutionLabels[resValue] || resValue;
+                        Booru.addSystemMessage("Wallhaven resolution: " + label);
+                    } else {
+                        Booru.addSystemMessage("Resolution options: " + Booru.resolutionOptions.map(function(r) {
+                            return Booru.resolutionLabels[r] || r;
+                        }).join(", "));
+                    }
+                }
+            } else if (command === "res") {
+                // No argument - show current resolution
+                if (Booru.currentProvider !== "wallhaven") {
+                    Booru.addSystemMessage("Resolution filter only applies to Wallhaven");
+                } else {
+                    var label2 = Booru.resolutionLabels[Booru.wallhavenResolution] || Booru.wallhavenResolution;
+                    Booru.addSystemMessage("Wallhaven resolution: " + label2);
                 }
             } else {
                 Booru.addSystemMessage("Unknown command: " + command);
@@ -393,6 +427,29 @@ Item {
                                 return;
                             }
 
+                            // /res autocomplete (Wallhaven resolution)
+                            if (text.startsWith(root.commandPrefix + "res ")) {
+                                var resParts = text.split(" ");
+                                var resQuery = resParts.length > 1 ? resParts[1].toLowerCase() : "";
+
+                                root.suggestionList = Booru.resolutionOptions
+                                    .filter(function(r) {
+                                        var label = Booru.resolutionLabels[r] || r;
+                                        return label.toLowerCase().indexOf(resQuery) !== -1 ||
+                                               r.toLowerCase().indexOf(resQuery) !== -1;
+                                    })
+                                    .map(function(r) {
+                                        var label = Booru.resolutionLabels[r] || r;
+                                        return {
+                                            name: "/res " + label.toLowerCase(),
+                                            displayName: label,
+                                            description: r === Booru.wallhavenResolution ? "(current)" : ""
+                                        };
+                                    });
+                                searchTimer.stop();
+                                return;
+                            }
+
                             if (text.startsWith(root.commandPrefix)) {
                                 root.suggestionList = root.allCommands
                                     .filter(cmd => cmd.name.startsWith(text.substring(1)))
@@ -449,12 +506,266 @@ Item {
                     }
                 }
 
-                // Controls row
+                // Expandable controls menu (shown when settings icon is clicked)
+                Flow {
+                    id: controlsMenu
+                    visible: root.showControlsMenu
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    // NSFW toggle chip (hidden for SFW-only providers)
+                    RippleButton {
+                        visible: Booru.providerSupportsNsfw
+                        implicitHeight: 26
+                        implicitWidth: nsfwChipContent.implicitWidth + 14
+                        buttonRadius: Appearance.rounding.full
+                        colBackground: Booru.allowNsfw ? Appearance.colors.colLayer2Active : Appearance.colors.colLayer1
+                        toggled: Booru.allowNsfw
+
+                        contentItem: Row {
+                            id: nsfwChipContent
+                            anchors.centerIn: parent
+                            spacing: 4
+
+                            MaterialSymbol {
+                                anchors.verticalCenter: parent.verticalCenter
+                                iconSize: 13
+                                color: Booru.allowNsfw ? Appearance.m3colors.m3accentPrimaryText : Appearance.m3colors.m3secondaryText
+                                text: Booru.allowNsfw ? "visibility" : "visibility_off"
+                            }
+
+                            StyledText {
+                                anchors.verticalCenter: parent.verticalCenter
+                                font.pixelSize: 11
+                                color: Booru.allowNsfw ? Appearance.m3colors.m3accentPrimaryText : Appearance.m3colors.m3surfaceText
+                                text: "NSFW"
+                            }
+                        }
+
+                        onClicked: Booru.allowNsfw = !Booru.allowNsfw
+                    }
+
+                    // Sort chip (visible when provider supports sorting)
+                    RippleButton {
+                        visible: Booru.providerSupportsSorting
+                        implicitHeight: 26
+                        implicitWidth: sortChipContent.implicitWidth + 14
+                        buttonRadius: Appearance.rounding.full
+                        colBackground: Booru.currentSorting ? Appearance.colors.colLayer2Active : Appearance.colors.colLayer1
+                        toggled: Booru.currentSorting ? true : false
+
+                        contentItem: Row {
+                            id: sortChipContent
+                            anchors.centerIn: parent
+                            spacing: 4
+
+                            MaterialSymbol {
+                                anchors.verticalCenter: parent.verticalCenter
+                                iconSize: 13
+                                color: Booru.currentSorting ? Appearance.m3colors.m3accentPrimaryText : Appearance.m3colors.m3secondaryText
+                                text: "sort"
+                            }
+
+                            StyledText {
+                                anchors.verticalCenter: parent.verticalCenter
+                                font.pixelSize: 11
+                                color: Booru.currentSorting ? Appearance.m3colors.m3accentPrimaryText : Appearance.m3colors.m3surfaceText
+                                text: Booru.currentSorting ? Booru.currentSorting : "Sort"
+                            }
+                        }
+
+                        onClicked: {
+                            tagInputField.text = "/sort ";
+                            tagInputField.forceActiveFocus();
+                            root.showControlsMenu = false;
+                        }
+                    }
+
+                    // Toprange chip (visible when Wallhaven + toplist sorting)
+                    RippleButton {
+                        visible: Booru.currentProvider === "wallhaven" &&
+                                 (Booru.currentSorting === "toplist" ||
+                                  (Booru.currentSorting === "" && Booru.wallhavenSorting === "toplist"))
+                        implicitHeight: 26
+                        implicitWidth: topRangeChipContent.implicitWidth + 14
+                        buttonRadius: Appearance.rounding.full
+                        colBackground: Appearance.colors.colLayer1
+
+                        contentItem: Row {
+                            id: topRangeChipContent
+                            anchors.centerIn: parent
+                            spacing: 4
+
+                            MaterialSymbol {
+                                anchors.verticalCenter: parent.verticalCenter
+                                iconSize: 13
+                                color: Appearance.m3colors.m3secondaryText
+                                text: "date_range"
+                            }
+
+                            StyledText {
+                                anchors.verticalCenter: parent.verticalCenter
+                                font.pixelSize: 11
+                                color: Appearance.m3colors.m3surfaceText
+                                text: Booru.wallhavenTopRange
+                            }
+                        }
+
+                        onClicked: {
+                            var options = Booru.topRangeOptions
+                            var currentIdx = options.indexOf(Booru.wallhavenTopRange)
+                            var nextIdx = (currentIdx + 1) % options.length
+                            Booru.wallhavenTopRange = options[nextIdx]
+                        }
+                    }
+
+                    // Resolution chip (visible when Wallhaven)
+                    RippleButton {
+                        visible: Booru.currentProvider === "wallhaven"
+                        implicitHeight: 26
+                        implicitWidth: resChipContent.implicitWidth + 14
+                        buttonRadius: Appearance.rounding.full
+                        colBackground: Appearance.colors.colLayer1
+
+                        contentItem: Row {
+                            id: resChipContent
+                            anchors.centerIn: parent
+                            spacing: 4
+
+                            MaterialSymbol {
+                                anchors.verticalCenter: parent.verticalCenter
+                                iconSize: 13
+                                color: Appearance.m3colors.m3secondaryText
+                                text: "aspect_ratio"
+                            }
+
+                            StyledText {
+                                anchors.verticalCenter: parent.verticalCenter
+                                font.pixelSize: 11
+                                color: Appearance.m3colors.m3surfaceText
+                                text: Booru.resolutionLabels[Booru.wallhavenResolution] || Booru.wallhavenResolution
+                            }
+                        }
+
+                        onClicked: {
+                            var options = Booru.resolutionOptions
+                            var currentIdx = options.indexOf(Booru.wallhavenResolution)
+                            var nextIdx = (currentIdx + 1) % options.length
+                            Booru.wallhavenResolution = options[nextIdx]
+                        }
+                    }
+
+                    // Age chip (visible when Danbooru - prevents search timeout)
+                    RippleButton {
+                        visible: Booru.currentProvider === "danbooru"
+                        implicitHeight: 26
+                        implicitWidth: ageChipContent.implicitWidth + 14
+                        buttonRadius: Appearance.rounding.full
+                        colBackground: Appearance.colors.colLayer1
+
+                        contentItem: Row {
+                            id: ageChipContent
+                            anchors.centerIn: parent
+                            spacing: 4
+
+                            MaterialSymbol {
+                                anchors.verticalCenter: parent.verticalCenter
+                                iconSize: 13
+                                color: Appearance.m3colors.m3secondaryText
+                                text: "schedule"
+                            }
+
+                            StyledText {
+                                anchors.verticalCenter: parent.verticalCenter
+                                font.pixelSize: 11
+                                color: Appearance.m3colors.m3surfaceText
+                                text: Booru.danbooruAgeLabels[Booru.danbooruAge] || Booru.danbooruAge
+                            }
+                        }
+
+                        onClicked: {
+                            var options = Booru.danbooruAgeOptions
+                            var currentIdx = options.indexOf(Booru.danbooruAge)
+                            var nextIdx = (currentIdx + 1) % options.length
+                            Booru.danbooruAge = options[nextIdx]
+                        }
+                    }
+
+                    // Mode chip
+                    RippleButton {
+                        implicitHeight: 26
+                        implicitWidth: modeChipContent.implicitWidth + 14
+                        buttonRadius: Appearance.rounding.full
+                        colBackground: Appearance.colors.colLayer1
+
+                        contentItem: Row {
+                            id: modeChipContent
+                            anchors.centerIn: parent
+                            spacing: 4
+
+                            MaterialSymbol {
+                                anchors.verticalCenter: parent.verticalCenter
+                                iconSize: 13
+                                color: Appearance.m3colors.m3secondaryText
+                                text: "swap_horiz"
+                            }
+
+                            StyledText {
+                                anchors.verticalCenter: parent.verticalCenter
+                                font.pixelSize: 11
+                                color: Appearance.m3colors.m3surfaceText
+                                text: "Provider"
+                            }
+                        }
+
+                        onClicked: {
+                            tagInputField.text = "/mode ";
+                            tagInputField.forceActiveFocus();
+                            root.showControlsMenu = false;
+                        }
+                    }
+
+                    // Clear chip
+                    RippleButton {
+                        implicitHeight: 26
+                        implicitWidth: clearChipContent.implicitWidth + 14
+                        buttonRadius: Appearance.rounding.full
+                        colBackground: Appearance.colors.colLayer1
+
+                        contentItem: Row {
+                            id: clearChipContent
+                            anchors.centerIn: parent
+                            spacing: 4
+
+                            MaterialSymbol {
+                                anchors.verticalCenter: parent.verticalCenter
+                                iconSize: 13
+                                color: Appearance.m3colors.m3secondaryText
+                                text: "delete_sweep"
+                            }
+
+                            StyledText {
+                                anchors.verticalCenter: parent.verticalCenter
+                                font.pixelSize: 11
+                                color: Appearance.m3colors.m3surfaceText
+                                text: "Clear"
+                            }
+                        }
+
+                        onClicked: {
+                            Booru.clearResponses();
+                            tagInputField.text = "";
+                            root.showControlsMenu = false;
+                        }
+                    }
+                }
+
+                // Controls row - provider indicator + settings button
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 8
 
-                    // Provider indicator
+                    // Provider indicator (always visible)
                     Rectangle {
                         implicitWidth: providerText.implicitWidth + 16
                         implicitHeight: 24
@@ -473,122 +784,24 @@ Item {
                         }
                     }
 
-                    StyledText {
-                        text: "•"
-                        color: Appearance.m3colors.m3secondaryText
-                        visible: Booru.providerSupportsNsfw
-                    }
-
-                    // NSFW toggle (hidden for SFW-only providers like safebooru, e926, nekos.best)
-                    Row {
-                        spacing: 4
-                        visible: Booru.providerSupportsNsfw
-
-                        StyledText {
-                            anchors.verticalCenter: parent.verticalCenter
-                            font.pixelSize: 11
-                            color: Appearance.m3colors.m3secondaryText
-                            text: "NSFW"
-                        }
-
-                        StyledSwitch {
-                            scale: 0.6
-                            checked: Booru.allowNsfw
-                            onCheckedChanged: Booru.allowNsfw = checked
-                        }
-                    }
-
                     Item { Layout.fillWidth: true }
 
-                    // Sort button
+                    // Settings button (toggles controls menu)
                     RippleButton {
                         implicitHeight: 24
-                        implicitWidth: sortText.implicitWidth + 16
-                        buttonRadius: 4
-                        colBackground: Appearance.colors.colLayer1
-                        visible: Booru.providerSupportsSorting
-
-                        contentItem: StyledText {
-                            id: sortText
-                            anchors.centerIn: parent
-                            font.pixelSize: 11
-                            color: Appearance.m3colors.m3secondaryText
-                            text: "/sort"
-                        }
-
-                        onClicked: {
-                            tagInputField.text = "/sort ";
-                            tagInputField.forceActiveFocus();
-                        }
-                    }
-
-                    // Toprange selector (visible when Wallhaven + toplist sorting)
-                    RippleButton {
-                        implicitHeight: 24
-                        implicitWidth: topRangeText.implicitWidth + 16
-                        buttonRadius: 4
-                        colBackground: Appearance.colors.colLayer1
-                        visible: Booru.currentProvider === "wallhaven" &&
-                                 (Booru.currentSorting === "toplist" ||
-                                  (Booru.currentSorting === "" && Booru.wallhavenSorting === "toplist"))
-
-                        contentItem: StyledText {
-                            id: topRangeText
-                            anchors.centerIn: parent
-                            font.pixelSize: 11
-                            color: Appearance.m3colors.m3secondaryText
-                            text: Booru.wallhavenTopRange
-                        }
-
-                        onClicked: {
-                            // Cycle through toprange options
-                            var options = Booru.topRangeOptions
-                            var currentIdx = options.indexOf(Booru.wallhavenTopRange)
-                            var nextIdx = (currentIdx + 1) % options.length
-                            Booru.wallhavenTopRange = options[nextIdx]
-                        }
-                    }
-
-                    // Mode button
-                    RippleButton {
-                        implicitHeight: 24
-                        implicitWidth: modeText.implicitWidth + 16
+                        implicitWidth: settingsText.implicitWidth + 16
                         buttonRadius: 4
                         colBackground: Appearance.colors.colLayer1
 
                         contentItem: StyledText {
-                            id: modeText
+                            id: settingsText
                             anchors.centerIn: parent
                             font.pixelSize: 11
                             color: Appearance.m3colors.m3secondaryText
-                            text: "/mode"
+                            text: root.showControlsMenu ? "Hide" : "More"
                         }
 
-                        onClicked: {
-                            tagInputField.text = "/mode ";
-                            tagInputField.forceActiveFocus();
-                        }
-                    }
-
-                    // Clear button
-                    RippleButton {
-                        implicitHeight: 24
-                        implicitWidth: clearText.implicitWidth + 16
-                        buttonRadius: 4
-                        colBackground: Appearance.colors.colLayer1
-
-                        contentItem: StyledText {
-                            id: clearText
-                            anchors.centerIn: parent
-                            font.pixelSize: 11
-                            color: Appearance.m3colors.m3secondaryText
-                            text: "/clear"
-                        }
-
-                        onClicked: {
-                            Booru.clearResponses();
-                            tagInputField.text = "";
-                        }
+                        onClicked: root.showControlsMenu = !root.showControlsMenu
                     }
                 }
             }
