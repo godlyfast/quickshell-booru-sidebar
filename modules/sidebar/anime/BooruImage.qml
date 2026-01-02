@@ -50,20 +50,40 @@ Button {
     property bool isSavedLocally: false
     property bool isSavedAsWallpaper: false
 
-    // Manual download for static images (providers that block direct requests)
+    // Local file paths for progressive loading (manual download providers)
+    property string localHighResSource: ""
+
+    // Manual download for preview images (providers that block direct requests)
     ImageDownloaderProcess {
         id: imageDownloader
         enabled: root.manualDownload && !root.isGif && !root.isVideo
         filePath: root.filePath
-        sourceUrl: root.imageData.preview_url ? root.imageData.preview_url : root.imageData.sample_url
+        sourceUrl: root.imageData.preview_url ? root.imageData.preview_url : ""
+        property string downloadedPath: ""
         onDone: (path, width, height) => {
-            imageObject.source = ""
-            imageObject.source = "file://" + path
+            downloadedPath = path
             if (!modelData.width || !modelData.height) {
                 modelData.width = width
                 modelData.height = height
                 modelData.aspect_ratio = width / height
             }
+        }
+    }
+
+    // Manual download for high-res images (triggered after preview loads)
+    property string highResFileName: {
+        var url = imageData.file_url ? imageData.file_url : ""
+        return "hires_" + decodeURIComponent(url.substring(url.lastIndexOf('/') + 1))
+    }
+    property string highResFilePath: root.previewDownloadPath + "/" + root.highResFileName
+
+    ImageDownloaderProcess {
+        id: highResDownloader
+        enabled: root.manualDownload && !root.isGif && !root.isVideo && imageDownloader.downloadedPath.length > 0
+        filePath: root.highResFilePath
+        sourceUrl: root.imageData.file_url ? root.imageData.file_url : ""
+        onDone: (path, width, height) => {
+            root.localHighResSource = "file://" + path
         }
     }
 
@@ -154,20 +174,12 @@ Button {
     contentItem: Item {
         anchors.fill: parent
 
-        // Static image display (non-GIF, non-video)
-        Image {
-            id: imageObject
+        // Static image display with progressive loading (non-GIF, non-video)
+        // Structure: Container with OpacityMask > [HighRes + BlurredPreview overlay]
+        Item {
+            id: staticImageContainer
             anchors.fill: parent
             visible: !root.isVideo && !root.isGif
-            fillMode: Image.PreserveAspectCrop
-            source: (root.isVideo || root.isGif) ? "" : (modelData.preview_url ? modelData.preview_url : "")
-            sourceSize.width: root.rowHeight * (modelData.aspect_ratio || 1)
-            sourceSize.height: root.rowHeight
-            asynchronous: true
-            cache: true
-
-            opacity: status === Image.Ready ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 200 } }
 
             layer.enabled: true
             layer.effect: OpacityMask {
@@ -175,6 +187,69 @@ Button {
                     width: root.rowHeight * (modelData.aspect_ratio || 1)
                     height: root.rowHeight
                     radius: imageRadius
+                }
+            }
+
+            // High-res image (loads in background)
+            Image {
+                id: highResImage
+                anchors.fill: parent
+                fillMode: Image.PreserveAspectCrop
+                source: {
+                    if (root.isVideo || root.isGif) return ""
+                    // For manual download providers, use local file
+                    if (root.manualDownload && root.localHighResSource) return root.localHighResSource
+                    // Otherwise load file_url directly
+                    return modelData.file_url ? modelData.file_url : ""
+                }
+                sourceSize.width: parent.width * 2
+                sourceSize.height: parent.height * 2
+                asynchronous: true
+                cache: true
+
+                opacity: status === Image.Ready ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 200 } }
+            }
+
+            // Blurred preview overlay (fades out when high-res ready)
+            Item {
+                id: blurOverlay
+                anchors.fill: parent
+                visible: opacity > 0
+                opacity: highResImage.status === Image.Ready ? 0 : 1
+
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: 400
+                        easing.type: Easing.OutCubic
+                    }
+                }
+
+                Image {
+                    id: previewImage
+                    anchors.fill: parent
+                    fillMode: Image.PreserveAspectCrop
+                    source: {
+                        if (!blurOverlay.visible) return ""
+                        if (root.isVideo || root.isGif) return ""
+                        // For manual download providers, use local preview file
+                        if (root.manualDownload) {
+                            return imageDownloader.downloadedPath ? "file://" + imageDownloader.downloadedPath : ""
+                        }
+                        return modelData.preview_url ? modelData.preview_url : ""
+                    }
+                    sourceSize.width: root.rowHeight * (modelData.aspect_ratio || 1)
+                    sourceSize.height: root.rowHeight
+                    asynchronous: true
+                    cache: true
+                    visible: false  // Only used as blur source
+                }
+
+                FastBlur {
+                    anchors.fill: parent
+                    source: previewImage
+                    radius: 32
+                    transparentBorder: false
                 }
             }
         }
@@ -299,12 +374,12 @@ Button {
             }
         }
 
-        // Loading indicator (static images)
+        // Loading indicator (static images - shows while preview loads)
         Rectangle {
             anchors.fill: parent
             radius: imageRadius
             color: Appearance.colors.colLayer2
-            visible: !root.isVideo && !root.isGif && imageObject.status !== Image.Ready
+            visible: !root.isVideo && !root.isGif && previewImage.status !== Image.Ready && highResImage.status !== Image.Ready
 
             StyledText {
                 anchors.centerIn: parent
