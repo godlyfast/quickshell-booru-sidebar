@@ -166,6 +166,70 @@ Button {
         }
     }
 
+    // Ugoira (animated ZIP) support
+    property string ugoiraZipPath: root.previewDownloadPath + "/ugoira_" + (root.imageData.md5 ? root.imageData.md5 : root.imageData.id) + ".zip"
+    property string ugoiraVideoPath: root.previewDownloadPath + "/ugoira_" + (root.imageData.md5 ? root.imageData.md5 : root.imageData.id) + ".webm"
+    property string localUgoiraSource: ""
+    property bool ugoiraCacheChecked: false
+    property bool ugoiraConverting: false
+
+    // Check if converted WebM already exists in cache
+    Process {
+        id: ugoiraCacheCheck
+        running: root.isArchive && root.ugoiraVideoPath.length > 0 && !root.ugoiraCacheChecked
+        command: ["test", "-f", root.ugoiraVideoPath]
+        onExited: (code, status) => {
+            root.ugoiraCacheChecked = true
+            if (code === 0) {
+                // Converted video exists - use it immediately
+                root.localUgoiraSource = "file://" + root.ugoiraVideoPath
+            }
+            // If not cached, trigger download + conversion
+        }
+    }
+
+    // Download ugoira ZIP via Grabber (triggered after cache check)
+    GrabberDownloader {
+        id: ugoiraDownloader
+        source: "danbooru.donmai.us"
+        imageId: root.imageData.id ? String(root.imageData.id) : ""
+        outputPath: root.previewDownloadPath
+        filenameTemplate: "ugoira_%md5%.%ext%"
+        user: Services.Booru.danbooruLogin
+        password: Services.Booru.danbooruApiKey
+        onDone: (success, message) => {
+            if (success) {
+                // ZIP downloaded, now convert to WebM
+                ugoiraConverter.convert()
+            }
+        }
+    }
+
+    // Timer to trigger ugoira download after cache check completes
+    Timer {
+        id: ugoiraDownloadTrigger
+        interval: 100
+        running: root.isArchive && root.ugoiraCacheChecked && root.localUgoiraSource === "" && !ugoiraDownloader.downloading && !root.ugoiraConverting
+        onTriggered: {
+            root.ugoiraConverting = true
+            ugoiraDownloader.startDownload()
+        }
+    }
+
+    // Convert ZIP frames to WebM video
+    UgoiraConverter {
+        id: ugoiraConverter
+        zipPath: root.ugoiraZipPath
+        outputPath: root.ugoiraVideoPath
+        framerate: 24
+        onDone: (success, path) => {
+            root.ugoiraConverting = false
+            if (success) {
+                root.localUgoiraSource = "file://" + path
+            }
+        }
+    }
+
     // Grabber-based downloader for high-quality downloads with metadata-aware filenames
     // Falls back to curl if provider not supported by Grabber
     property string grabberSource: Services.Booru.getGrabberSource(root.provider)
@@ -359,24 +423,38 @@ Button {
                 }
             }
 
-            // Archive badge (ZIP/RAR files - can't display high-res)
+            // Archive/Ugoira badge - shows status, hidden when video is playing
             Rectangle {
-                visible: root.isArchive
+                visible: root.isArchive && root.localUgoiraSource === ""
                 anchors.bottom: parent.bottom
                 anchors.left: parent.left
                 anchors.margins: 6
-                width: archiveLabel.width + 8
+                width: archiveBadgeRow.width + 10
                 height: 18
                 radius: 4
-                color: Qt.rgba(0.6, 0.3, 0, 0.8)  // Orange tint
+                color: root.ugoiraConverting ? Qt.rgba(0.2, 0.5, 0.8, 0.9) : Qt.rgba(0.6, 0.3, 0, 0.8)
 
-                StyledText {
-                    id: archiveLabel
+                Row {
+                    id: archiveBadgeRow
                     anchors.centerIn: parent
-                    text: root.fileExt.toUpperCase()
-                    font.pixelSize: 10
-                    font.bold: true
-                    color: "#ffffff"
+                    spacing: 3
+
+                    MaterialSymbol {
+                        visible: !root.ugoiraConverting
+                        anchors.verticalCenter: parent.verticalCenter
+                        iconSize: 12
+                        color: "#ffffff"
+                        text: "play_circle"
+                    }
+
+                    StyledText {
+                        id: archiveLabel
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: root.ugoiraConverting ? "..." : "UGOIRA"
+                        font.pixelSize: 10
+                        font.bold: true
+                        color: "#ffffff"
+                    }
                 }
             }
         }
@@ -497,6 +575,76 @@ Button {
                     iconSize: 24
                     color: "#ffffff"
                     text: "play_arrow"
+                }
+            }
+        }
+
+        // Ugoira (animated ZIP) display - shows when converted WebM is ready
+        Item {
+            id: ugoiraContainer
+            anchors.fill: parent
+            visible: root.isArchive && root.localUgoiraSource.length > 0
+
+            MediaPlayer {
+                id: ugoiraPlayer
+                source: root.localUgoiraSource
+                loops: MediaPlayer.Infinite
+                audioOutput: AudioOutput { muted: true }
+                videoOutput: ugoiraOutput
+
+                onSourceChanged: {
+                    if (source.length > 0) play()
+                }
+            }
+
+            VideoOutput {
+                id: ugoiraOutput
+                anchors.fill: parent
+                fillMode: VideoOutput.PreserveAspectCrop
+
+                layer.enabled: true
+                layer.effect: OpacityMask {
+                    maskSource: Rectangle {
+                        width: ugoiraOutput.width
+                        height: ugoiraOutput.height
+                        radius: imageRadius
+                    }
+                }
+            }
+        }
+
+        // Ugoira conversion indicator (shown while downloading/converting)
+        Rectangle {
+            anchors.fill: parent
+            radius: imageRadius
+            color: Appearance.colors.colLayer2
+            visible: root.isArchive && root.localUgoiraSource === "" && root.ugoiraConverting
+
+            Column {
+                anchors.centerIn: parent
+                spacing: 8
+
+                // Spinner animation
+                MaterialSymbol {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    iconSize: 24
+                    color: Appearance.m3colors.m3onSurface
+                    text: "sync"
+
+                    RotationAnimation on rotation {
+                        from: 0
+                        to: 360
+                        duration: 1000
+                        loops: Animation.Infinite
+                        running: root.ugoiraConverting
+                    }
+                }
+
+                StyledText {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "Converting..."
+                    font.pixelSize: Appearance.font.pixelSize.textSmall
+                    color: Appearance.m3colors.m3secondaryText
                 }
             }
         }
