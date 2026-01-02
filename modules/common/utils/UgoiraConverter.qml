@@ -42,7 +42,9 @@ Process {
     }
 
     function convert() {
+        console.log("[UgoiraConverter] convert() called: zipPath=" + zipPath + " outputPath=" + outputPath)
         if (zipPath.length === 0 || outputPath.length === 0) {
+            console.log("[UgoiraConverter] ERROR: Missing zipPath or outputPath")
             lastError = "Missing zipPath or outputPath"
             done(false, "")
             return
@@ -86,11 +88,13 @@ Process {
     }
 
     onExited: (code, status) => {
+        console.log("[UgoiraConverter] Process exited: code=" + code + " lastError=" + lastError)
         converting = false
         if (code !== 0) {
             if (lastError.length === 0) {
                 lastError = "Conversion failed with code " + code
             }
+            console.log("[UgoiraConverter] Conversion FAILED: " + lastError)
             done(false, "")
         }
     }

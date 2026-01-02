@@ -167,13 +167,15 @@ Button {
     }
 
     // Ugoira (animated ZIP) support
-    property string ugoiraZipPath: root.previewDownloadPath + "/ugoira_" + (root.imageData.md5 ? root.imageData.md5 : root.imageData.id) + ".zip"
+    // Danbooru provides pre-converted WebM at sample_url (large_file_url)
+    // We download this directly instead of downloading ZIP + converting
     property string ugoiraVideoPath: root.previewDownloadPath + "/ugoira_" + (root.imageData.md5 ? root.imageData.md5 : root.imageData.id) + ".webm"
+    property string ugoiraSampleUrl: root.imageData.sample_url ? root.imageData.sample_url : ""
     property string localUgoiraSource: ""
     property bool ugoiraCacheChecked: false
-    property bool ugoiraConverting: false
+    property bool ugoiraDownloading: false
 
-    // Check if converted WebM already exists in cache
+    // Check if WebM already exists in cache
     Process {
         id: ugoiraCacheCheck
         running: root.isArchive && root.ugoiraVideoPath.length > 0 && !root.ugoiraCacheChecked
@@ -181,52 +183,43 @@ Button {
         onExited: (code, status) => {
             root.ugoiraCacheChecked = true
             if (code === 0) {
-                // Converted video exists - use it immediately
                 root.localUgoiraSource = "file://" + root.ugoiraVideoPath
             }
-            // If not cached, trigger download + conversion
         }
     }
 
-    // Download ugoira ZIP via Grabber (triggered after cache check)
-    GrabberDownloader {
+    // Download pre-converted WebM from Danbooru's sample_url
+    // Uses curl with browser headers to bypass Cloudflare
+    Process {
         id: ugoiraDownloader
-        source: "danbooru.donmai.us"
-        imageId: root.imageData.id ? String(root.imageData.id) : ""
-        outputPath: root.previewDownloadPath
-        filenameTemplate: "ugoira_%md5%.%ext%"
-        user: Services.Booru.danbooruLogin
-        password: Services.Booru.danbooruApiKey
-        onDone: (success, message) => {
-            if (success) {
-                // ZIP downloaded, now convert to WebM
-                ugoiraConverter.convert()
+        property bool downloading: false
+        running: false
+        command: ["curl", "-sL", root.ugoiraSampleUrl,
+            "-H", "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+            "-H", "Referer: https://danbooru.donmai.us/",
+            "-o", root.ugoiraVideoPath]
+
+        onRunningChanged: {
+            if (running) downloading = true
+        }
+
+        onExited: (code, status) => {
+            downloading = false
+            root.ugoiraDownloading = false
+            if (code === 0) {
+                root.localUgoiraSource = "file://" + root.ugoiraVideoPath
             }
         }
     }
 
-    // Timer to trigger ugoira download after cache check completes
+    // Timer to trigger download after cache check
     Timer {
         id: ugoiraDownloadTrigger
         interval: 100
-        running: root.isArchive && root.ugoiraCacheChecked && root.localUgoiraSource === "" && !ugoiraDownloader.downloading && !root.ugoiraConverting
+        running: root.isArchive && root.ugoiraCacheChecked && root.localUgoiraSource === "" && root.ugoiraSampleUrl.length > 0 && !ugoiraDownloader.downloading && !root.ugoiraDownloading
         onTriggered: {
-            root.ugoiraConverting = true
-            ugoiraDownloader.startDownload()
-        }
-    }
-
-    // Convert ZIP frames to WebM video
-    UgoiraConverter {
-        id: ugoiraConverter
-        zipPath: root.ugoiraZipPath
-        outputPath: root.ugoiraVideoPath
-        framerate: 24
-        onDone: (success, path) => {
-            root.ugoiraConverting = false
-            if (success) {
-                root.localUgoiraSource = "file://" + path
-            }
+            root.ugoiraDownloading = true
+            ugoiraDownloader.running = true
         }
     }
 
@@ -349,7 +342,8 @@ Button {
         Item {
             id: staticImageContainer
             anchors.fill: parent
-            visible: !root.isVideo && !root.isGif
+            // Hide when video, GIF, or converted ugoira is playing
+            visible: !root.isVideo && !root.isGif && !(root.isArchive && root.localUgoiraSource.length > 0)
 
             layer.enabled: true
             layer.effect: OpacityMask {
@@ -432,7 +426,7 @@ Button {
                 width: archiveBadgeRow.width + 10
                 height: 18
                 radius: 4
-                color: root.ugoiraConverting ? Qt.rgba(0.2, 0.5, 0.8, 0.9) : Qt.rgba(0.6, 0.3, 0, 0.8)
+                color: root.ugoiraDownloading ? Qt.rgba(0.2, 0.5, 0.8, 0.9) : Qt.rgba(0.6, 0.3, 0, 0.8)
 
                 Row {
                     id: archiveBadgeRow
@@ -440,7 +434,7 @@ Button {
                     spacing: 3
 
                     MaterialSymbol {
-                        visible: !root.ugoiraConverting
+                        visible: !root.ugoiraDownloading
                         anchors.verticalCenter: parent.verticalCenter
                         iconSize: 12
                         color: "#ffffff"
@@ -450,7 +444,7 @@ Button {
                     StyledText {
                         id: archiveLabel
                         anchors.verticalCenter: parent.verticalCenter
-                        text: root.ugoiraConverting ? "..." : "UGOIRA"
+                        text: root.ugoiraDownloading ? "..." : "UGOIRA"  // Show dots while downloading
                         font.pixelSize: 10
                         font.bold: true
                         color: "#ffffff"
@@ -528,21 +522,33 @@ Button {
             }
         }
 
-        // Video display (MediaPlayer + VideoOutput)
+        // Video display (MediaPlayer + VideoOutput) - handles both regular videos and ugoira WebM
         Item {
             id: videoContainer
             anchors.fill: parent
-            visible: root.isVideo
+            // Show for regular videos OR ugoira with downloaded WebM
+            visible: root.isVideo || (root.isArchive && root.localUgoiraSource.length > 0)
+
+            // Compute video source: use localUgoiraSource for ugoira, file_url for regular videos
+            property string videoSource: {
+                if (root.isArchive && root.localUgoiraSource.length > 0) {
+                    return root.localUgoiraSource
+                } else if (root.isVideo && root.imageData.file_url) {
+                    return root.imageData.file_url
+                }
+                return ""
+            }
 
             MediaPlayer {
                 id: mediaPlayer
-                source: root.isVideo ? (root.imageData.file_url ? root.imageData.file_url : "") : ""
+                source: videoContainer.videoSource
                 loops: MediaPlayer.Infinite
                 audioOutput: AudioOutput { muted: true }
                 videoOutput: videoOutput
 
-                Component.onCompleted: {
-                    if (root.isVideo) play()
+                onSourceChanged: {
+                    // source is a QUrl, not string - must convert to check length
+                    if (source.toString().length > 0) play()
                 }
             }
 
@@ -579,46 +585,12 @@ Button {
             }
         }
 
-        // Ugoira (animated ZIP) display - shows when converted WebM is ready
-        Item {
-            id: ugoiraContainer
-            anchors.fill: parent
-            visible: root.isArchive && root.localUgoiraSource.length > 0
-
-            MediaPlayer {
-                id: ugoiraPlayer
-                source: root.localUgoiraSource
-                loops: MediaPlayer.Infinite
-                audioOutput: AudioOutput { muted: true }
-                videoOutput: ugoiraOutput
-
-                onSourceChanged: {
-                    if (source.length > 0) play()
-                }
-            }
-
-            VideoOutput {
-                id: ugoiraOutput
-                anchors.fill: parent
-                fillMode: VideoOutput.PreserveAspectCrop
-
-                layer.enabled: true
-                layer.effect: OpacityMask {
-                    maskSource: Rectangle {
-                        width: ugoiraOutput.width
-                        height: ugoiraOutput.height
-                        radius: imageRadius
-                    }
-                }
-            }
-        }
-
-        // Ugoira conversion indicator (shown while downloading/converting)
+        // Ugoira download indicator (shown while downloading pre-converted WebM)
         Rectangle {
             anchors.fill: parent
             radius: imageRadius
             color: Appearance.colors.colLayer2
-            visible: root.isArchive && root.localUgoiraSource === "" && root.ugoiraConverting
+            visible: root.isArchive && root.localUgoiraSource === "" && root.ugoiraDownloading
 
             Column {
                 anchors.centerIn: parent
@@ -636,13 +608,13 @@ Button {
                         to: 360
                         duration: 1000
                         loops: Animation.Infinite
-                        running: root.ugoiraConverting
+                        running: root.ugoiraDownloading
                     }
                 }
 
                 StyledText {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Converting..."
+                    text: "Downloading..."
                     font.pixelSize: Appearance.font.pixelSize.textSmall
                     color: Appearance.m3colors.m3secondaryText
                 }
@@ -654,7 +626,8 @@ Button {
             anchors.fill: parent
             radius: imageRadius
             color: Appearance.colors.colLayer2
-            visible: !root.isVideo && !root.isGif && previewImage.status !== Image.Ready && highResImage.status !== Image.Ready
+            // Hide for videos, GIFs, and ugoira (when video source is ready)
+            visible: !root.isVideo && !root.isGif && !(root.isArchive && root.localUgoiraSource.length > 0) && previewImage.status !== Image.Ready && highResImage.status !== Image.Ready
 
             StyledText {
                 anchors.centerIn: parent
