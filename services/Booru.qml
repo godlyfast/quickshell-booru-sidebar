@@ -78,6 +78,10 @@ Singleton {
     property string rule34ApiKey: (ConfigOptions.booru && ConfigOptions.booru.rule34ApiKey) ? ConfigOptions.booru.rule34ApiKey : ""
     property string rule34UserId: (ConfigOptions.booru && ConfigOptions.booru.rule34UserId) ? ConfigOptions.booru.rule34UserId : ""
 
+    // Wallhaven API key (required for NSFW content)
+    // Get your key at: https://wallhaven.cc/settings/account
+    property string wallhavenApiKey: (ConfigOptions.booru && ConfigOptions.booru.wallhavenApiKey) ? ConfigOptions.booru.wallhavenApiKey : ""
+
     property var providers: {
         "system": { "name": "System" },
         "yandere": {
@@ -630,6 +634,10 @@ Singleton {
             params.push("order=" + wallhavenOrder)
             params.push("atleast=3840x2160")  // Only 4K+ wallpapers
             params.push("page=" + page)
+            // API key required for NSFW content
+            if (wallhavenApiKey && wallhavenApiKey.length > 0) {
+                params.push("apikey=" + wallhavenApiKey)
+            }
         } else if (currentProvider === "nekos_best") {
             // nekos.best uses amount parameter, ignores tags
             params.push("amount=" + Math.min(limit, 20))

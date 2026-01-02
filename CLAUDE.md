@@ -204,7 +204,8 @@ Some providers (e621, e926) require `ImageDownloaderProcess` to curl images with
     "gelbooruApiKey": "",
     "gelbooruUserId": "",
     "rule34ApiKey": "",
-    "rule34UserId": ""
+    "rule34UserId": "",
+    "wallhavenApiKey": ""
   },
   "appearance": {
     "transparency": 0.5,
@@ -226,7 +227,7 @@ Some providers (e621, e926) require `ImageDownloaderProcess` to curl images with
 }
 ```
 
-API keys: Gelbooru at `gelbooru.com/index.php?page=account&s=options`, Rule34 at `rule34.xxx/index.php?page=account&s=options`
+API keys: Gelbooru at `gelbooru.com/index.php?page=account&s=options`, Rule34 at `rule34.xxx/index.php?page=account&s=options`, Wallhaven at `wallhaven.cc/settings/account` (required for NSFW content)
 
 ## Testing
 

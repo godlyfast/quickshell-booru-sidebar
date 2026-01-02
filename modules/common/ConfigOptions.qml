@@ -47,5 +47,6 @@ Singleton {
         property string gelbooruUserId: ""
         property string rule34ApiKey: ""
         property string rule34UserId: ""
+        property string wallhavenApiKey: ""
     }
 }

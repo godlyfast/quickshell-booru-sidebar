@@ -5,7 +5,8 @@
     "downloadPath": "~/Pictures/booru",
     "nsfwPath": "~/Pictures/booru/nsfw",
     "gelbooruApiKey": "",
-    "gelbooruUserId": ""
+    "gelbooruUserId": "",
+    "wallhavenApiKey": ""
   },
   "appearance": {
     "transparency": 0.5,
