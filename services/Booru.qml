@@ -24,7 +24,7 @@ Singleton {
     property var providerList: Object.keys(providers).filter(provider => provider !== "system" && providers[provider].api)
 
     // Persistent state
-    property string currentProvider: "yandere"
+    property string currentProvider: "wallhaven"
     property bool allowNsfw: false
     property int limit: 20
 
