@@ -42,6 +42,7 @@ Button {
     }
     property bool isVideo: (fileExt === "mp4" || fileExt === "webm")
     property bool isGif: fileExt === "gif"
+    property bool isArchive: (fileExt === "zip" || fileExt === "rar" || fileExt === "7z")  // Danbooru image packs
 
     // File paths for download status checks
     property string savedFilePath: root.downloadPath + "/" + root.fileName
@@ -88,7 +89,7 @@ Button {
 
     Process {
         id: highResCacheCheck
-        running: root.manualDownload && !root.isGif && !root.isVideo && root.effectiveHighResPath.length > 0 && !root.highResCacheChecked
+        running: root.manualDownload && !root.isGif && !root.isVideo && !root.isArchive && root.effectiveHighResPath.length > 0 && !root.highResCacheChecked
         command: ["test", "-f", root.effectiveHighResPath]
         onExited: (code, status) => {
             root.highResCacheChecked = true
@@ -103,7 +104,7 @@ Button {
     ImageDownloaderProcess {
         id: highResDownloader
         // Use curl for non-Danbooru providers (only if not cached)
-        enabled: root.manualDownload && root.provider !== "danbooru" && !root.isGif && !root.isVideo && imageDownloader.downloadedPath.length > 0 && root.highResCacheChecked && root.localHighResSource === ""
+        enabled: root.manualDownload && root.provider !== "danbooru" && !root.isGif && !root.isVideo && !root.isArchive && imageDownloader.downloadedPath.length > 0 && root.highResCacheChecked && root.localHighResSource === ""
         filePath: root.highResFilePath
         sourceUrl: root.imageData.file_url ? root.imageData.file_url : ""
         onDone: (path, width, height) => {
@@ -138,7 +139,7 @@ Button {
     Timer {
         id: grabberTrigger
         interval: 100
-        running: root.manualDownload && root.provider === "danbooru" && !root.isGif && !root.isVideo && imageDownloader.downloadedPath.length > 0 && !grabberHighResDownloader.downloading && root.localHighResSource === "" && root.highResCacheChecked
+        running: root.manualDownload && root.provider === "danbooru" && !root.isGif && !root.isVideo && !root.isArchive && imageDownloader.downloadedPath.length > 0 && !grabberHighResDownloader.downloading && root.localHighResSource === "" && root.highResCacheChecked
         onTriggered: grabberHighResDownloader.startDownload()
     }
 
@@ -355,6 +356,27 @@ Button {
                     source: previewImage
                     radius: 32
                     transparentBorder: false
+                }
+            }
+
+            // Archive badge (ZIP/RAR files - can't display high-res)
+            Rectangle {
+                visible: root.isArchive
+                anchors.bottom: parent.bottom
+                anchors.left: parent.left
+                anchors.margins: 6
+                width: archiveLabel.width + 8
+                height: 18
+                radius: 4
+                color: Qt.rgba(0.6, 0.3, 0, 0.8)  // Orange tint
+
+                StyledText {
+                    id: archiveLabel
+                    anchors.centerIn: parent
+                    text: root.fileExt.toUpperCase()
+                    font.pixelSize: 10
+                    font.bold: true
+                    color: "#ffffff"
                 }
             }
         }
