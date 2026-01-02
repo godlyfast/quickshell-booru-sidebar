@@ -83,13 +83,8 @@ Button {
         id: highResDownloader
         enabled: root.manualDownload && !root.isGif && !root.isVideo && imageDownloader.downloadedPath.length > 0
         filePath: root.highResFilePath
-        // Danbooru: use sample_url (large_file_url) - file_url blocked by Cloudflare
-        sourceUrl: {
-            if (root.provider === "danbooru") {
-                return root.imageData.sample_url ? root.imageData.sample_url : ""
-            }
-            return root.imageData.file_url ? root.imageData.file_url : ""
-        }
+        // With Grabber fallback, file_url now works for all providers
+        sourceUrl: root.imageData.file_url ? root.imageData.file_url : ""
         onDone: (path, width, height) => {
             if (path.length > 0) {
                 root.localHighResSource = "file://" + path
