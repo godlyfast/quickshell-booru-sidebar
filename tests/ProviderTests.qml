@@ -23,10 +23,14 @@ Item {
 
     // Providers that need curl (User-Agent) to bypass Cloudflare
     // Note: e621/e926 work with curl for image tests, danbooru has stricter protections
-    property var curlProviders: ["e621", "e926"]
+    // paheal uses XML which QML XMLHttpRequest.responseXML doesn't handle well
+    property var curlProviders: ["e621", "e926", "paheal"]
 
     // Providers that cannot be tested due to Cloudflare JS challenges
     property var cloudflareProviders: ["danbooru"]
+
+    // Providers that return XML instead of JSON
+    property var xmlProviders: ["paheal"]
 
     // Edge case tags - providers where default "landscape" may not catch null URL issues
     // "solo" on e621/e926 often has posts with null sample_url
@@ -38,7 +42,7 @@ Item {
     // Providers that support tag autocomplete
     // Note: e621/e926 excluded - autocomplete endpoint has strict Cloudflare protection
     property var autocompleteProviders: ["yandere", "konachan", "danbooru", "gelbooru", "safebooru",
-                                          "konachan_com"]
+                                          "konachan_com", "aibooru"]
 
     // Sorting test counters
     property int sortingPassedCount: 0
@@ -57,7 +61,12 @@ Item {
         "rule34": ["score", "score:desc", "score:asc", "id", "updated"],
         "wallhaven": ["toplist", "random", "date_added", "relevance", "views", "favorites"],
         "waifu.im": [],
-        "nekos_best": []
+        "nekos_best": [],
+        "xbooru": ["score", "id", "updated"],
+        "tbib": ["score", "id"],
+        "paheal": [],
+        "hypnohub": ["score", "id", "updated"],
+        "aibooru": ["score", "id"]
     })
 
     // Required fields and their validators
@@ -222,6 +231,50 @@ Item {
         return "landscape"
     }
 
+    // Manual XML parsing for paheal (QML doesn't have DOMParser)
+    function parseXmlResponse(xmlText, providerKey) {
+        if (providerKey !== "paheal") return []
+
+        var result = []
+        // Match all <tag ... > or <tag ... /> elements
+        var tagMatches = xmlText.match(/<tag\s+[^>]+>/g) || []
+
+        for (var i = 0; i < tagMatches.length; i++) {
+            var attrs = tagMatches[i]
+
+            // Extract attribute using regex
+            function getAttr(name) {
+                var re = new RegExp(name + "=['\"]([^'\"]*)['\"]")
+                var m = attrs.match(re)
+                return m ? m[1] : ""
+            }
+
+            var previewPath = getAttr("preview_url")
+            var previewUrl = (previewPath && previewPath.indexOf("http") === 0) ? previewPath : "https://rule34.paheal.net" + previewPath
+            var fileUrl = getAttr("file_url")
+            var fileName = getAttr("file_name") || "unknown.jpg"
+            var width = parseInt(getAttr("width")) || 800
+            var height = parseInt(getAttr("height")) || 600
+
+            result.push({
+                "id": parseInt(getAttr("id")),
+                "width": width,
+                "height": height,
+                "aspect_ratio": width / height,
+                "tags": getAttr("tags"),
+                "rating": "e",
+                "is_nsfw": true,
+                "md5": getAttr("md5"),
+                "preview_url": previewUrl,
+                "sample_url": fileUrl,
+                "file_url": fileUrl,
+                "file_ext": fileName.split('.').pop(),
+                "source": fileUrl
+            })
+        }
+        return result
+    }
+
     function handleResponse(providerKey, provider, xhr, isEdgeCase) {
         if (xhr.status !== 200) {
             console.log("  Image search... FAIL (HTTP " + xhr.status + ")")
@@ -231,7 +284,13 @@ Item {
         }
 
         try {
-            var response = JSON.parse(xhr.responseText)
+            var response
+            // Handle XML providers
+            if (xmlProviders.indexOf(providerKey) !== -1 || provider.isXml) {
+                response = xhr.responseXML
+            } else {
+                response = JSON.parse(xhr.responseText)
+            }
             var images = provider.mapFunc(response)
 
             if (!images || images.length === 0) {
@@ -707,8 +766,17 @@ Item {
 
     function handleCurlResponse(providerKey, provider, responseText, isEdgeCase) {
         try {
-            var response = JSON.parse(responseText)
-            var images = provider.mapFunc(response)
+            var response
+            var images
+
+            // Handle XML providers manually (QML doesn't have DOMParser)
+            if (xmlProviders.indexOf(providerKey) !== -1 || provider.isXml) {
+                // Manual XML parsing for paheal - extract tag attributes
+                images = parseXmlResponse(responseText, providerKey)
+            } else {
+                response = JSON.parse(responseText)
+                images = provider.mapFunc(response)
+            }
 
             if (!images || images.length === 0) {
                 console.log("  Image search... FAIL (0 images returned)")

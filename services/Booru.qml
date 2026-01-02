@@ -11,6 +11,13 @@ import Quickshell
  */
 Singleton {
     id: root
+
+    Component.onCompleted: {
+        console.log("=== BOORU SERVICE LOADED ===")
+        console.log("Provider count: " + providerList.length)
+        console.log("Providers: " + providerList.join(", "))
+    }
+
     property Component booruResponseDataComponent: BooruResponseData {}
 
     signal tagSuggestion(string query, var suggestions)
@@ -21,7 +28,13 @@ Singleton {
     property int runningRequests: 0
     property bool replaceOnNextResponse: false  // When true, replace responses instead of appending
     property string defaultUserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
-    property var providerList: Object.keys(providers).filter(provider => provider !== "system" && providers[provider].api)
+    property var providerList: {
+        var list = Object.keys(providers).filter(function(provider) {
+            return provider !== "system" && providers[provider].api
+        })
+        console.log("[Booru] providerList: " + list.join(", "))
+        return list
+    }
 
     // Persistent state
     property string currentProvider: "wallhaven"
@@ -63,7 +76,12 @@ Singleton {
         "rule34": ["score", "score:desc", "score:asc", "id", "updated"],
         "wallhaven": ["toplist", "random", "date_added", "relevance", "views", "favorites"],
         "waifu.im": [],
-        "nekos_best": []
+        "nekos_best": [],
+        "xbooru": ["score", "id", "updated"],
+        "tbib": ["score", "id"],
+        "paheal": [],
+        "hypnohub": ["score", "id", "updated"],
+        "aibooru": ["score", "id"]
     })
 
     // Get sort options for current provider
@@ -79,7 +97,7 @@ Singleton {
     // safebooru.org, e926.net, nekos.best, konachan.net are all SFW-only by design
     property var sfwOnlyProviders: ["safebooru", "e926", "nekos_best", "konachan"]
     // NSFW-only providers - rating filter doesn't apply (all content is NSFW)
-    property var nsfwOnlyProviders: ["rule34"]
+    property var nsfwOnlyProviders: ["rule34", "xbooru", "tbib", "paheal", "hypnohub"]
     property bool providerSupportsNsfw: sfwOnlyProviders.indexOf(currentProvider) === -1
 
     // Gelbooru API credentials (configured in config.json under "booru")
@@ -547,6 +565,163 @@ Singleton {
                 }
                 return result
             }
+        },
+        "xbooru": {
+            "name": "Xbooru",
+            "url": "https://xbooru.com",
+            "api": "https://xbooru.com/index.php?page=dapi&s=post&q=index&json=1",
+            "description": "Hentai focused imageboard",
+            "mapFunc": (response) => {
+                var result = []
+                for (var i = 0; i < response.length; i++) {
+                    var item = response[i]
+                    if (!item.file_url) continue
+                    result.push({
+                        "id": item.id,
+                        "width": item.width,
+                        "height": item.height,
+                        "aspect_ratio": item.width / item.height,
+                        "tags": item.tags,
+                        "rating": item.rating ? item.rating.charAt(0) : "e",
+                        "is_nsfw": true,
+                        "md5": item.hash,
+                        "preview_url": item.preview_url,
+                        "sample_url": item.sample_url ? item.sample_url : item.file_url,
+                        "file_url": item.file_url,
+                        "file_ext": item.file_url.split('.').pop(),
+                        "source": item.source ? item.source : item.file_url,
+                    })
+                }
+                return result
+            }
+        },
+        "tbib": {
+            "name": "TBIB",
+            "url": "https://tbib.org",
+            "api": "https://tbib.org/index.php?page=dapi&s=post&q=index&json=1",
+            "description": "The Big ImageBoard | 8M+ images aggregator",
+            "mapFunc": (response) => {
+                var result = []
+                for (var i = 0; i < response.length; i++) {
+                    var item = response[i]
+                    var fileUrl = "https://tbib.org/images/" + item.directory + "/" + item.image
+                    var previewUrl = "https://tbib.org/thumbnails/" + item.directory + "/thumbnail_" + item.hash + ".jpg"
+                    result.push({
+                        "id": item.id,
+                        "width": item.width,
+                        "height": item.height,
+                        "aspect_ratio": item.width / item.height,
+                        "tags": item.tags,
+                        "rating": item.rating ? item.rating.charAt(0) : "q",
+                        "is_nsfw": (item.rating !== "safe"),
+                        "md5": item.hash,
+                        "preview_url": previewUrl,
+                        "sample_url": fileUrl,
+                        "file_url": fileUrl,
+                        "file_ext": item.image.split('.').pop(),
+                        "source": fileUrl
+                    })
+                }
+                return result
+            }
+        },
+        "paheal": {
+            "name": "Paheal Rule34",
+            "url": "https://rule34.paheal.net",
+            "api": "https://rule34.paheal.net/api/danbooru/find_posts",
+            "description": "Rule34 (Shimmie) | 3.5M+ images",
+            "isXml": true,
+            "mapFunc": (xmlDoc) => {
+                var result = []
+                var posts = xmlDoc.getElementsByTagName("tag")
+                for (var i = 0; i < posts.length; i++) {
+                    var item = posts[i]
+                    var previewPath = item.getAttribute("preview_url")
+                    var previewUrl = (previewPath && previewPath.indexOf("http") === 0) ? previewPath : "https://rule34.paheal.net" + previewPath
+                    var fileUrl = item.getAttribute("file_url")
+                    var fileName = item.getAttribute("file_name") ? item.getAttribute("file_name") : "unknown.jpg"
+                    result.push({
+                        "id": parseInt(item.getAttribute("id")),
+                        "width": parseInt(item.getAttribute("width")),
+                        "height": parseInt(item.getAttribute("height")),
+                        "aspect_ratio": parseInt(item.getAttribute("width")) / parseInt(item.getAttribute("height")),
+                        "tags": item.getAttribute("tags"),
+                        "rating": "e",
+                        "is_nsfw": true,
+                        "md5": item.getAttribute("md5"),
+                        "preview_url": previewUrl,
+                        "sample_url": fileUrl,
+                        "file_url": fileUrl,
+                        "file_ext": fileName.split('.').pop(),
+                        "source": fileUrl
+                    })
+                }
+                return result
+            }
+        },
+        "hypnohub": {
+            "name": "Hypnohub",
+            "url": "https://hypnohub.net",
+            "api": "https://hypnohub.net/index.php?page=dapi&s=post&q=index&json=1",
+            "description": "Hypnosis/mind control themed | ~92k images",
+            "mapFunc": (response) => {
+                var result = []
+                for (var i = 0; i < response.length; i++) {
+                    var item = response[i]
+                    if (!item.file_url) continue
+                    result.push({
+                        "id": item.id,
+                        "width": item.width,
+                        "height": item.height,
+                        "aspect_ratio": item.width / item.height,
+                        "tags": item.tags,
+                        "rating": item.rating ? item.rating.charAt(0) : "q",
+                        "is_nsfw": true,
+                        "md5": item.hash,
+                        "preview_url": item.preview_url,
+                        "sample_url": item.sample_url ? item.sample_url : item.file_url,
+                        "file_url": item.file_url,
+                        "file_ext": item.file_url.split('.').pop(),
+                        "source": item.source ? item.source : item.file_url,
+                    })
+                }
+                return result
+            }
+        },
+        "aibooru": {
+            "name": "AIBooru",
+            "url": "https://aibooru.online",
+            "api": "https://aibooru.online/posts.json",
+            "description": "AI-generated art | ~150k images",
+            "mapFunc": (response) => {
+                var result = []
+                for (var i = 0; i < response.length; i++) {
+                    var item = response[i]
+                    if (!item.file_url || item.is_deleted) continue
+                    result.push({
+                        "id": item.id,
+                        "width": item.image_width,
+                        "height": item.image_height,
+                        "aspect_ratio": item.image_width / item.image_height,
+                        "tags": item.tag_string,
+                        "rating": item.rating,
+                        "is_nsfw": (item.rating === 'q' || item.rating === 'e'),
+                        "md5": item.md5,
+                        "preview_url": item.preview_file_url,
+                        "sample_url": item.large_file_url ? item.large_file_url : item.file_url,
+                        "file_url": item.file_url,
+                        "file_ext": item.file_ext,
+                        "source": item.source ? item.source : item.file_url,
+                    })
+                }
+                return result
+            },
+            "tagSearchTemplate": "https://aibooru.online/tags.json?limit=10&search[name_matches]={{query}}*",
+            "tagMapFunc": (response) => {
+                return response.map(item => {
+                    return { "name": item.name, "count": item.post_count }
+                })
+            }
         }
     }
 
@@ -616,8 +791,12 @@ Singleton {
                 tagString = "order:" + currentSorting + " " + tagString
             }
             // Gelbooru-based sites use sort:X
-            else if (currentProvider === "gelbooru" || currentProvider === "safebooru" || currentProvider === "rule34") {
+            else if (currentProvider === "gelbooru" || currentProvider === "safebooru" || currentProvider === "rule34" || currentProvider === "xbooru" || currentProvider === "tbib" || currentProvider === "hypnohub") {
                 tagString = "sort:" + currentSorting + " " + tagString
+            }
+            // AIBooru uses order:X (Danbooru-style)
+            else if (currentProvider === "aibooru") {
+                tagString = "order:" + currentSorting + " " + tagString
             }
             // Wallhaven handled separately via URL params below
         }
@@ -628,7 +807,7 @@ Singleton {
                               sfwOnlyProviders.indexOf(currentProvider) !== -1 ||
                               nsfwOnlyProviders.indexOf(currentProvider) !== -1)
         if (!nsfw && !skipNsfwFilter) {
-            if (currentProvider == "gelbooru" || currentProvider == "danbooru" || currentProvider == "rule34")
+            if (currentProvider == "gelbooru" || currentProvider == "danbooru" || currentProvider == "rule34" || currentProvider == "aibooru")
                 tagString += " rating:general";
             else if (currentProvider == "e621")
                 tagString += " rating:s";
@@ -675,7 +854,7 @@ Singleton {
             params.push("tags=" + encodeURIComponent(tagString))
             params.push("limit=" + limit)
             // Providers using pid (page id) instead of page number
-            if (currentProvider == "gelbooru" || currentProvider == "safebooru" || currentProvider == "rule34") {
+            if (currentProvider == "gelbooru" || currentProvider == "safebooru" || currentProvider == "rule34" || currentProvider == "xbooru" || currentProvider == "tbib" || currentProvider == "hypnohub") {
                 params.push("pid=" + page)
                 // Gelbooru-style API key authentication
                 if (currentProvider == "gelbooru" && gelbooruApiKey && gelbooruUserId) {
@@ -744,8 +923,15 @@ Singleton {
             if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
                 try {
                     var provider = providers[requestProvider]
-                    var response = JSON.parse(xhr.responseText)
-                    console.log("[Booru] " + requestProvider + " got " + (response.length || "?") + " raw items")
+                    var response
+                    // Handle XML responses (e.g., Paheal)
+                    if (provider.isXml) {
+                        response = xhr.responseXML
+                        console.log("[Booru] " + requestProvider + " got XML response")
+                    } else {
+                        response = JSON.parse(xhr.responseText)
+                        console.log("[Booru] " + requestProvider + " got " + (response.length || "?") + " raw items")
+                    }
                     response = provider.mapFunc(response)
                     console.log("[Booru] " + requestProvider + " mapped to " + response.length + " items")
                     newResponse.images = response

@@ -259,7 +259,7 @@ Item {
             spacing: 4
 
             Repeater {
-                model: root.suggestionList.slice(0, 12)
+                model: root.suggestionList.slice(0, 20)
 
                 RippleButton {
                     implicitHeight: 28
