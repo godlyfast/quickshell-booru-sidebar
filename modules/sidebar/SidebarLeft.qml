@@ -15,16 +15,6 @@ Scope {
     id: root
     property bool sidebarOpen: false
 
-    // Auto-preload when sidebar opens with no results
-    onSidebarOpenChanged: {
-        if (sidebarOpen && Booru.responses.length === 0) {
-            // Set defaults: wallhaven provider, safe mode, then search
-            Booru.setProvider("wallhaven")
-            Booru.allowNsfw = false
-            Booru.makeRequest([], false, Booru.limit, 1)
-        }
-    }
-
     Loader {
         id: sidebarLoader
         active: true
