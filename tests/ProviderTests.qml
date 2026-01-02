@@ -41,18 +41,19 @@ Item {
 
     // Providers that support tag autocomplete
     // Note: e621/e926 excluded - autocomplete endpoint has strict Cloudflare protection
+    // Note: konachan_com removed - now a mirror of konachan
     property var autocompleteProviders: ["yandere", "konachan", "danbooru", "gelbooru", "safebooru",
-                                          "konachan_com", "aibooru"]
+                                          "aibooru"]
 
     // Sorting test counters
     property int sortingPassedCount: 0
     property int sortingFailedCount: 0
 
     // Expected sort options per provider (should match Booru.providerSortOptions)
+    // Note: konachan_com removed - now a mirror of konachan
     property var expectedSortOptions: ({
         "yandere": ["score", "score_asc", "id", "id_desc", "mpixels", "landscape", "portrait"],
         "konachan": ["score", "score_asc", "id", "id_desc", "mpixels", "landscape", "portrait"],
-        "konachan_com": ["score", "score_asc", "id", "id_desc", "mpixels", "landscape", "portrait"],
         "danbooru": ["rank", "score", "id", "id_desc"],
         "e621": ["score", "favcount", "id"],
         "e926": ["score", "favcount", "id"],
@@ -452,6 +453,10 @@ Item {
 
     // --- Sorting Tests ---
 
+    // Mirror test counters
+    property int mirrorPassedCount: 0
+    property int mirrorFailedCount: 0
+
     function startSortingTests() {
         console.log("")
         console.log("--- Sorting Configuration Tests ---")
@@ -473,7 +478,176 @@ Item {
         console.log("")
         console.log("Sorting Tests: " + sortingPassedCount + " passed, " + sortingFailedCount + " failed")
 
+        // Run mirror tests
+        startMirrorTests()
+    }
+
+    function startMirrorTests() {
+        console.log("")
+        console.log("--- Mirror System Tests ---")
+
+        // Test 1: Verify mirror helper functions
+        testMirrorHelperFunctions()
+
+        // Test 2: Verify mirror URL construction
+        testMirrorUrlConstruction()
+
+        // Test 3: Verify mirror SFW status
+        testMirrorSfwStatus()
+
+        // Print mirror test summary
+        console.log("")
+        console.log("Mirror Tests: " + mirrorPassedCount + " passed, " + mirrorFailedCount + " failed")
+
         finishAllTests()
+    }
+
+    function testMirrorHelperFunctions() {
+        console.log("Testing: Mirror helper functions")
+
+        var allPass = true
+
+        // Test providerHasMirrors
+        if (!Booru.providerHasMirrors("konachan")) {
+            console.log("  providerHasMirrors(konachan)... FAIL (should be true)")
+            allPass = false
+        }
+        if (!Booru.providerHasMirrors("danbooru")) {
+            console.log("  providerHasMirrors(danbooru)... FAIL (should be true)")
+            allPass = false
+        }
+        if (Booru.providerHasMirrors("yandere")) {
+            console.log("  providerHasMirrors(yandere)... FAIL (should be false)")
+            allPass = false
+        }
+
+        // Test getMirrorList
+        var konachanMirrors = Booru.getMirrorList("konachan")
+        if (!konachanMirrors || konachanMirrors.length !== 2) {
+            console.log("  getMirrorList(konachan)... FAIL (expected 2 mirrors, got " + (konachanMirrors ? konachanMirrors.length : 0) + ")")
+            allPass = false
+        }
+
+        var danbooruMirrors = Booru.getMirrorList("danbooru")
+        if (!danbooruMirrors || danbooruMirrors.length !== 2) {
+            console.log("  getMirrorList(danbooru)... FAIL (expected 2 mirrors, got " + (danbooruMirrors ? danbooruMirrors.length : 0) + ")")
+            allPass = false
+        }
+
+        // Test getCurrentMirror (should return first mirror by default)
+        var currentMirror = Booru.getCurrentMirror("konachan")
+        if (!currentMirror || currentMirror !== "konachan.net") {
+            console.log("  getCurrentMirror(konachan)... FAIL (expected 'konachan.net', got '" + currentMirror + "')")
+            allPass = false
+        }
+
+        // Test setMirror
+        Booru.setMirror("konachan", "konachan.com")
+        currentMirror = Booru.getCurrentMirror("konachan")
+        if (currentMirror !== "konachan.com") {
+            console.log("  setMirror(konachan, konachan.com)... FAIL (got '" + currentMirror + "')")
+            allPass = false
+        }
+        // Reset
+        Booru.setMirror("konachan", "konachan.net")
+
+        if (allPass) {
+            console.log("  Mirror helper functions... PASS")
+            mirrorPassedCount++
+        } else {
+            mirrorFailedCount++
+        }
+    }
+
+    function testMirrorUrlConstruction() {
+        console.log("Testing: Mirror URL construction")
+
+        var allPass = true
+
+        // Test konachan with default mirror (konachan.net)
+        Booru.currentProvider = "konachan"
+        Booru.setMirror("konachan", "konachan.net")
+        var url = Booru.constructRequestUrl(["test"], false, 5, 1)
+        if (url.indexOf("konachan.net") === -1) {
+            console.log("  konachan.net URL... FAIL (expected konachan.net in URL)")
+            allPass = false
+        }
+
+        // Test konachan with .com mirror
+        Booru.setMirror("konachan", "konachan.com")
+        url = Booru.constructRequestUrl(["test"], false, 5, 1)
+        if (url.indexOf("konachan.com") === -1) {
+            console.log("  konachan.com URL... FAIL (expected konachan.com in URL)")
+            allPass = false
+        }
+
+        // Test danbooru with safebooru mirror
+        Booru.currentProvider = "danbooru"
+        Booru.setMirror("danbooru", "safebooru.donmai.us")
+        url = Booru.constructRequestUrl(["test"], false, 5, 1)
+        if (url.indexOf("safebooru.donmai.us") === -1) {
+            console.log("  safebooru.donmai.us URL... FAIL (expected safebooru.donmai.us in URL)")
+            allPass = false
+        }
+
+        // Reset
+        Booru.setMirror("konachan", "konachan.net")
+        Booru.setMirror("danbooru", "danbooru.donmai.us")
+        Booru.currentProvider = "yandere"
+
+        if (allPass) {
+            console.log("  Mirror URL construction... PASS")
+            mirrorPassedCount++
+        } else {
+            mirrorFailedCount++
+        }
+    }
+
+    function testMirrorSfwStatus() {
+        console.log("Testing: Mirror SFW status")
+
+        var allPass = true
+
+        // Test konachan.net is SFW-only
+        Booru.currentProvider = "konachan"
+        Booru.setMirror("konachan", "konachan.net")
+        if (!Booru.currentMirrorIsSfwOnly("konachan")) {
+            console.log("  konachan.net sfwOnly... FAIL (should be true)")
+            allPass = false
+        }
+
+        // Test konachan.com is NOT SFW-only
+        Booru.setMirror("konachan", "konachan.com")
+        if (Booru.currentMirrorIsSfwOnly("konachan")) {
+            console.log("  konachan.com sfwOnly... FAIL (should be false)")
+            allPass = false
+        }
+
+        // Test safebooru.donmai.us is SFW-only
+        Booru.currentProvider = "danbooru"
+        Booru.setMirror("danbooru", "safebooru.donmai.us")
+        if (!Booru.currentMirrorIsSfwOnly("danbooru")) {
+            console.log("  safebooru.donmai.us sfwOnly... FAIL (should be true)")
+            allPass = false
+        }
+
+        // Test danbooru.donmai.us is NOT SFW-only
+        Booru.setMirror("danbooru", "danbooru.donmai.us")
+        if (Booru.currentMirrorIsSfwOnly("danbooru")) {
+            console.log("  danbooru.donmai.us sfwOnly... FAIL (should be false)")
+            allPass = false
+        }
+
+        // Reset
+        Booru.setMirror("konachan", "konachan.net")
+        Booru.currentProvider = "yandere"
+
+        if (allPass) {
+            console.log("  Mirror SFW status... PASS")
+            mirrorPassedCount++
+        } else {
+            mirrorFailedCount++
+        }
     }
 
     function testSortOptionsExist() {

@@ -35,6 +35,7 @@ Item {
 
     property var allCommands: [
         { name: "mode", description: "Set the API provider" },
+        { name: "mirror", description: "Switch provider mirror" },
         { name: "sort", description: "Set result sorting" },
         { name: "res", description: "Set Wallhaven resolution" },
         { name: "clear", description: "Clear image list" },
@@ -149,6 +150,40 @@ Item {
                 } else {
                     var label2 = Booru.resolutionLabels[Booru.wallhavenResolution] || Booru.wallhavenResolution;
                     Booru.addSystemMessage("Wallhaven resolution: " + label2);
+                }
+            } else if (command === "mirror" && args.length > 0) {
+                // Set mirror for current provider
+                if (!Booru.providerHasMirrors(Booru.currentProvider)) {
+                    var providerName4 = Booru.providers[Booru.currentProvider].name || Booru.currentProvider;
+                    Booru.addSystemMessage(providerName4 + " does not have mirrors");
+                } else {
+                    var mirrorArg = args[0].toLowerCase();
+                    var mirrorList = Booru.getMirrorList(Booru.currentProvider);
+                    // Find mirror matching the argument
+                    var matchedMirror = null;
+                    for (var k = 0; k < mirrorList.length; k++) {
+                        if (mirrorList[k].toLowerCase().indexOf(mirrorArg) !== -1) {
+                            matchedMirror = mirrorList[k];
+                            break;
+                        }
+                    }
+                    if (matchedMirror) {
+                        Booru.setMirror(Booru.currentProvider, matchedMirror);
+                        Booru.addSystemMessage("Mirror: " + matchedMirror);
+                    } else {
+                        Booru.addSystemMessage("Available mirrors: " + mirrorList.join(", "));
+                    }
+                }
+            } else if (command === "mirror") {
+                // No argument - show current mirror
+                if (!Booru.providerHasMirrors(Booru.currentProvider)) {
+                    var providerName5 = Booru.providers[Booru.currentProvider].name || Booru.currentProvider;
+                    Booru.addSystemMessage(providerName5 + " does not have mirrors");
+                } else {
+                    var currentMirror = Booru.getCurrentMirror(Booru.currentProvider);
+                    var mirrorData = Booru.providers[Booru.currentProvider].mirrors[currentMirror];
+                    var mirrorDesc = mirrorData && mirrorData.description ? " (" + mirrorData.description + ")" : "";
+                    Booru.addSystemMessage("Current mirror: " + currentMirror + mirrorDesc);
                 }
             } else {
                 Booru.addSystemMessage("Unknown command: " + command);
@@ -361,6 +396,48 @@ Item {
                                 return;
                             }
 
+                            // /mirror autocomplete
+                            if (text.startsWith(`${root.commandPrefix}mirror`)) {
+                                var mirrorParts = text.split(" ");
+                                var mirrorQuery = mirrorParts.length > 1 ? mirrorParts[1].toLowerCase() : "";
+
+                                // Check if provider has mirrors
+                                if (!Booru.providerHasMirrors(Booru.currentProvider)) {
+                                    var noMirrorProvider = Booru.providers[Booru.currentProvider];
+                                    var noMirrorName = noMirrorProvider && noMirrorProvider.name ? noMirrorProvider.name : Booru.currentProvider;
+                                    root.suggestionList = [{
+                                        name: "/mirror",
+                                        displayName: "No mirrors",
+                                        description: noMirrorName + " does not have mirrors"
+                                    }];
+                                    searchTimer.stop();
+                                    return;
+                                }
+
+                                var mirrors = Booru.getMirrorList(Booru.currentProvider);
+                                var currentMirror = Booru.getCurrentMirror(Booru.currentProvider);
+                                var providerMirrors = Booru.providers[Booru.currentProvider].mirrors;
+
+                                root.suggestionList = mirrors
+                                    .filter(function(m) { return m.toLowerCase().indexOf(mirrorQuery) !== -1; })
+                                    .map(function(m) {
+                                        var mData = providerMirrors[m];
+                                        var desc = mData && mData.description ? mData.description : "";
+                                        if (m === currentMirror) {
+                                            desc = desc ? "(" + desc + ", current)" : "(current)";
+                                        } else if (desc) {
+                                            desc = "(" + desc + ")";
+                                        }
+                                        return {
+                                            name: "/mirror " + m,
+                                            displayName: m,
+                                            description: desc
+                                        };
+                                    });
+                                searchTimer.stop();
+                                return;
+                            }
+
                             if (text.startsWith(`${root.commandPrefix}sort`)) {
                                 var sortParts = text.split(" ");
                                 const sortQuery = sortParts.length > 1 ? sortParts[1] : "";
@@ -543,6 +620,44 @@ Item {
                         }
 
                         onClicked: Booru.allowNsfw = !Booru.allowNsfw
+                    }
+
+                    // Mirror chip (visible when provider has mirrors)
+                    RippleButton {
+                        visible: Booru.providerHasMirrors(Booru.currentProvider)
+                        implicitHeight: 26
+                        implicitWidth: mirrorChipContent.implicitWidth + 14
+                        buttonRadius: Appearance.rounding.full
+                        colBackground: Appearance.colors.colLayer1
+
+                        contentItem: Row {
+                            id: mirrorChipContent
+                            anchors.centerIn: parent
+                            spacing: 4
+
+                            MaterialSymbol {
+                                anchors.verticalCenter: parent.verticalCenter
+                                iconSize: 13
+                                color: Appearance.m3colors.m3secondaryText
+                                text: "language"
+                            }
+
+                            StyledText {
+                                anchors.verticalCenter: parent.verticalCenter
+                                font.pixelSize: 11
+                                color: Appearance.m3colors.m3surfaceText
+                                text: Booru.getCurrentMirror(Booru.currentProvider) || "Mirror"
+                            }
+                        }
+
+                        onClicked: {
+                            // Cycle to next mirror
+                            var mirrors = Booru.getMirrorList(Booru.currentProvider);
+                            var current = Booru.getCurrentMirror(Booru.currentProvider);
+                            var idx = mirrors.indexOf(current);
+                            var next = mirrors[(idx + 1) % mirrors.length];
+                            Booru.setMirror(Booru.currentProvider, next);
+                        }
                     }
 
                     // Sort chip (visible when provider supports sorting)

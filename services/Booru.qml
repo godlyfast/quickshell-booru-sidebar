@@ -67,7 +67,6 @@ Singleton {
     property var providerSortOptions: ({
         "yandere": ["score", "score_asc", "id", "id_desc", "mpixels", "landscape", "portrait"],
         "konachan": ["score", "score_asc", "id", "id_desc", "mpixels", "landscape", "portrait"],
-        "konachan_com": ["score", "score_asc", "id", "id_desc", "mpixels", "landscape", "portrait"],
         "danbooru": ["rank", "score", "id", "id_desc"],
         "e621": ["score", "favcount", "id"],
         "e926": ["score", "favcount", "id"],
@@ -94,11 +93,13 @@ Singleton {
     property bool providerSupportsSorting: getSortOptions().length > 0
 
     // SFW-only providers where NSFW toggle doesn't apply
-    // safebooru.org, e926.net, nekos.best, konachan.net are all SFW-only by design
-    property var sfwOnlyProviders: ["safebooru", "e926", "nekos_best", "konachan"]
+    // safebooru.org, e926.net, nekos.best are all SFW-only by design
+    // Note: konachan removed - now determined by mirror selection (konachan.net=SFW, konachan.com=NSFW)
+    property var sfwOnlyProviders: ["safebooru", "e926", "nekos_best"]
     // NSFW-only providers - rating filter doesn't apply (all content is NSFW)
     property var nsfwOnlyProviders: ["rule34", "xbooru", "tbib", "paheal", "hypnohub"]
-    property bool providerSupportsNsfw: sfwOnlyProviders.indexOf(currentProvider) === -1
+    // Provider supports NSFW if: not in sfwOnlyProviders AND current mirror isn't SFW-only
+    property bool providerSupportsNsfw: sfwOnlyProviders.indexOf(currentProvider) === -1 && !currentMirrorIsSfwOnly(currentProvider)
 
     // Gelbooru API credentials (configured in config.json under "booru")
     // Get your key at: https://gelbooru.com/index.php?page=account&s=options
@@ -118,6 +119,69 @@ Singleton {
     // Get your key at: https://danbooru.donmai.us/profile → API Key
     property string danbooruLogin: (ConfigOptions.booru && ConfigOptions.booru.danbooruLogin) ? ConfigOptions.booru.danbooruLogin : ""
     property string danbooruApiKey: (ConfigOptions.booru && ConfigOptions.booru.danbooruApiKey) ? ConfigOptions.booru.danbooruApiKey : ""
+
+    // Mirror system - tracks current mirror selection per provider
+    property var currentMirrors: ({})
+
+    // Check if provider has mirrors
+    function providerHasMirrors(provider) {
+        return providers[provider] && providers[provider].mirrors ? true : false
+    }
+
+    // Get list of mirror keys for a provider
+    function getMirrorList(provider) {
+        if (!providerHasMirrors(provider)) return []
+        return Object.keys(providers[provider].mirrors)
+    }
+
+    // Get current mirror key for a provider (defaults to first mirror)
+    function getCurrentMirror(provider) {
+        if (!providerHasMirrors(provider)) return null
+        var mirrors = providers[provider].mirrors
+        var current = currentMirrors[provider]
+        if (current && mirrors[current]) return current
+        return Object.keys(mirrors)[0]
+    }
+
+    // Set mirror for a provider
+    function setMirror(provider, mirrorKey) {
+        if (!providerHasMirrors(provider)) return
+        if (!providers[provider].mirrors[mirrorKey]) return
+        var newMirrors = JSON.parse(JSON.stringify(currentMirrors))
+        newMirrors[provider] = mirrorKey
+        currentMirrors = newMirrors
+        console.log("[Booru] Mirror set: " + provider + " -> " + mirrorKey)
+    }
+
+    // Get effective API URL for provider (respects mirror selection)
+    function getEffectiveApiUrl(provider) {
+        var p = providers[provider]
+        if (!p) return ""
+        if (p.mirrors) {
+            var mirror = getCurrentMirror(provider)
+            return p.mirrors[mirror].api
+        }
+        return p.api
+    }
+
+    // Get effective tag search URL for provider (respects mirror selection)
+    function getEffectiveTagApiUrl(provider) {
+        var p = providers[provider]
+        if (!p) return ""
+        if (p.mirrors) {
+            var mirror = getCurrentMirror(provider)
+            var m = p.mirrors[mirror]
+            return m.tagApi ? m.tagApi : p.tagSearchTemplate
+        }
+        return p.tagSearchTemplate ? p.tagSearchTemplate.split("?")[0] : ""
+    }
+
+    // Check if current mirror is SFW-only
+    function currentMirrorIsSfwOnly(provider) {
+        if (!providerHasMirrors(provider)) return false
+        var mirror = getCurrentMirror(provider)
+        return providers[provider].mirrors[mirror].sfwOnly === true
+    }
 
     property var providers: {
         "system": { "name": "System" },
@@ -157,6 +221,22 @@ Singleton {
             "url": "https://konachan.net",
             "api": "https://konachan.net/post.json",
             "description": "For desktop wallpapers | Good quality",
+            "mirrors": {
+                "konachan.net": {
+                    "url": "https://konachan.net",
+                    "api": "https://konachan.net/post.json",
+                    "tagApi": "https://konachan.net/tag.json",
+                    "description": "SFW-focused",
+                    "sfwOnly": true
+                },
+                "konachan.com": {
+                    "url": "https://konachan.com",
+                    "api": "https://konachan.com/post.json",
+                    "tagApi": "https://konachan.com/tag.json",
+                    "description": "More NSFW",
+                    "sfwOnly": false
+                }
+            },
             "mapFunc": (response) => {
                 return response.map(item => {
                     return {
@@ -188,6 +268,22 @@ Singleton {
             "url": "https://danbooru.donmai.us",
             "api": "https://danbooru.donmai.us/posts.json",
             "description": "The popular one | Best quantity, quality varies",
+            "mirrors": {
+                "danbooru.donmai.us": {
+                    "url": "https://danbooru.donmai.us",
+                    "api": "https://danbooru.donmai.us/posts.json",
+                    "tagApi": "https://danbooru.donmai.us/tags.json",
+                    "description": "Main site",
+                    "sfwOnly": false
+                },
+                "safebooru.donmai.us": {
+                    "url": "https://safebooru.donmai.us",
+                    "api": "https://safebooru.donmai.us/posts.json",
+                    "tagApi": "https://safebooru.donmai.us/tags.json",
+                    "description": "SFW-only",
+                    "sfwOnly": true
+                }
+            },
             "mapFunc": (response) => {
                 // Danbooru uses g=general, s=sensitive, q=questionable, e=explicit
                 var result = []
@@ -506,37 +602,6 @@ Singleton {
                 return []
             }
         },
-        "konachan_com": {
-            "name": "Konachan.com",
-            "url": "https://konachan.com",
-            "api": "https://konachan.com/post.json",
-            "description": "For desktop wallpapers | More NSFW than .net",
-            "mapFunc": (response) => {
-                return response.map(item => {
-                    return {
-                        "id": item.id,
-                        "width": item.width,
-                        "height": item.height,
-                        "aspect_ratio": item.width / item.height,
-                        "tags": item.tags,
-                        "rating": item.rating,
-                        "is_nsfw": (item.rating != 's'),
-                        "md5": item.md5,
-                        "preview_url": item.preview_url,
-                        "sample_url": item.sample_url ? item.sample_url : item.file_url,
-                        "file_url": item.file_url,
-                        "file_ext": item.file_url.split('.').pop(),
-                        "source": getWorkingImageSource(item.source) ? getWorkingImageSource(item.source) : item.file_url,
-                    }
-                })
-            },
-            "tagSearchTemplate": "https://konachan.com/tag.json?order=count&limit=10&name={{query}}*",
-            "tagMapFunc": (response) => {
-                return response.map(item => {
-                    return { "name": item.name, "count": item.count }
-                })
-            }
-        },
         "nekos_best": {
             "name": "nekos.best",
             "url": "https://nekos.best",
@@ -768,14 +833,14 @@ Singleton {
 
     function constructRequestUrl(tags, nsfw=true, limit=20, page=1) {
         var provider = providers[currentProvider]
-        var baseUrl = provider.api
+        var baseUrl = getEffectiveApiUrl(currentProvider)
         var url = baseUrl
         var tagString = tags.join(" ")
 
         // Inject sort metatag for providers that use tag-based sorting
         if (currentSorting && currentSorting.length > 0) {
-            // Moebooru sites (yandere, konachan, konachan_com) use order:X
-            if (currentProvider === "yandere" || currentProvider === "konachan" || currentProvider === "konachan_com") {
+            // Moebooru sites (yandere, konachan) use order:X
+            if (currentProvider === "yandere" || currentProvider === "konachan") {
                 tagString = "order:" + currentSorting + " " + tagString
             }
             // Danbooru uses order:X
@@ -977,6 +1042,20 @@ Singleton {
         if (!provider.tagSearchTemplate) return
 
         var url = provider.tagSearchTemplate.replace("{{query}}", encodeURIComponent(query))
+
+        // For providers with mirrors, replace the base URL with the mirror's tagApi
+        if (provider.mirrors) {
+            var mirror = getCurrentMirror(currentProvider)
+            var mirrorData = provider.mirrors[mirror]
+            if (mirrorData.tagApi) {
+                // Extract the query params from the template and append to mirror's tagApi
+                var queryPart = provider.tagSearchTemplate.split("?")[1]
+                if (queryPart) {
+                    queryPart = queryPart.replace("{{query}}", encodeURIComponent(query))
+                    url = mirrorData.tagApi + "?" + queryPart
+                }
+            }
+        }
 
         // Add API credentials for tag search
         if (currentProvider === "gelbooru" && gelbooruApiKey && gelbooruUserId) {
