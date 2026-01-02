@@ -21,6 +21,8 @@ Process {
     property int limit: 20          // Max results
     property bool loadDetails: true // Fetch additional metadata (tag categories, sources)
     property bool isNsfw: false     // Include NSFW content
+    property string user: ""        // Authentication username (Grabber -u flag)
+    property string password: ""    // Authentication password/API key (Grabber -w flag)
 
     // Status
     property bool loading: false
@@ -56,6 +58,14 @@ Process {
 
         if (loadDetails) {
             args.push("--load-details")
+        }
+
+        // Add authentication if provided
+        if (user && user.length > 0) {
+            args.push("-u", user)
+        }
+        if (password && password.length > 0) {
+            args.push("-w", password)
         }
 
         command = args

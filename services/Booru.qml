@@ -1116,13 +1116,23 @@ Singleton {
 
         console.log("[Booru] Grabber request: source=" + source + " tags=" + tagString)
 
-        var grabberReq = grabberRequestComponent.createObject(root, {
+        // Build properties for GrabberRequest
+        var grabberProps = {
             "source": source,
             "tags": tagString,
             "limit": limit,
             "isNsfw": nsfw,
             "loadDetails": true
-        })
+        }
+
+        // Add authentication for providers that support it
+        if (requestProvider === "danbooru" && danbooruApiKey) {
+            grabberProps.user = danbooruLogin
+            grabberProps.password = danbooruApiKey
+            console.log("[Booru] Using Danbooru auth: " + danbooruLogin)
+        }
+
+        var grabberReq = grabberRequestComponent.createObject(root, grabberProps)
 
         root.runningRequests++
 
