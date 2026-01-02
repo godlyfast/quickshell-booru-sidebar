@@ -26,6 +26,8 @@ Process {
     // Optional properties
     property string filenameTemplate: "%website% %id%.%ext%"  // Grabber filename tokens
     property bool noDuplicates: true    // Skip if file exists
+    property string user: ""            // Authentication username
+    property string password: ""        // Authentication password/API key
 
     // Status
     property bool downloading: false
@@ -63,6 +65,14 @@ Process {
 
         if (noDuplicates) {
             args.push("-n")             // Skip duplicates
+        }
+
+        // Add authentication if provided
+        if (user && user.length > 0) {
+            args.push("-u", user)
+        }
+        if (password && password.length > 0) {
+            args.push("-w", password)
         }
 
         command = args

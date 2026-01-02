@@ -19,6 +19,7 @@ Process {
 
     // Optional properties
     property int limit: 20          // Max results
+    property int page: 1            // Page number (Grabber -p flag)
     property bool loadDetails: true // Fetch additional metadata (tag categories, sources)
     property bool isNsfw: false     // Include NSFW content
     property string user: ""        // Authentication username (Grabber -u flag)
@@ -52,6 +53,7 @@ Process {
             "-s", source,               // Source website
             "-t", searchTags.trim(),    // Search tags
             "-m", String(limit),        // Max results
+            "-p", String(page),         // Page number
             "-j",                       // JSON output
             "--ri"                      // Return images
         ]

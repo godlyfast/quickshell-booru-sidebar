@@ -1108,21 +1108,16 @@ Singleton {
             }
         }
 
-        // Grabber handles pagination via page number in tags
-        if (page > 1) {
-            // Most boorus support page:N metatag
-            tagString = tagString + " limit:" + limit + " page:" + page
-        }
-
-        console.log("[Booru] Grabber request: source=" + source + " tags=" + tagString)
+        console.log("[Booru] Grabber request: source=" + source + " tags=" + tagString + " page=" + page)
 
         // Build properties for GrabberRequest
         var grabberProps = {
             "source": source,
             "tags": tagString,
             "limit": limit,
+            "page": page,
             "isNsfw": nsfw,
-            "loadDetails": true
+            "loadDetails": false  // --load-details is slow (20s+ per request)
         }
 
         // Add authentication for providers that support it

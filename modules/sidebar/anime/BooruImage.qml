@@ -79,20 +79,67 @@ Button {
     }
     property string highResFilePath: root.previewDownloadPath + "/" + root.highResFileName
 
+    // Grabber uses md5-based filename for Danbooru
+    property string grabberHighResPath: root.previewDownloadPath + "/hires_" + (root.imageData.md5 ? root.imageData.md5 : root.imageData.id) + "." + root.fileExt
+
+    // Unified cache check for all manual download providers
+    property bool highResCacheChecked: false
+    property string effectiveHighResPath: root.provider === "danbooru" ? root.grabberHighResPath : root.highResFilePath
+
+    Process {
+        id: highResCacheCheck
+        running: root.manualDownload && !root.isGif && !root.isVideo && root.effectiveHighResPath.length > 0 && !root.highResCacheChecked
+        command: ["test", "-f", root.effectiveHighResPath]
+        onExited: (code, status) => {
+            root.highResCacheChecked = true
+            if (code === 0) {
+                // File exists - use it immediately
+                root.localHighResSource = "file://" + root.effectiveHighResPath
+            }
+            // If not cached, downloaders below will trigger
+        }
+    }
+
     ImageDownloaderProcess {
         id: highResDownloader
-        enabled: root.manualDownload && !root.isGif && !root.isVideo && imageDownloader.downloadedPath.length > 0
+        // Use curl for non-Danbooru providers (only if not cached)
+        enabled: root.manualDownload && root.provider !== "danbooru" && !root.isGif && !root.isVideo && imageDownloader.downloadedPath.length > 0 && root.highResCacheChecked && root.localHighResSource === ""
         filePath: root.highResFilePath
-        // With Grabber fallback, file_url now works for all providers
         sourceUrl: root.imageData.file_url ? root.imageData.file_url : ""
         onDone: (path, width, height) => {
             if (path.length > 0) {
                 root.localHighResSource = "file://" + path
             } else {
-                // High-res blocked - use preview as fallback to clear blur
+                // High-res blocked - use preview as fallback
                 root.localHighResSource = "file://" + imageDownloader.downloadedPath
             }
         }
+    }
+
+    GrabberDownloader {
+        id: grabberHighResDownloader
+        source: "danbooru.donmai.us"
+        imageId: root.imageData.id ? String(root.imageData.id) : ""
+        outputPath: root.previewDownloadPath
+        filenameTemplate: "hires_%md5%.%ext%"
+        user: Services.Booru.danbooruLogin
+        password: Services.Booru.danbooruApiKey
+        onDone: (success, message) => {
+            if (success) {
+                root.localHighResSource = "file://" + root.grabberHighResPath
+            } else {
+                // Fallback to preview
+                root.localHighResSource = "file://" + imageDownloader.downloadedPath
+            }
+        }
+    }
+
+    // Trigger Grabber download for Danbooru (only if not cached)
+    Timer {
+        id: grabberTrigger
+        interval: 100
+        running: root.manualDownload && root.provider === "danbooru" && !root.isGif && !root.isVideo && imageDownloader.downloadedPath.length > 0 && !grabberHighResDownloader.downloading && root.localHighResSource === "" && root.highResCacheChecked
+        onTriggered: grabberHighResDownloader.startDownload()
     }
 
     // Manual download for GIFs (providers that block direct requests)
@@ -255,8 +302,8 @@ Button {
                 fillMode: Image.PreserveAspectCrop
                 source: {
                     if (root.isVideo || root.isGif) return ""
-                    // For manual download providers, use local file
-                    if (root.manualDownload && root.localHighResSource) return root.localHighResSource
+                    // For manual download providers, use local file (don't try CDN - gets 403)
+                    if (root.manualDownload) return root.localHighResSource
                     // Otherwise load file_url directly
                     return modelData.file_url ? modelData.file_url : ""
                 }
