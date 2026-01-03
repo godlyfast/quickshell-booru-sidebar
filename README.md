@@ -9,6 +9,7 @@ A beautiful anime image browser sidebar for [Quickshell](https://quickshell.outf
 - **12+ Booru Sources**: yande.re, Danbooru, Gelbooru, e621, Wallhaven, Rule34, and more
 - **Animated Media**: GIFs, videos, and ugoira (Pixiv ZIP animations) play automatically
 - **Smart Downloads**: Filename templates with artist/character metadata via imgbrd-grabber
+- **Intelligent Caching**: Cache-first loading for all providers - instant display of previously-viewed images
 - **4K+ Wallpapers**: Wallhaven filtering by resolution (3840x2160+) and toplist periods
 - **Tag Autocomplete**: Fuzzy search with provider-specific suggestions
 - **NSFW Filtering**: Per-provider toggle with SFW-only options
@@ -266,6 +267,22 @@ qs -c booru-sidebar msg sidebarLeft open
 # Close sidebar
 qs -c booru-sidebar msg sidebarLeft close
 ```
+
+## Caching
+
+All images, GIFs, and videos are cached locally for instant subsequent viewing. The cache system checks multiple locations in priority order:
+
+1. **Hi-res cache**: `~/.cache/quickshell/booru/previews/hires_*`
+2. **Download folder**: `~/Pictures/booru/`
+3. **NSFW folder**: `~/Pictures/booru/nsfw/`
+4. **Wallpapers**: `~/Pictures/wallpapers/`
+
+**Benefits:**
+- View an image, scroll away, view again → loads instantly from cache
+- Download an image, restart app → shows from local file instead of re-downloading
+- Reduced bandwidth and faster browsing experience
+
+The cache is stored in `~/.cache/quickshell/booru/previews/` and can be cleared manually if needed.
 
 ## File Structure
 

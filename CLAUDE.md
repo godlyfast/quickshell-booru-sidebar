@@ -233,6 +233,65 @@ All provider `mapFunc` results use this schema:
 
 Some providers (e621, e926) require `ImageDownloaderProcess` to curl images with User-Agent.
 
+## Universal Cache-First Loading
+
+All providers use cache-first loading for images, GIFs, and videos. This reduces bandwidth and provides instant display for previously-viewed content.
+
+### Cache Locations (Priority Order)
+
+| Location | Path | Contents |
+|----------|------|----------|
+| Hi-res cache | `~/.cache/quickshell/booru/previews/hires_*` | Cached full-resolution images |
+| Download folder | `~/Pictures/booru/<filename>` | User downloads |
+| NSFW folder | `~/Pictures/booru/nsfw/<filename>` | NSFW user downloads |
+| Wallpapers | `~/Pictures/wallpapers/<filename>` | Saved wallpapers |
+
+### How It Works
+
+1. **Cache check**: On image load, check all cache locations for existing file
+2. **Display from cache**: If found, load from local file immediately
+3. **Download to cache**: If not found, download from network and save to cache
+4. **Subsequent views**: Future views load instantly from cache
+
+### Implementation (`BooruImage.qml`)
+
+**Properties**:
+- `universalCacheChecked` / `gifCacheChecked` / `videoCacheChecked` - Cache check completed flags
+- `cachedImageSource` / `cachedGifSource` / `cachedVideoSource` - Local file paths (file://)
+
+**Processes**:
+- `universalCacheCheck` - Checks all cache locations for static images
+- `gifCacheCheck` - Checks cache locations for GIFs
+- `videoCacheCheck` - Checks cache locations for videos
+
+**Downloaders**:
+- `universalHighResDownloader` - Downloads hi-res to cache (non-manual providers)
+- `universalGifDownloader` - Downloads GIFs to cache
+- `universalVideoDownloader` - Downloads videos to cache
+
+### Source Binding Pattern
+
+All image source bindings follow this priority:
+```qml
+source: {
+    // 1. Universal cache (any provider)
+    if (root.cachedImageSource.length > 0) return root.cachedImageSource
+    // 2. Manual download path (Cloudflare-blocked providers)
+    if (root.manualDownload) return root.localHighResSource
+    // 3. Wait for cache check before network
+    if (!root.universalCacheChecked) return ""
+    // 4. Network fallback
+    return modelData.file_url
+}
+```
+
+### Benefits
+
+- **View → scroll → view again**: Instant from cache
+- **Download → restart app**: Loads from local file
+- **Reduced bandwidth**: No re-downloading previously viewed images
+- **Works with all providers**: Not just Cloudflare-blocked ones
+
 ## Configuration
 
 `config.json` structure:
