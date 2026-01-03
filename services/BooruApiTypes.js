@@ -14,6 +14,16 @@ function getWorkingImageSource(source) {
     return source
 }
 
+// Helper function to extract file extension from URL (strips query parameters)
+// Handles signed URLs like: https://example.com/file.mp4?token=abc123
+function getFileExtFromUrl(url) {
+    if (!url) return "jpg"
+    var queryIdx = url.indexOf('?')
+    if (queryIdx > 0) url = url.substring(0, queryIdx)
+    var ext = url.split('.').pop()
+    return ext ? ext.toLowerCase() : "jpg"
+}
+
 // =============================================================================
 // API Family: Moebooru
 // Providers: yandere, konachan, lolibooru, sakugabooru
@@ -37,7 +47,7 @@ var moebooru = {
                 preview_url: item.preview_url || item.file_url,
                 sample_url: item.sample_url || item.file_url,
                 file_url: item.file_url,
-                file_ext: item.file_ext || item.file_url.split(".").pop(),
+                file_ext: item.file_ext || getFileExtFromUrl(item.file_url),
                 source: getWorkingImageSource(item.source) || item.file_url
             })
         }
@@ -126,7 +136,7 @@ var gelbooru = {
                 preview_url: item.preview_url || item.file_url,
                 sample_url: item.sample_url || item.file_url,
                 file_url: item.file_url,
-                file_ext: item.file_url.split(".").pop(),
+                file_ext: getFileExtFromUrl(item.file_url),
                 source: getWorkingImageSource(item.source) || item.file_url
             })
         }
@@ -185,7 +195,7 @@ var gelbooruNsfw = {
                 preview_url: item.preview_url || item.file_url,
                 sample_url: item.sample_url || item.file_url,
                 file_url: item.file_url,
-                file_ext: item.file_url.split(".").pop(),
+                file_ext: getFileExtFromUrl(item.file_url),
                 source: getWorkingImageSource(item.source) || item.file_url
             })
         }
@@ -286,7 +296,7 @@ var philomena = {
                 preview_url: item.representations ? item.representations.thumb : item.view_url,
                 sample_url: item.representations ? item.representations.large : item.view_url,
                 file_url: item.view_url,
-                file_ext: item.format || item.view_url.split(".").pop(),
+                file_ext: item.format || getFileExtFromUrl(item.view_url),
                 source: (item.source_url && item.source_url.length > 0) ? item.source_url : item.view_url
             })
         }
@@ -337,7 +347,7 @@ var shimmie = {
                 preview_url: previewUrl,
                 sample_url: fileUrl,
                 file_url: fileUrl,
-                file_ext: fileName.split(".").pop(),
+                file_ext: getFileExtFromUrl(fileName),
                 source: fileUrl
             })
         }
@@ -378,7 +388,7 @@ var wallhaven = {
                 preview_url: (item.thumbs && item.thumbs.small) ? item.thumbs.small : item.path,
                 sample_url: (item.thumbs && item.thumbs.large) ? item.thumbs.large : item.path,
                 file_url: item.path,
-                file_ext: item.path.split(".").pop(),
+                file_ext: getFileExtFromUrl(item.path),
                 source: item.source || item.path
             })
         }
@@ -456,7 +466,10 @@ var nekosBest = {
         for (var i = 0; i < response.results.length; i++) {
             var item = response.results[i]
             if (!item || !item.url) continue
-            var ext = item.url.split(".").pop()
+            var ext = getFileExtFromUrl(item.url)
+            // Extract filename without extension for md5
+            var urlPath = item.url.indexOf('?') > 0 ? item.url.substring(0, item.url.indexOf('?')) : item.url
+            var filename = urlPath.split("/").pop().replace("." + ext, "")
             result.push({
                 id: i,
                 width: 1000,  // nekos.best doesn't provide dimensions
@@ -465,7 +478,7 @@ var nekosBest = {
                 tags: "neko anime",
                 rating: "s",
                 is_nsfw: false,
-                md5: item.url.split("/").pop().replace("." + ext, ""),
+                md5: filename,
                 preview_url: item.url,
                 sample_url: item.url,
                 file_url: item.url,
@@ -534,7 +547,10 @@ var sankaku = {
         var result = []
         for (var i = 0; i < response.length; i++) {
             var item = response[i]
-            if (!item.file_url) continue
+            // Skip items without URLs or that require login
+            // redirect_to_signup: true means URLs are withheld (account required)
+            if (!item.file_url || item.file_url.length === 0) continue
+            if (item.redirect_to_signup) continue
             // Sankaku tags are objects with name property
             var tagString = ""
             if (item.tags && Array.isArray(item.tags)) {
@@ -546,8 +562,15 @@ var sankaku = {
                 }
                 tagString = tagNames.join(" ")
             }
-            // Sankaku preview_url uses AVIF which Qt doesn't support
-            // Use file_url for preview (sample_url is webp which has filename mismatch issues)
+            // Determine if this is a video based on file_type or extension
+            var fileType = item.file_type || ""
+            var ext = item.file_ext || getFileExtFromUrl(item.file_url)
+            var isVideo = fileType.indexOf("video") >= 0 || ext === "mp4" || ext === "webm"
+
+            // For images: Use sample_url (WebP) for fast preview (Qt doesn't support AVIF)
+            // For videos: Keep original preview_url (AVIF) - we'll convert with avifdec
+            var previewUrl = isVideo ? (item.preview_url || item.file_url) : (item.sample_url || item.file_url)
+
             result.push({
                 id: item.id,
                 width: item.width || 0,
@@ -557,10 +580,11 @@ var sankaku = {
                 rating: item.rating || "s",
                 is_nsfw: (item.rating !== "s"),
                 md5: item.md5 || "",
-                preview_url: item.file_url,
-                sample_url: item.file_url,
+                preview_url: previewUrl,
+                sample_url: item.sample_url || item.file_url,
                 file_url: item.file_url,
-                file_ext: item.file_ext || "jpg",
+                file_ext: ext,
+                file_size: item.file_size || 0,  // For download progress indication
                 source: getWorkingImageSource(item.source) || item.file_url
             })
         }

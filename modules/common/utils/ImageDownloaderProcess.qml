@@ -18,29 +18,35 @@ Process {
 
     running: enabled && sourceUrl.length > 0
 
-    command: ["bash", "-c", `
-        mkdir -p "$(dirname '${root.filePath}')"
-        # Download if missing OR if existing file is corrupted (HTML instead of image)
-        if [ ! -f '${root.filePath}' ] || file '${root.filePath}' | grep -q 'HTML'; then
-            rm -f '${root.filePath}'
-            curl -sL -A 'Mozilla/5.0 BooruSidebar/1.0' '${root.sourceUrl}' -o '${root.filePath}' 2>/dev/null
-        fi
-        # Only output dimensions if it's a valid image
-        if [ -f '${root.filePath}' ] && ! file '${root.filePath}' | grep -q 'HTML'; then
-            file '${root.filePath}' | grep -oP '\\d+\\s*x\\s*\\d+' | head -1
-        fi
-    `]
+    // Shell escape helper for safe embedding in shell commands
+    function shellEscape(str) {
+        if (!str) return ""
+        return str.replace(/'/g, "'\\''")
+    }
+
+    command: ["bash", "-c",
+        "mkdir -p \"$(dirname '" + shellEscape(root.filePath) + "')\" && " +
+        // Re-download if: file missing, empty, or HTML error page
+        "if [ ! -s '" + shellEscape(root.filePath) + "' ] || file '" + shellEscape(root.filePath) + "' | grep -q 'HTML'; then " +
+        "  rm -f '" + shellEscape(root.filePath) + "'; " +
+        "  curl -fsSL -A 'Mozilla/5.0 BooruSidebar/1.0' '" + shellEscape(root.sourceUrl) + "' -o '" + shellEscape(root.filePath) + "'; " +
+        "fi && " +
+        "if [ -s '" + shellEscape(root.filePath) + "' ] && file -b '" + shellEscape(root.filePath) + "' | grep -qiE 'image|JPEG|PNG|WebP|GIF|bitmap'; then " +
+        "  file '" + shellEscape(root.filePath) + "' | grep -oP '\\d+\\s*x\\s*\\d+' | head -1; " +
+        "fi"
+    ]
 
     stdout: StdioCollector {
         onStreamFinished: {
-            const output = text.trim()
+            var output = text.trim()
             // Empty output = download failed or got HTML (Cloudflare block)
             if (output.length === 0) {
                 root.done("", 0, 0)
                 return
             }
-            let w = 300, h = 300
-            const dims = output.split(/\s*x\s*/)
+            var w = 300
+            var h = 300
+            var dims = output.split(/\s*x\s*/)
             if (dims.length >= 2) {
                 w = parseInt(dims[0]) || 300
                 h = parseInt(dims[1]) || 300

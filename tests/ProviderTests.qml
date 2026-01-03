@@ -88,9 +88,9 @@ Item {
         // Philomena (sf param)
         "derpibooru": ["score", "wilson_score", "relevance", "random", "created_at", "updated_at", "first_seen_at", "width", "height", "comment_count", "tag_count"],
 
-        // Sankaku (order: metatag)
-        "sankaku": ["quality", "score", "favcount", "random", "id", "id_asc", "recently_favorited", "recently_voted"],
-        "idol_sankaku": ["quality", "score", "favcount", "random", "id", "id_asc", "recently_favorited", "recently_voted"],
+        // Sankaku (order: metatag) - NOTE: favcount causes API timeout errors
+        "sankaku": ["popularity", "date", "quality", "score", "random", "id", "id_asc", "recently_favorited", "recently_voted"],
+        "idol_sankaku": ["popularity", "date", "quality", "score", "random", "id", "id_asc", "recently_favorited", "recently_voted"],
 
         // Zerochan (URL param)
         "zerochan": ["id", "fav"],

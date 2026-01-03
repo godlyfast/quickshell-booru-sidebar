@@ -108,9 +108,9 @@ Singleton {
         // Zerochan (s param)
         "zerochan": ["id", "fav"],
 
-        // Sankaku (order: metatag)
-        "sankaku": ["quality", "score", "favcount", "random", "id", "id_asc", "recently_favorited", "recently_voted"],
-        "idol_sankaku": ["quality", "score", "favcount", "random", "id", "id_asc", "recently_favorited", "recently_voted"],
+        // Sankaku (order: metatag) - NOTE: favcount causes API timeout errors
+        "sankaku": ["popularity", "date", "quality", "score", "random", "id", "id_asc", "recently_favorited", "recently_voted"],
+        "idol_sankaku": ["popularity", "date", "quality", "score", "random", "id", "id_asc", "recently_favorited", "recently_voted"],
 
         // Derpibooru (sf param)
         "derpibooru": ["score", "wilson_score", "relevance", "random", "created_at", "updated_at", "first_seen_at", "width", "height", "comment_count", "tag_count"],
@@ -679,12 +679,10 @@ Singleton {
         // waifu.im: uses is_nsfw param
         // derpibooru: uses filter_id param
         // zerochan: SFW-only
-        // sankaku/idol_sankaku: uses rating tag but in query params already
+        // sankaku/idol_sankaku: uses rating:safe tag (handled by default case below)
         var skipNsfwFilter = (currentProvider === "waifu.im" ||
                               currentProvider === "derpibooru" ||
                               currentProvider === "zerochan" ||
-                              currentProvider === "sankaku" ||
-                              currentProvider === "idol_sankaku" ||
                               sfwOnlyProviders.indexOf(currentProvider) !== -1 ||
                               nsfwOnlyProviders.indexOf(currentProvider) !== -1)
         if (!nsfw && !skipNsfwFilter) {

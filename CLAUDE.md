@@ -297,9 +297,17 @@ All providers use cache-first loading for images, GIFs, and videos. This reduces
 | Location | Path | Contents |
 |----------|------|----------|
 | Hi-res cache | `~/.cache/quickshell/booru/previews/hires_*` | Cached full-resolution images |
+| Preview cache | `~/.cache/quickshell/booru/previews/<filename>` | Preview images (full-res for Sankaku) |
 | Download folder | `~/Pictures/booru/<filename>` | User downloads |
 | NSFW folder | `~/Pictures/booru/nsfw/<filename>` | NSFW user downloads |
 | Wallpapers | `~/Pictures/wallpapers/<filename>` | Saved wallpapers |
+
+### Sankaku Optimization
+
+Sankaku uses the same URL for both preview and hi-res (`preview_url === file_url`). To avoid downloading the same file twice:
+- `previewIsFullRes` property detects when URLs match
+- Single download serves both preview and hi-res display
+- Cache check includes preview path for these providers
 
 ### How It Works
 
@@ -421,6 +429,7 @@ Each provider has API-specific sort options. Use `/sort <option>` command.
 | **Gelbooru** | gelbooru, safebooru, rule34, xbooru | `score`, `score:asc`, `score:desc`, `id`, `id:asc`, `updated`, `random` |
 | **Gelbooru** | tbib, hypnohub | `score`, `score:asc`, `score:desc`, `id`, `id:asc`, `updated` |
 | **Wallhaven** | wallhaven | `toplist`, `random`, `date_added`, `relevance`, `views`, `favorites`, `hot` |
+| **Sankaku** | sankaku, idol_sankaku | `popularity`, `date`, `quality`, `score`, `favcount`, `random`, `id`, `id_asc`, `recently_favorited`, `recently_voted` |
 | **None** | waifu.im, nekos_best, paheal | No sorting support |
 
 ### Age Filter
