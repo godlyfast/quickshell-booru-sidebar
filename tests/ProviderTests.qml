@@ -22,12 +22,19 @@ Item {
     property var providerKeys: []
 
     // Providers that need curl (User-Agent) to bypass Cloudflare
-    // Note: e621/e926 work with curl for image tests, danbooru has stricter protections
+    // Note: e621 works with curl for image tests, danbooru has stricter protections
     // paheal uses XML which QML XMLHttpRequest.responseXML doesn't handle well
-    property var curlProviders: ["e621", "e926", "paheal"]
+    property var curlProviders: ["e621", "paheal"]
 
-    // Providers that cannot be tested due to Cloudflare JS challenges
-    property var cloudflareProviders: ["danbooru"]
+    // Providers that cannot be tested due to Cloudflare JS challenges or API blocks
+    // danbooru: strict Cloudflare JS challenge
+    // zerochan: returns 503, requires authentication
+    // hypnohub: returns XML/HTML instead of JSON
+    // 3dbooru: connection issues (times out)
+    property var cloudflareProviders: ["danbooru", "zerochan", "hypnohub", "3dbooru"]
+
+    // Providers that use Grabber-only (no direct API)
+    property var grabberOnlyProviders: ["anime_pictures", "e_shuushuu"]
 
     // Providers that return XML instead of JSON
     property var xmlProviders: ["paheal"]
@@ -51,18 +58,21 @@ Item {
 
     // Expected sort options per provider (should match Booru.providerSortOptions)
     // Note: konachan_com removed - now a mirror of konachan
+    // Note: e926 removed - now a mirror of e621
+    // Note: lolibooru removed - site is dead since 2024
     property var expectedSortOptions: ({
-        // Moebooru (order: metatag) - yande.re, konachan
+        // Moebooru (order: metatag) - yande.re, konachan, sakugabooru, 3dbooru
         "yandere": ["score", "score_asc", "favcount", "random", "rank", "id", "id_desc", "change", "comment", "mpixels", "landscape", "portrait"],
         "konachan": ["score", "score_asc", "favcount", "random", "rank", "id", "id_desc", "change", "comment", "mpixels", "landscape", "portrait"],
+        "sakugabooru": ["score", "score_asc", "favcount", "random", "rank", "id", "id_desc", "change", "comment", "mpixels", "landscape", "portrait"],
+        "3dbooru": ["score", "score_asc", "favcount", "random", "rank", "id", "id_desc", "change", "comment", "mpixels", "landscape", "portrait"],
 
         // Danbooru (order: metatag)
         "danbooru": ["rank", "score", "favcount", "random", "id", "id_desc", "change", "comment", "comment_bumped", "note", "mpixels", "landscape", "portrait"],
         "aibooru": ["rank", "score", "favcount", "random", "id", "id_desc", "change", "comment", "comment_bumped", "note", "mpixels", "landscape", "portrait"],
 
-        // e621/e926 (order: metatag)
+        // e621 (order: metatag)
         "e621": ["score", "favcount", "random", "id", "id_asc", "comment_count", "tagcount", "mpixels", "filesize", "landscape", "portrait"],
-        "e926": ["score", "favcount", "random", "id", "id_asc", "comment_count", "tagcount", "mpixels", "filesize", "landscape", "portrait"],
 
         // Gelbooru-style (sort: metatag)
         "gelbooru": ["score", "score:asc", "score:desc", "id", "id:asc", "updated", "random"],
@@ -74,6 +84,16 @@ Item {
 
         // Wallhaven (URL params)
         "wallhaven": ["toplist", "random", "date_added", "relevance", "views", "favorites", "hot"],
+
+        // Philomena (sf param)
+        "derpibooru": ["score", "wilson_score", "relevance", "random", "created_at", "updated_at", "first_seen_at", "width", "height", "comment_count", "tag_count"],
+
+        // Sankaku (order: metatag)
+        "sankaku": ["quality", "score", "favcount", "random", "id", "id_asc", "recently_favorited", "recently_voted"],
+        "idol_sankaku": ["quality", "score", "favcount", "random", "id", "id_asc", "recently_favorited", "recently_voted"],
+
+        // Zerochan (URL param)
+        "zerochan": ["id", "fav"],
 
         // No sorting support
         "waifu.im": [],
@@ -124,6 +144,11 @@ Item {
 
     function start() {
         providerKeys = Booru.providerList
+
+        // Disable age filter for tests - otherwise Moebooru providers return 0 results
+        // because "landscape age:<1month rating:safe" is too restrictive
+        Booru.ageFilter = "any"
+
         // Build list of providers that have edge case tags
         edgeCaseProviderKeys = []
         for (var i = 0; i < providerKeys.length; i++) {
@@ -200,7 +225,15 @@ Item {
 
         // Skip providers with strict Cloudflare JS challenges that can't be bypassed
         if (cloudflareProviders.indexOf(providerKey) !== -1) {
-            console.log("  Image search... SKIP (Cloudflare JS challenge)")
+            console.log("  Image search... SKIP (API blocked/Cloudflare)")
+            skippedCount++
+            scheduleNextTest(isEdgeCase)
+            return
+        }
+
+        // Skip Grabber-only providers (no direct API)
+        if (grabberOnlyProviders.indexOf(providerKey) !== -1) {
+            console.log("  Image search... SKIP (Grabber-only, no direct API)")
             skippedCount++
             scheduleNextTest(isEdgeCase)
             return
@@ -240,6 +273,8 @@ Item {
     function getDefaultTag(providerKey) {
         // waifu.im only supports specific tags
         if (providerKey === "waifu.im") return "waifu"
+        // sakugabooru is animation-focused, "landscape" uncommon
+        if (providerKey === "sakugabooru") return "effects"
         return "landscape"
     }
 
@@ -303,7 +338,9 @@ Item {
             } else {
                 response = JSON.parse(xhr.responseText)
             }
-            var images = provider.mapFunc(response)
+            // Use Booru helper to get mapFunc (supports apiType family mappers)
+            var mapFunc = Booru.getProviderMapFunc(providerKey)
+            var images = mapFunc(response, provider)
 
             if (!images || images.length === 0) {
                 console.log("  Image search... FAIL (0 images returned)")
@@ -431,7 +468,9 @@ Item {
 
         try {
             var response = JSON.parse(xhr.responseText)
-            var tags = provider.tagMapFunc(response)
+            // Use Booru helper to get tagMapFunc (supports apiType family mappers)
+            var tagMapFunc = Booru.getProviderTagMapFunc(providerKey)
+            var tags = tagMapFunc ? tagMapFunc(response) : []
 
             if (!tags || tags.length === 0) {
                 console.log("  Autocomplete... FAIL (0 tags)")
@@ -918,7 +957,9 @@ Item {
     function handleAutocompleteCurlResponse(providerKey, provider, responseText) {
         try {
             var response = JSON.parse(responseText)
-            var tags = provider.tagMapFunc(response)
+            // Use Booru helper to get tagMapFunc (supports apiType family mappers)
+            var tagMapFunc = Booru.getProviderTagMapFunc(providerKey)
+            var tags = tagMapFunc ? tagMapFunc(response) : []
 
             if (!tags || tags.length === 0) {
                 console.log("  Autocomplete... FAIL (0 tags)")
@@ -960,7 +1001,9 @@ Item {
                 images = parseXmlResponse(responseText, providerKey)
             } else {
                 response = JSON.parse(responseText)
-                images = provider.mapFunc(response)
+                // Use Booru helper to get mapFunc (supports apiType family mappers)
+                var mapFunc = Booru.getProviderMapFunc(providerKey)
+                images = mapFunc(response, provider)
             }
 
             if (!images || images.length === 0) {

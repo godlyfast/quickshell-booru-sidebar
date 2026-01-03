@@ -31,25 +31,41 @@ timeout 120 qs --path tests    # With timeout (tests take ~60-90s)
 
 | Provider | Key | API Type | Sorting | Notes |
 |----------|-----|----------|---------|-------|
+| **Moebooru** |||||
 | yande.re | `yandere` | Moebooru | `order:X` | Default provider |
 | Konachan | `konachan` | Moebooru | `order:X` | Has .net (SFW) and .com (NSFW) mirrors |
+| Sakugabooru | `sakugabooru` | Moebooru | `order:X` | Animation sakuga clips |
+| 3Dbooru | `3dbooru` | Moebooru | `order:X` | 3D renders, connection issues |
+| **Danbooru** |||||
 | Danbooru | `danbooru` | Danbooru | `order:X` | Strict Cloudflare, uses Grabber |
 | AIBooru | `aibooru` | Danbooru | `order:X` | AI-generated art |
+| **Gelbooru** |||||
 | Gelbooru | `gelbooru` | Gelbooru | `sort:X` | Requires API key |
 | Safebooru | `safebooru` | Gelbooru | `sort:X` | SFW-only |
 | Rule34 | `rule34` | Gelbooru | `sort:X` | NSFW-only, requires API key |
-| e621 | `e621` | e621 | `order:X` | Furry, requires User-Agent |
-| e926 | `e926` | e621 | `order:X` | SFW furry, requires User-Agent |
-| Wallhaven | `wallhaven` | REST | `sorting=X` param | Desktop wallpapers, 4K+ filter |
-| waifu.im | `waifu.im` | REST | None | Limited tag set |
-| nekos.best | `nekos_best` | REST | None | Random images only |
 | Xbooru | `xbooru` | Gelbooru | `sort:X` | NSFW focused |
 | TBIB | `tbib` | Gelbooru | `sort:X` | 8M+ images aggregator |
+| Hypnohub | `hypnohub` | Gelbooru | `sort:X` | Niche themed, returns XML |
+| **e621** |||||
+| e621 | `e621` | e621 | `order:X` | Furry, has e926.net SFW mirror |
+| **Philomena** |||||
+| Derpibooru | `derpibooru` | Philomena | `sf=X` param | MLP content |
+| **Sankaku** |||||
+| Sankaku | `sankaku` | Sankaku | `order:X` | API requires auth (blocked) |
+| Idol Sankaku | `idol_sankaku` | Sankaku | `order:X` | Japanese idols (blocked) |
+| **Other** |||||
+| Wallhaven | `wallhaven` | REST | `sorting=X` param | Desktop wallpapers, 4K+ filter |
+| Zerochan | `zerochan` | REST | `s=X` param | High-quality art, API blocked |
+| waifu.im | `waifu.im` | REST | None | Limited tag set |
+| nekos.best | `nekos_best` | REST | None | Random images only |
 | Paheal | `paheal` | Shimmie | None | Rule34 Shimmie |
-| Hypnohub | `hypnohub` | Gelbooru | `sort:X` | Niche themed |
+| **Grabber-only** |||||
+| Anime-Pictures | `anime_pictures` | Grabber | N/A | Quality curated art |
+| E-Shuushuu | `e_shuushuu` | Grabber | N/A | SFW cute art |
 
-**SFW-only providers** (NSFW toggle hidden): `safebooru`, `e926`, `nekos_best`
+**SFW-only providers** (NSFW toggle hidden): `safebooru`, `nekos_best`, `zerochan`
 **NSFW-only providers**: `rule34`, `xbooru`, `tbib`, `paheal`, `hypnohub`
+**Mirror providers**: `e621` has e926.net (SFW), `konachan` has .com (NSFW) and .net (SFW)
 
 ## Architecture
 
@@ -139,6 +155,41 @@ Signals:
 - `file_utils.js` - `trimFileProtocol()` removes `file://` prefix
 - `fuzzysort.js` - Fuzzy search sorting library
 - `levendist.js` - Levenshtein distance for autocomplete
+
+### API Family System (`services/BooruApiTypes.js`)
+
+Shared mapper functions by API family to eliminate code duplication. Providers reference their family via `apiType` property.
+
+| Family | Providers | Description |
+|--------|-----------|-------------|
+| `moebooru` | yandere, konachan, sakugabooru, 3dbooru | Moebooru-based APIs |
+| `danbooru` | danbooru, aibooru | Danbooru-based APIs |
+| `gelbooru` | gelbooru, safebooru | Gelbooru 0.2 APIs |
+| `gelbooruNsfw` | rule34, xbooru, hypnohub | Gelbooru 0.2 NSFW sites |
+| `e621` | e621 (with e926 mirror) | e621 API |
+| `philomena` | derpibooru | Philomena engine |
+| `sankaku` | sankaku, idol_sankaku | Sankaku API |
+| `shimmie` | paheal | Shimmie XML API |
+| `wallhaven` | wallhaven | Wallhaven REST API |
+| `waifuIm` | waifu.im | waifu.im REST API |
+| `nekosBest` | nekos_best | nekos.best REST API |
+| `zerochan` | zerochan | Zerochan REST API |
+
+**Usage:**
+```javascript
+// Provider config
+"yandere": {
+    name: "yande.re",
+    url: "https://yande.re",
+    api: "https://yande.re/post.json",
+    apiType: "moebooru",  // References shared mapper
+    tagSearchTemplate: "https://yande.re/tag.json?order=count&limit=10&name={{query}}*"
+}
+
+// Getting mapper function
+var mapFunc = Booru.getProviderMapFunc("yandere")
+var images = mapFunc(response, provider)
+```
 
 ## QML Patterns
 

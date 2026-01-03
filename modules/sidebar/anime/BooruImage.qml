@@ -25,7 +25,11 @@ Button {
     property string nsfwPath
     property string fileName: {
         var url = imageData.file_url ? imageData.file_url : ""
-        return decodeURIComponent(url.substring(url.lastIndexOf('/') + 1))
+        var path = url.substring(url.lastIndexOf('/') + 1)
+        // Strip query parameters (e.g., Sankaku signed URLs)
+        var queryIdx = path.indexOf('?')
+        if (queryIdx > 0) path = path.substring(0, queryIdx)
+        return decodeURIComponent(path)
     }
     property string filePath: root.previewDownloadPath + "/" + root.fileName
     property real imageRadius: Appearance.rounding.small
@@ -98,7 +102,11 @@ Button {
     // Manual download for high-res images (triggered after preview loads)
     property string highResFileName: {
         var url = imageData.file_url ? imageData.file_url : ""
-        return "hires_" + decodeURIComponent(url.substring(url.lastIndexOf('/') + 1))
+        var path = url.substring(url.lastIndexOf('/') + 1)
+        // Strip query parameters (e.g., Sankaku signed URLs)
+        var queryIdx = path.indexOf('?')
+        if (queryIdx > 0) path = path.substring(0, queryIdx)
+        return "hires_" + decodeURIComponent(path)
     }
     property string highResFilePath: root.previewDownloadPath + "/" + root.highResFileName
 

@@ -6,7 +6,7 @@ A beautiful anime image browser sidebar for [Quickshell](https://quickshell.outf
 
 ## Features
 
-- **12+ Booru Sources**: yande.re, Danbooru, Gelbooru, e621, Wallhaven, Rule34, and more
+- **23 Booru Sources**: yande.re, Danbooru, Gelbooru, e621, Wallhaven, Derpibooru, Sakugabooru, and more
 - **Animated Media**: GIFs, videos, and ugoira (Pixiv ZIP animations) play automatically
 - **Smart Downloads**: Filename templates with artist/character metadata via imgbrd-grabber
 - **Intelligent Caching**: Cache-first loading for all providers - instant display of previously-viewed images
@@ -145,47 +145,71 @@ Each provider supports different sort options. Use `/sort <option>` or click the
 
 | Provider Type | Sort Options |
 |---------------|--------------|
-| **yandere, konachan** | `score`, `score_asc`, `favcount`, `random`, `rank`, `id`, `id_desc`, `change`, `comment`, `mpixels`, `landscape`, `portrait` |
-| **danbooru, aibooru** | `rank`, `score`, `favcount`, `random`, `id`, `id_desc`, `change`, `comment`, `note`, `mpixels`, `landscape`, `portrait` |
-| **e621, e926** | `score`, `favcount`, `random`, `id`, `id_asc`, `comment_count`, `tagcount`, `mpixels`, `filesize`, `landscape`, `portrait` |
-| **gelbooru, safebooru, rule34, xbooru** | `score`, `score:asc`, `score:desc`, `id`, `id:asc`, `updated`, `random` |
-| **wallhaven** | `toplist`, `random`, `date_added`, `relevance`, `views`, `favorites`, `hot` |
+| **Moebooru** (yandere, konachan, sakugabooru, 3dbooru) | `score`, `score_asc`, `favcount`, `random`, `rank`, `id`, `id_desc`, `change`, `comment`, `mpixels`, `landscape`, `portrait` |
+| **Danbooru** (danbooru, aibooru) | `rank`, `score`, `favcount`, `random`, `id`, `id_desc`, `change`, `comment`, `note`, `mpixels`, `landscape`, `portrait` |
+| **e621** | `score`, `favcount`, `random`, `id`, `id_asc`, `comment_count`, `tagcount`, `mpixels`, `filesize`, `landscape`, `portrait` |
+| **Gelbooru** (gelbooru, safebooru, rule34, xbooru) | `score`, `score:asc`, `score:desc`, `id`, `id:asc`, `updated`, `random` |
+| **Wallhaven** | `toplist`, `random`, `date_added`, `relevance`, `views`, `favorites`, `hot` |
+| **Derpibooru** | `score`, `wilson_score`, `relevance`, `random`, `created_at`, `updated_at`, `width`, `height` |
 
 ### Age Filter
 
 For providers with large datasets, an age filter prevents search timeouts when sorting by score or favorites.
 
-- **Providers**: yandere, konachan, danbooru, aibooru
+- **Providers**: yandere, konachan, sakugabooru, 3dbooru, danbooru, aibooru
 - **Options**: 1d, 1w, 1M, 3M, 1y, All (click the clock chip to cycle)
 
 ## Supported Providers
 
+### Main Providers
+
 | Provider | Key | API Type | NSFW | Auth Required |
 |----------|-----|----------|------|---------------|
 | yande.re | `yandere` | Moebooru | Yes | No |
-| Konachan.net | `konachan` | Moebooru | SFW only | No |
-| Konachan.com | `konachan` + mirror | Moebooru | Yes | No |
+| Konachan | `konachan` | Moebooru | Mirror | No |
 | Danbooru | `danbooru` | Danbooru | Yes | No |
 | Gelbooru | `gelbooru` | Gelbooru | Yes | **Yes** |
 | Safebooru | `safebooru` | Gelbooru | SFW only | No |
 | Rule34 | `rule34` | Gelbooru | NSFW only | **Yes** |
-| e621 | `e621` | e621 | Yes | No |
-| e926 | `e926` | e621 | SFW only | No |
+| e621 | `e621` | e621 | Mirror | No |
 | Wallhaven | `wallhaven` | REST | Yes* | Optional |
 | waifu.im | `waifu.im` | REST | Yes | No |
 | nekos.best | `nekos_best` | REST | SFW only | No |
 | AIBooru | `aibooru` | Danbooru | Yes | No |
+| Derpibooru | `derpibooru` | Philomena | Yes | No |
+| Sakugabooru | `sakugabooru` | Moebooru | Yes | No |
 
 *Wallhaven NSFW requires API key
+
+### Mirror Providers
+
+| Provider | Mirrors | Description |
+|----------|---------|-------------|
+| konachan | `.net` (SFW), `.com` (NSFW) | Use `/mirror konachan.com` to switch |
+| e621 | `e621.net` (NSFW), `e926.net` (SFW) | Use `/mirror e926.net` to switch |
+| danbooru | `danbooru.donmai.us`, `safebooru.donmai.us` (SFW) | Use `/mirror` to switch |
 
 ### Additional Providers
 
 | Provider | Key | Notes |
 |----------|-----|-------|
+| 3Dbooru | `3dbooru` | 3D renders (connection issues) |
 | Xbooru | `xbooru` | NSFW focused |
 | TBIB | `tbib` | 8M+ images aggregator |
 | Paheal | `paheal` | Rule34 Shimmie |
-| Hypnohub | `hypnohub` | Niche themed |
+| Hypnohub | `hypnohub` | Niche themed (returns XML) |
+| Zerochan | `zerochan` | High-quality art (API blocked) |
+| Sankaku | `sankaku` | Anime art (API requires auth) |
+| Idol Sankaku | `idol_sankaku` | Japanese idols (API requires auth) |
+
+### Grabber-only Providers
+
+These providers use imgbrd-grabber for all requests (no direct API):
+
+| Provider | Key | Notes |
+|----------|-----|-------|
+| Anime-Pictures | `anime_pictures` | Quality curated art |
+| E-Shuushuu | `e_shuushuu` | SFW cute art |
 
 ## Configuration
 
