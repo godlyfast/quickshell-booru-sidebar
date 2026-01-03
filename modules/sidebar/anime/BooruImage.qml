@@ -63,6 +63,10 @@ Button {
     // Local file paths for progressive loading (manual download providers)
     property string localHighResSource: ""
 
+    // Universal cache - applies to ALL providers, not just manualDownload
+    property bool universalCacheChecked: false
+    property string cachedImageSource: ""  // file:// path if found in cache/downloads
+
     // Local dimension overrides - don't mutate shared model data
     property int localWidth: 0
     property int localHeight: 0
@@ -109,13 +113,54 @@ Button {
         id: highResCacheCheck
         running: root.manualDownload && !root.isGif && !root.isVideo && !root.isArchive && root.effectiveHighResPath.length > 0 && !root.highResCacheChecked
         command: ["test", "-f", root.effectiveHighResPath]
-        onExited: (code, status) => {
+        onExited: function(code, status) {
             root.highResCacheChecked = true
             if (code === 0) {
                 // File exists - use it immediately
                 root.localHighResSource = "file://" + root.effectiveHighResPath
             }
             // If not cached, downloaders below will trigger
+        }
+    }
+
+    // Universal cache check - runs for ALL providers (static images)
+    // Checks: hi-res cache, download folder, NSFW folder, wallpaper folder
+    Process {
+        id: universalCacheCheck
+        running: !root.universalCacheChecked && !root.isVideo && !root.isGif && !root.isArchive
+                 && root.highResFilePath.length > 0
+        command: ["bash", "-c",
+            "for f in '" + root.highResFilePath + "' '" + root.savedFilePath + "' '" +
+            root.savedNsfwFilePath + "' '" + root.wallpaperFilePath + "'; do " +
+            "[ -f \"$f\" ] && echo \"$f\" && exit 0; done; exit 1"
+        ]
+
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var path = text.trim()
+                if (path.length > 0) {
+                    root.cachedImageSource = "file://" + path
+                }
+            }
+        }
+
+        onExited: function(code, status) {
+            root.universalCacheChecked = true
+        }
+    }
+
+    // Download hi-res to cache for non-manual providers (after cache check)
+    ImageDownloaderProcess {
+        id: universalHighResDownloader
+        enabled: !root.manualDownload && !root.isGif && !root.isVideo && !root.isArchive
+                 && root.universalCacheChecked && root.cachedImageSource === ""
+                 && root.imageData.file_url && root.imageData.file_url.length > 0
+        filePath: root.highResFilePath
+        sourceUrl: root.imageData.file_url ? root.imageData.file_url : ""
+        onDone: function(path, width, height) {
+            if (path.length > 0) {
+                root.cachedImageSource = "file://" + path
+            }
         }
     }
 
@@ -169,17 +214,59 @@ Button {
     property string gifFilePath: root.previewDownloadPath + "/gif_" + root.gifFileName
     property string localGifSource: ""
 
+    // Universal GIF cache
+    property bool gifCacheChecked: false
+    property string cachedGifSource: ""
+
     ImageDownloaderProcess {
         id: gifDownloader
         enabled: root.manualDownload && root.isGif
         filePath: root.gifFilePath
         sourceUrl: modelData.file_url ? modelData.file_url : ""
-        onDone: (path, width, height) => {
+        onDone: function(path, width, height) {
             if (path.length > 0) {
                 root.localGifSource = "file://" + path
             } else {
                 // GIF blocked (Danbooru Cloudflare) - use preview as static fallback
                 root.localGifSource = modelData.preview_url ? modelData.preview_url : ""
+            }
+        }
+    }
+
+    // Universal GIF cache check - runs for ALL providers
+    Process {
+        id: gifCacheCheck
+        running: root.isGif && !root.gifCacheChecked && root.gifFilePath.length > 0
+        command: ["bash", "-c",
+            "for f in '" + root.gifFilePath + "' '" + root.savedFilePath + "' '" +
+            root.savedNsfwFilePath + "'; do " +
+            "[ -f \"$f\" ] && echo \"$f\" && exit 0; done; exit 1"
+        ]
+
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var path = text.trim()
+                if (path.length > 0) {
+                    root.cachedGifSource = "file://" + path
+                }
+            }
+        }
+
+        onExited: function(code, status) {
+            root.gifCacheChecked = true
+        }
+    }
+
+    // Download GIF to cache for non-manual providers
+    ImageDownloaderProcess {
+        id: universalGifDownloader
+        enabled: root.isGif && !root.manualDownload && root.gifCacheChecked
+                 && root.cachedGifSource === "" && root.imageData.file_url
+        filePath: root.gifFilePath
+        sourceUrl: root.imageData.file_url ? root.imageData.file_url : ""
+        onDone: function(path, width, height) {
+            if (path.length > 0) {
+                root.cachedGifSource = "file://" + path
             }
         }
     }
@@ -244,6 +331,70 @@ Button {
             if (root.ugoiraDownloading || ugoiraDownloader.downloading) return
             root.ugoiraDownloading = true
             ugoiraDownloader.running = true
+        }
+    }
+
+    // Universal video cache
+    property bool videoCacheChecked: false
+    property string cachedVideoSource: ""
+    property string videoFilePath: root.previewDownloadPath + "/video_" + (root.imageData.md5 ? root.imageData.md5 : root.imageData.id) + "." + root.fileExt
+
+    // Universal video cache check - runs for ALL providers
+    Process {
+        id: videoCacheCheck
+        running: root.isVideo && !root.videoCacheChecked && root.videoFilePath.length > 0
+        command: ["bash", "-c",
+            "for f in '" + root.videoFilePath + "' '" + root.savedFilePath + "' '" +
+            root.savedNsfwFilePath + "'; do " +
+            "[ -f \"$f\" ] && echo \"$f\" && exit 0; done; exit 1"
+        ]
+
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var path = text.trim()
+                if (path.length > 0) {
+                    root.cachedVideoSource = "file://" + path
+                }
+            }
+        }
+
+        onExited: function(code, status) {
+            root.videoCacheChecked = true
+        }
+    }
+
+    // Download video to cache (after cache check)
+    Process {
+        id: universalVideoDownloader
+        property bool downloading: false
+        running: false
+        command: ["bash", "-c",
+            "mkdir -p \"$(dirname '" + root.videoFilePath + "')\" && " +
+            "curl -sL '" + root.imageData.file_url + "' -o '" + root.videoFilePath + "'"
+        ]
+
+        onRunningChanged: {
+            if (running) downloading = true
+        }
+
+        onExited: function(code, status) {
+            downloading = false
+            if (code === 0) {
+                root.cachedVideoSource = "file://" + root.videoFilePath
+            }
+        }
+    }
+
+    Timer {
+        id: videoDownloadTrigger
+        interval: 100
+        repeat: false
+        running: root.isVideo && root.videoCacheChecked && root.cachedVideoSource === ""
+                 && root.imageData.file_url && !universalVideoDownloader.downloading
+        onTriggered: {
+            if (!universalVideoDownloader.downloading) {
+                universalVideoDownloader.running = true
+            }
         }
     }
 
@@ -391,9 +542,12 @@ Button {
                 fillMode: Image.PreserveAspectCrop
                 source: {
                     if (root.isVideo || root.isGif) return ""
-                    // For manual download providers, use local file (don't try CDN - gets 403)
+                    // Universal cache takes priority (any provider)
+                    if (root.cachedImageSource.length > 0) return root.cachedImageSource
+                    // Manual download providers use their own path
                     if (root.manualDownload) return root.localHighResSource
-                    // Otherwise load file_url directly
+                    // Wait for cache check before loading from network
+                    if (!root.universalCacheChecked) return ""
                     return modelData.file_url ? modelData.file_url : ""
                 }
                 sourceSize.width: parent.width * 2
@@ -529,10 +683,15 @@ Button {
             anchors.fill: parent
             visible: root.isGif
             fillMode: Image.PreserveAspectCrop
-            // Use local file if manual download, otherwise direct URL
+            // Universal cache first, then manual download path, then network
             source: {
                 if (!root.isGif) return ""
+                // Universal cache first
+                if (root.cachedGifSource.length > 0) return root.cachedGifSource
+                // Manual download providers
                 if (root.manualDownload) return root.localGifSource
+                // Wait for cache check
+                if (!root.gifCacheChecked) return ""
                 return modelData.file_url ? modelData.file_url : ""
             }
             asynchronous: true
@@ -559,12 +718,16 @@ Button {
             // Show for regular videos OR ugoira with downloaded WebM
             visible: root.isVideo || (root.isArchive && root.localUgoiraSource.length > 0)
 
-            // Compute video source: use localUgoiraSource for ugoira, file_url for regular videos
+            // Compute video source: ugoira → cached → network
             property string videoSource: {
                 if (root.isArchive && root.localUgoiraSource.length > 0) {
                     return root.localUgoiraSource
-                } else if (root.isVideo && root.imageData.file_url) {
-                    return root.imageData.file_url
+                } else if (root.isVideo) {
+                    // Universal cache first
+                    if (root.cachedVideoSource.length > 0) return root.cachedVideoSource
+                    // Wait for cache check, then stream
+                    if (!root.videoCacheChecked) return ""
+                    return root.imageData.file_url ? root.imageData.file_url : ""
                 }
                 return ""
             }
