@@ -58,32 +58,52 @@ Singleton {
     readonly property var resolutionOptions: ["1280x720", "1920x1080", "2560x1440", "3840x2160", "any"]
     readonly property var resolutionLabels: ({"1280x720": "720p", "1920x1080": "1080p", "2560x1440": "1440p", "3840x2160": "4K", "any": "Any"})
 
-    // Danbooru age filter (prevents timeout on score/favcount sorting)
-    property string danbooruAge: "1month"  // 1day, 1week, 1month, 3months, 1year, any
-    readonly property var danbooruAgeOptions: ["1day", "1week", "1month", "3months", "1year", "any"]
-    readonly property var danbooruAgeLabels: ({"1day": "1d", "1week": "1w", "1month": "1M", "3months": "3M", "1year": "1y", "any": "All"})
+    // Unified age filter (prevents timeout on score/favcount sorting)
+    // Works with Danbooru-compatible APIs: danbooru, aibooru, yandere, konachan
+    property string ageFilter: "1month"  // 1day, 1week, 1month, 3months, 1year, any
+    property alias danbooruAge: root.ageFilter  // Backwards compatibility
+    readonly property var ageFilterOptions: ["1day", "1week", "1month", "3months", "1year", "any"]
+    readonly property var ageFilterLabels: ({"1day": "1d", "1week": "1w", "1month": "1M", "3months": "3M", "1year": "1y", "any": "All"})
+    // Backwards compatibility aliases
+    readonly property alias danbooruAgeOptions: root.ageFilterOptions
+    readonly property alias danbooruAgeLabels: root.ageFilterLabels
+    // Providers that support the age: metatag
+    readonly property var ageFilterProviders: ["danbooru", "aibooru", "yandere", "konachan"]
+    property bool providerSupportsAgeFilter: ageFilterProviders.indexOf(currentProvider) !== -1
 
     // Universal sorting - works with all providers that support it
     property string currentSorting: ""  // Empty = provider default
 
     // Per-provider sort options (empty array = no sorting support)
+    // Based on API documentation for each booru type
     property var providerSortOptions: ({
-        "yandere": ["score", "score_asc", "id", "id_desc", "mpixels", "landscape", "portrait"],
-        "konachan": ["score", "score_asc", "id", "id_desc", "mpixels", "landscape", "portrait"],
-        "danbooru": ["rank", "score", "id", "id_desc"],
-        "e621": ["score", "favcount", "id"],
-        "e926": ["score", "favcount", "id"],
-        "gelbooru": ["score", "score:desc", "score:asc", "id", "updated"],
-        "safebooru": ["score", "score:desc", "score:asc", "id", "updated"],
-        "rule34": ["score", "score:desc", "score:asc", "id", "updated"],
-        "wallhaven": ["toplist", "random", "date_added", "relevance", "views", "favorites"],
+        // Moebooru (order: metatag) - yande.re, konachan
+        "yandere": ["score", "score_asc", "favcount", "random", "rank", "id", "id_desc", "change", "comment", "mpixels", "landscape", "portrait"],
+        "konachan": ["score", "score_asc", "favcount", "random", "rank", "id", "id_desc", "change", "comment", "mpixels", "landscape", "portrait"],
+
+        // Danbooru (order: metatag)
+        "danbooru": ["rank", "score", "favcount", "random", "id", "id_desc", "change", "comment", "comment_bumped", "note", "mpixels", "landscape", "portrait"],
+        "aibooru": ["rank", "score", "favcount", "random", "id", "id_desc", "change", "comment", "comment_bumped", "note", "mpixels", "landscape", "portrait"],
+
+        // e621/e926 (order: metatag)
+        "e621": ["score", "favcount", "random", "id", "id_asc", "comment_count", "tagcount", "mpixels", "filesize", "landscape", "portrait"],
+        "e926": ["score", "favcount", "random", "id", "id_asc", "comment_count", "tagcount", "mpixels", "filesize", "landscape", "portrait"],
+
+        // Gelbooru-style (sort: metatag)
+        "gelbooru": ["score", "score:asc", "score:desc", "id", "id:asc", "updated", "random"],
+        "safebooru": ["score", "score:asc", "score:desc", "id", "id:asc", "updated", "random"],
+        "rule34": ["score", "score:asc", "score:desc", "id", "id:asc", "updated", "random"],
+        "xbooru": ["score", "score:asc", "score:desc", "id", "id:asc", "updated", "random"],
+        "tbib": ["score", "score:asc", "score:desc", "id", "id:asc", "updated"],
+        "hypnohub": ["score", "score:asc", "score:desc", "id", "id:asc", "updated"],
+
+        // Wallhaven (URL params)
+        "wallhaven": ["toplist", "random", "date_added", "relevance", "views", "favorites", "hot"],
+
+        // No sorting support
         "waifu.im": [],
         "nekos_best": [],
-        "xbooru": ["score", "id", "updated"],
-        "tbib": ["score", "id"],
-        "paheal": [],
-        "hypnohub": ["score", "id", "updated"],
-        "aibooru": ["score", "id"]
+        "paheal": []
     })
 
     // Get sort options for current provider
@@ -992,10 +1012,6 @@ Singleton {
             // Danbooru uses order:X
             else if (currentProvider === "danbooru") {
                 tagString = "order:" + currentSorting + " " + tagString
-                // Add age filter if not "any" (prevents timeout on heavy sorts)
-                if (danbooruAge !== "any") {
-                    tagString = tagString + " age:<" + danbooruAge
-                }
             }
             // e621/e926 use order:X
             else if (currentProvider === "e621" || currentProvider === "e926") {
@@ -1010,6 +1026,12 @@ Singleton {
                 tagString = "order:" + currentSorting + " " + tagString
             }
             // Wallhaven handled separately via URL params below
+        }
+
+        // Inject age filter for providers that support it (prevents timeout on heavy sorts)
+        // ageFilterProviders: danbooru, aibooru, yandere, konachan
+        if (ageFilter !== "any" && ageFilterProviders.indexOf(currentProvider) !== -1) {
+            tagString = tagString + " age:<" + ageFilter
         }
 
         // Handle NSFW filtering per provider
@@ -1216,14 +1238,17 @@ Singleton {
         var source = grabberSources[requestProvider]
         var tagString = tags.join(" ")
 
-        // Add sort metatag if sorting is set
+        // Add sort metatag if sorting is set (for order: metatag providers)
         if (currentSorting && currentSorting.length > 0) {
-            if (requestProvider === "danbooru") {
+            if (requestProvider === "danbooru" || requestProvider === "aibooru" ||
+                requestProvider === "yandere" || requestProvider === "konachan") {
                 tagString = "order:" + currentSorting + " " + tagString
-                if (danbooruAge !== "any") {
-                    tagString = tagString + " age:<" + danbooruAge
-                }
             }
+        }
+
+        // Inject age filter for providers that support it
+        if (ageFilter !== "any" && ageFilterProviders.indexOf(requestProvider) !== -1) {
+            tagString = tagString + " age:<" + ageFilter
         }
 
         console.log("[Booru] Grabber request: source=" + source + " tags=" + tagString + " page=" + page)

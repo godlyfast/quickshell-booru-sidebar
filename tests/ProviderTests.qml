@@ -52,22 +52,33 @@ Item {
     // Expected sort options per provider (should match Booru.providerSortOptions)
     // Note: konachan_com removed - now a mirror of konachan
     property var expectedSortOptions: ({
-        "yandere": ["score", "score_asc", "id", "id_desc", "mpixels", "landscape", "portrait"],
-        "konachan": ["score", "score_asc", "id", "id_desc", "mpixels", "landscape", "portrait"],
-        "danbooru": ["rank", "score", "id", "id_desc"],
-        "e621": ["score", "favcount", "id"],
-        "e926": ["score", "favcount", "id"],
-        "gelbooru": ["score", "score:desc", "score:asc", "id", "updated"],
-        "safebooru": ["score", "score:desc", "score:asc", "id", "updated"],
-        "rule34": ["score", "score:desc", "score:asc", "id", "updated"],
-        "wallhaven": ["toplist", "random", "date_added", "relevance", "views", "favorites"],
+        // Moebooru (order: metatag) - yande.re, konachan
+        "yandere": ["score", "score_asc", "favcount", "random", "rank", "id", "id_desc", "change", "comment", "mpixels", "landscape", "portrait"],
+        "konachan": ["score", "score_asc", "favcount", "random", "rank", "id", "id_desc", "change", "comment", "mpixels", "landscape", "portrait"],
+
+        // Danbooru (order: metatag)
+        "danbooru": ["rank", "score", "favcount", "random", "id", "id_desc", "change", "comment", "comment_bumped", "note", "mpixels", "landscape", "portrait"],
+        "aibooru": ["rank", "score", "favcount", "random", "id", "id_desc", "change", "comment", "comment_bumped", "note", "mpixels", "landscape", "portrait"],
+
+        // e621/e926 (order: metatag)
+        "e621": ["score", "favcount", "random", "id", "id_asc", "comment_count", "tagcount", "mpixels", "filesize", "landscape", "portrait"],
+        "e926": ["score", "favcount", "random", "id", "id_asc", "comment_count", "tagcount", "mpixels", "filesize", "landscape", "portrait"],
+
+        // Gelbooru-style (sort: metatag)
+        "gelbooru": ["score", "score:asc", "score:desc", "id", "id:asc", "updated", "random"],
+        "safebooru": ["score", "score:asc", "score:desc", "id", "id:asc", "updated", "random"],
+        "rule34": ["score", "score:asc", "score:desc", "id", "id:asc", "updated", "random"],
+        "xbooru": ["score", "score:asc", "score:desc", "id", "id:asc", "updated", "random"],
+        "tbib": ["score", "score:asc", "score:desc", "id", "id:asc", "updated"],
+        "hypnohub": ["score", "score:asc", "score:desc", "id", "id:asc", "updated"],
+
+        // Wallhaven (URL params)
+        "wallhaven": ["toplist", "random", "date_added", "relevance", "views", "favorites", "hot"],
+
+        // No sorting support
         "waifu.im": [],
         "nekos_best": [],
-        "xbooru": ["score", "id", "updated"],
-        "tbib": ["score", "id"],
-        "paheal": [],
-        "hypnohub": ["score", "id", "updated"],
-        "aibooru": ["score", "id"]
+        "paheal": []
     })
 
     // Required fields and their validators

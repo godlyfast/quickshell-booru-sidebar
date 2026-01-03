@@ -777,9 +777,9 @@ Item {
                         }
                     }
 
-                    // Age chip (visible when Danbooru - prevents search timeout)
+                    // Age chip (visible for Danbooru-compatible APIs - prevents search timeout)
                     RippleButton {
-                        visible: Booru.currentProvider === "danbooru"
+                        visible: Booru.providerSupportsAgeFilter
                         implicitHeight: 26
                         implicitWidth: ageChipContent.implicitWidth + 14
                         buttonRadius: Appearance.rounding.full
