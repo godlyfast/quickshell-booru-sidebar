@@ -1,5 +1,10 @@
 .pragma library
 
+// WARNING: This file uses ES6+ syntax (arrow functions, classes, optional chaining)
+// which is NOT compatible with QML's V4 JavaScript engine (ES5 only).
+// This file is NOT currently imported/used anywhere in the codebase.
+// If you need to use it, it must be converted to ES5 syntax first.
+
 // https://github.com/farzher/fuzzysort
 // License: MIT | Copyright (c) 2018 Stephen Kamenar
 // A copy of the license is available in the `licenses` folder of this repository

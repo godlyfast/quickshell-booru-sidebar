@@ -33,6 +33,7 @@ Rectangle {
 
     Connections {
         target: parent
+        enabled: parent !== null
         function onWidthChanged() {
             updateWidthTimer.restart()
         }
@@ -134,24 +135,24 @@ Rectangle {
         // Image grid
         Repeater {
             model: {
-                // Greedily add images to rows
-                let i = 0;
-                let rows = [];
-                const responseList = root.responseData.images || [];
-                const minRowHeight = root.rowTooShortThreshold;
-                const availableImageWidth = root.availableWidth - root.imageSpacing - (root.responsePadding * 2);
+                // Greedily add images to rows (ES5 for QML V4 engine)
+                var i = 0;
+                var rows = [];
+                var responseList = root.responseData.images || [];
+                var minRowHeight = root.rowTooShortThreshold;
+                var availableImageWidth = root.availableWidth - root.imageSpacing - (root.responsePadding * 2);
 
                 while (i < responseList.length) {
-                    let row = { height: 0, images: [] };
-                    let j = i;
-                    let combinedAspect = 0;
-                    let rowHeight = 0;
+                    var row = { height: 0, images: [] };
+                    var j = i;
+                    var combinedAspect = 0;
+                    var rowHeight = 0;
 
                     while (j < responseList.length) {
                         combinedAspect += responseList[j].aspect_ratio || 1;
-                        let imagesInRow = j - i + 1;
-                        let totalSpacing = root.imageSpacing * (imagesInRow - 1);
-                        let rowAvailableWidth = availableImageWidth - totalSpacing;
+                        var imagesInRow = j - i + 1;
+                        var totalSpacing = root.imageSpacing * (imagesInRow - 1);
+                        var rowAvailableWidth = availableImageWidth - totalSpacing;
                         rowHeight = rowAvailableWidth / combinedAspect;
 
                         if (rowHeight < minRowHeight) {
@@ -171,12 +172,12 @@ Rectangle {
                         rows.push(row);
                         i++;
                     } else {
-                        for (let k = i; k < j; k++) {
+                        for (var k = i; k < j; k++) {
                             row.images.push(responseList[k]);
                         }
-                        let imagesInRow = j - i;
-                        let totalSpacing = root.imageSpacing * (imagesInRow - 1);
-                        let rowAvailableWidth = availableImageWidth - totalSpacing;
+                        imagesInRow = j - i;
+                        totalSpacing = root.imageSpacing * (imagesInRow - 1);
+                        rowAvailableWidth = availableImageWidth - totalSpacing;
                         row.height = rowAvailableWidth / combinedAspect;
                         rows.push(row);
                         i = j;

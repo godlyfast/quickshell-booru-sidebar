@@ -27,6 +27,8 @@ Singleton {
     property string failMessage: "That didn't work. Tips:\n- Check your tags and NSFW settings\n- If you don't have a tag in mind, type a page number"
     property var responses: []
     property int runningRequests: 0
+    property var pendingXhrRequests: []  // Track XHR for abort on clear
+    property int maxResponses: 50  // Limit memory: ~50 responses = ~1000 images
     property bool replaceOnNextResponse: false  // When true, replace responses instead of appending
     property string defaultUserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
     property var providerList: {
@@ -235,29 +237,38 @@ Singleton {
             "api": "https://yande.re/post.json",
             "description": "All-rounder | Good quality, decent quantity",
             "mapFunc": (response) => {
-                return response.map(item => {
-                    return {
+                if (!response || !Array.isArray(response)) return []
+                var result = []
+                for (var i = 0; i < response.length; i++) {
+                    var item = response[i]
+                    if (!item.file_url) continue
+                    result.push({
                         "id": item.id,
-                        "width": item.width,
-                        "height": item.height,
-                        "aspect_ratio": item.width / item.height,
-                        "tags": item.tags,
-                        "rating": item.rating,
+                        "width": item.width || 0,
+                        "height": item.height || 0,
+                        "aspect_ratio": (item.width && item.height) ? item.width / item.height : 1,
+                        "tags": item.tags || "",
+                        "rating": item.rating || "s",
                         "is_nsfw": (item.rating != 's'),
-                        "md5": item.md5,
-                        "preview_url": item.preview_url,
+                        "md5": item.md5 || "",
+                        "preview_url": item.preview_url || item.file_url,
                         "sample_url": item.sample_url ? item.sample_url : item.file_url,
                         "file_url": item.file_url,
-                        "file_ext": item.file_ext,
+                        "file_ext": item.file_ext || "jpg",
                         "source": getWorkingImageSource(item.source) ? getWorkingImageSource(item.source) : item.file_url,
-                    }
-                })
+                    })
+                }
+                return result
             },
             "tagSearchTemplate": "https://yande.re/tag.json?order=count&limit=10&name={{query}}*",
             "tagMapFunc": (response) => {
-                return response.map(item => {
-                    return { "name": item.name, "count": item.count }
-                })
+                if (!response || !Array.isArray(response)) return []
+                var result = []
+                for (var i = 0; i < response.length; i++) {
+                    var item = response[i]
+                    result.push({ "name": item.name || "", "count": item.count || 0 })
+                }
+                return result
             }
         },
         "konachan": {
@@ -282,29 +293,38 @@ Singleton {
                 }
             },
             "mapFunc": (response) => {
-                return response.map(item => {
-                    return {
+                if (!response || !Array.isArray(response)) return []
+                var result = []
+                for (var i = 0; i < response.length; i++) {
+                    var item = response[i]
+                    if (!item.file_url) continue
+                    result.push({
                         "id": item.id,
-                        "width": item.width,
-                        "height": item.height,
-                        "aspect_ratio": item.width / item.height,
-                        "tags": item.tags,
-                        "rating": item.rating,
+                        "width": item.width || 0,
+                        "height": item.height || 0,
+                        "aspect_ratio": (item.width && item.height) ? item.width / item.height : 1,
+                        "tags": item.tags || "",
+                        "rating": item.rating || "s",
                         "is_nsfw": (item.rating != 's'),
-                        "md5": item.md5,
-                        "preview_url": item.preview_url,
+                        "md5": item.md5 || "",
+                        "preview_url": item.preview_url || item.file_url,
                         "sample_url": item.sample_url ? item.sample_url : item.file_url,
                         "file_url": item.file_url,
                         "file_ext": item.file_url.split('.').pop(),
                         "source": getWorkingImageSource(item.source) ? getWorkingImageSource(item.source) : item.file_url,
-                    }
-                })
+                    })
+                }
+                return result
             },
             "tagSearchTemplate": "https://konachan.net/tag.json?order=count&limit=10&name={{query}}*",
             "tagMapFunc": (response) => {
-                return response.map(item => {
-                    return { "name": item.name, "count": item.count }
-                })
+                if (!response || !Array.isArray(response)) return []
+                var result = []
+                for (var i = 0; i < response.length; i++) {
+                    var item = response[i]
+                    result.push({ "name": item.name || "", "count": item.count || 0 })
+                }
+                return result
             }
         },
         "danbooru": {
@@ -355,9 +375,13 @@ Singleton {
             },
             "tagSearchTemplate": "https://danbooru.donmai.us/tags.json?limit=10&search[name_matches]={{query}}*",
             "tagMapFunc": (response) => {
-                return response.map(item => {
-                    return { "name": item.name, "count": item.post_count }
-                })
+                if (!response || !Array.isArray(response)) return []
+                var result = []
+                for (var i = 0; i < response.length; i++) {
+                    var item = response[i]
+                    result.push({ "name": item.name || "", "count": item.post_count || 0 })
+                }
+                return result
             }
         },
         "gelbooru": {
@@ -366,30 +390,40 @@ Singleton {
             "api": "https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1",
             "description": "Great quantity, lots of NSFW, quality varies",
             "mapFunc": (response) => {
-                response = response.post
-                return response.map(item => {
-                    return {
+                // Gelbooru wraps results in .post object
+                if (!response || !response.post || !Array.isArray(response.post)) return []
+                var result = []
+                for (var i = 0; i < response.post.length; i++) {
+                    var item = response.post[i]
+                    if (!item.file_url) continue
+                    var rating = (item.rating && item.rating.length > 0) ? item.rating.replace('general', 's').charAt(0) : "s"
+                    result.push({
                         "id": item.id,
-                        "width": item.width,
-                        "height": item.height,
-                        "aspect_ratio": item.width / item.height,
-                        "tags": item.tags,
-                        "rating": item.rating.replace('general', 's').charAt(0),
-                        "is_nsfw": (item.rating != 's'),
-                        "md5": item.md5,
-                        "preview_url": item.preview_url,
+                        "width": item.width || 0,
+                        "height": item.height || 0,
+                        "aspect_ratio": (item.width && item.height) ? item.width / item.height : 1,
+                        "tags": item.tags || "",
+                        "rating": rating,
+                        "is_nsfw": (rating != 's'),
+                        "md5": item.md5 || "",
+                        "preview_url": item.preview_url || item.file_url,
                         "sample_url": item.sample_url ? item.sample_url : item.file_url,
                         "file_url": item.file_url,
                         "file_ext": item.file_url.split('.').pop(),
                         "source": getWorkingImageSource(item.source) ? getWorkingImageSource(item.source) : item.file_url,
-                    }
-                })
+                    })
+                }
+                return result
             },
             "tagSearchTemplate": "https://gelbooru.com/index.php?page=dapi&s=tag&q=index&json=1&orderby=count&limit=10&name_pattern={{query}}%",
             "tagMapFunc": (response) => {
-                return response.tag.map(item => {
-                    return { "name": item.name, "count": item.count }
-                })
+                if (!response || !response.tag || !Array.isArray(response.tag)) return []
+                var result = []
+                for (var i = 0; i < response.tag.length; i++) {
+                    var item = response.tag[i]
+                    result.push({ "name": item.name || "", "count": item.count || 0 })
+                }
+                return result
             }
         },
         "waifu.im": {
@@ -398,34 +432,51 @@ Singleton {
             "api": "https://api.waifu.im/search",
             "description": "Waifus only | Excellent quality, limited quantity",
             "mapFunc": (response) => {
-                response = response.images
-                return response.map(item => {
-                    return {
-                        "id": item.image_id,
-                        "width": item.width,
-                        "height": item.height,
-                        "aspect_ratio": item.width / item.height,
-                        "tags": item.tags.map(tag => tag.name).join(" "),
+                if (!response || !response.images || !Array.isArray(response.images)) return []
+                var result = []
+                for (var i = 0; i < response.images.length; i++) {
+                    var item = response.images[i]
+                    if (!item.url) continue
+                    // Extract tag names safely
+                    var tagNames = ""
+                    if (item.tags && Array.isArray(item.tags)) {
+                        var names = []
+                        for (var j = 0; j < item.tags.length; j++) {
+                            if (item.tags[j] && item.tags[j].name) names.push(item.tags[j].name)
+                        }
+                        tagNames = names.join(" ")
+                    }
+                    result.push({
+                        "id": item.image_id || i,
+                        "width": item.width || 0,
+                        "height": item.height || 0,
+                        "aspect_ratio": (item.width && item.height) ? item.width / item.height : 1,
+                        "tags": tagNames,
                         "rating": item.is_nsfw ? "e" : "s",
-                        "is_nsfw": item.is_nsfw,
-                        "md5": item.md5,
+                        "is_nsfw": item.is_nsfw || false,
+                        "md5": item.md5 || "",
                         "preview_url": item.sample_url ? item.sample_url : item.url,
                         "sample_url": item.url,
                         "file_url": item.url,
-                        "file_ext": item.extension,
+                        "file_ext": item.extension || "jpg",
                         "source": getWorkingImageSource(item.source) ? getWorkingImageSource(item.source) : item.url,
-                    }
-                })
+                    })
+                }
+                return result
             },
             "tagSearchTemplate": "https://api.waifu.im/tags",
             "tagMapFunc": (response) => {
                 // Combine versatile and nsfw tags
                 var result = []
-                for (var i = 0; i < response.versatile.length; i++) {
-                    result.push({name: response.versatile[i]})
+                if (response && response.versatile && Array.isArray(response.versatile)) {
+                    for (var i = 0; i < response.versatile.length; i++) {
+                        result.push({name: response.versatile[i]})
+                    }
                 }
-                for (var j = 0; j < response.nsfw.length; j++) {
-                    result.push({name: response.nsfw[j]})
+                if (response && response.nsfw && Array.isArray(response.nsfw)) {
+                    for (var j = 0; j < response.nsfw.length; j++) {
+                        result.push({name: response.nsfw[j]})
+                    }
                 }
                 return result
             }
@@ -436,20 +487,21 @@ Singleton {
             "api": "https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1",
             "description": "SFW only | Family-friendly anime images",
             "mapFunc": (response) => {
+                if (!response || !Array.isArray(response)) return []
                 var result = []
                 for (var i = 0; i < response.length; i++) {
                     var item = response[i]
                     if (!item.file_url) continue
                     result.push({
                         "id": item.id,
-                        "width": item.width,
-                        "height": item.height,
-                        "aspect_ratio": item.width / item.height,
-                        "tags": item.tags,
+                        "width": item.width || 0,
+                        "height": item.height || 0,
+                        "aspect_ratio": (item.width && item.height) ? item.width / item.height : 1,
+                        "tags": item.tags || "",
                         "rating": "s",
                         "is_nsfw": false,
-                        "md5": item.md5,
-                        "preview_url": item.preview_url,
+                        "md5": item.md5 || "",
+                        "preview_url": item.preview_url || item.file_url,
                         "sample_url": item.sample_url ? item.sample_url : item.file_url,
                         "file_url": item.file_url,
                         "file_ext": item.file_url.split('.').pop(),
@@ -460,11 +512,16 @@ Singleton {
             },
             "tagSearchTemplate": "https://safebooru.org/autocomplete.php?q={{query}}",
             "tagMapFunc": (response) => {
+                if (!response || !Array.isArray(response)) return []
                 var result = []
                 for (var i = 0; i < response.length; i++) {
                     var item = response[i]
-                    var count = item.label.match(/\((\d+)\)/)
-                    result.push({ "name": item.value, "count": count ? parseInt(count[1]) : 0 })
+                    var count = 0
+                    if (item && item.label) {
+                        var match = item.label.match(/\((\d+)\)/)
+                        if (match && match[1]) count = parseInt(match[1])
+                    }
+                    result.push({ "name": (item && item.value) ? item.value : "", "count": count })
                 }
                 return result
             }
@@ -524,31 +581,36 @@ Singleton {
             "description": "Furry artwork | NSFW, requires User-Agent",
             "mapFunc": (response) => {
                 // e621 uses s=safe, q=questionable, e=explicit
+                if (!response || !response.posts || !Array.isArray(response.posts)) return []
                 var result = []
                 for (var i = 0; i < response.posts.length; i++) {
                     var item = response.posts[i]
-                    if (!item.file.url) continue
-                    // Concatenate all tag categories
-                    var allTags = item.tags.general.concat(
-                        item.tags.species,
-                        item.tags.character,
-                        item.tags.artist,
-                        item.tags.copyright
-                    ).join(" ")
+                    if (!item || !item.file || !item.file.url) continue
+                    // Concatenate all tag categories safely
+                    var allTags = ""
+                    if (item.tags) {
+                        var tagParts = []
+                        if (item.tags.general && Array.isArray(item.tags.general)) tagParts = tagParts.concat(item.tags.general)
+                        if (item.tags.species && Array.isArray(item.tags.species)) tagParts = tagParts.concat(item.tags.species)
+                        if (item.tags.character && Array.isArray(item.tags.character)) tagParts = tagParts.concat(item.tags.character)
+                        if (item.tags.artist && Array.isArray(item.tags.artist)) tagParts = tagParts.concat(item.tags.artist)
+                        if (item.tags.copyright && Array.isArray(item.tags.copyright)) tagParts = tagParts.concat(item.tags.copyright)
+                        allTags = tagParts.join(" ")
+                    }
                     var sourceUrl = (item.sources && item.sources.length > 0) ? item.sources[0] : null
                     result.push({
                         "id": item.id,
-                        "width": item.file.width,
-                        "height": item.file.height,
-                        "aspect_ratio": item.file.width / item.file.height,
+                        "width": item.file.width || 0,
+                        "height": item.file.height || 0,
+                        "aspect_ratio": (item.file.width && item.file.height) ? item.file.width / item.file.height : 1,
                         "tags": allTags,
-                        "rating": item.rating,
+                        "rating": item.rating || "s",
                         "is_nsfw": (item.rating === 'q' || item.rating === 'e'),
-                        "md5": item.file.md5,
-                        "preview_url": item.preview.url,
-                        "sample_url": item.sample.url ? item.sample.url : item.file.url,
+                        "md5": item.file.md5 || "",
+                        "preview_url": (item.preview && item.preview.url) ? item.preview.url : item.file.url,
+                        "sample_url": (item.sample && item.sample.url) ? item.sample.url : item.file.url,
                         "file_url": item.file.url,
-                        "file_ext": item.file.ext,
+                        "file_ext": item.file.ext || "jpg",
                         "source": getWorkingImageSource(sourceUrl) ? getWorkingImageSource(sourceUrl) : item.file.url,
                     })
                 }
@@ -556,9 +618,13 @@ Singleton {
             },
             "tagSearchTemplate": "https://e621.net/tags.json?limit=10&search[name_matches]={{query}}*&search[order]=count",
             "tagMapFunc": (response) => {
-                return response.map(item => {
-                    return { "name": item.name, "count": item.post_count }
-                })
+                if (!response || !Array.isArray(response)) return []
+                var result = []
+                for (var i = 0; i < response.length; i++) {
+                    var item = response[i]
+                    result.push({ "name": item.name || "", "count": item.post_count || 0 })
+                }
+                return result
             }
         },
         "e926": {
@@ -567,31 +633,36 @@ Singleton {
             "api": "https://e926.net/posts.json",
             "description": "Furry artwork | SFW only version of e621",
             "mapFunc": (response) => {
+                if (!response || !response.posts || !Array.isArray(response.posts)) return []
                 var result = []
                 for (var i = 0; i < response.posts.length; i++) {
                     var item = response.posts[i]
-                    if (!item.file.url) continue
-                    // Concatenate all tag categories
-                    var allTags = item.tags.general.concat(
-                        item.tags.species,
-                        item.tags.character,
-                        item.tags.artist,
-                        item.tags.copyright
-                    ).join(" ")
+                    if (!item || !item.file || !item.file.url) continue
+                    // Concatenate all tag categories safely
+                    var allTags = ""
+                    if (item.tags) {
+                        var tagParts = []
+                        if (item.tags.general && Array.isArray(item.tags.general)) tagParts = tagParts.concat(item.tags.general)
+                        if (item.tags.species && Array.isArray(item.tags.species)) tagParts = tagParts.concat(item.tags.species)
+                        if (item.tags.character && Array.isArray(item.tags.character)) tagParts = tagParts.concat(item.tags.character)
+                        if (item.tags.artist && Array.isArray(item.tags.artist)) tagParts = tagParts.concat(item.tags.artist)
+                        if (item.tags.copyright && Array.isArray(item.tags.copyright)) tagParts = tagParts.concat(item.tags.copyright)
+                        allTags = tagParts.join(" ")
+                    }
                     var sourceUrl = (item.sources && item.sources.length > 0) ? item.sources[0] : null
                     result.push({
                         "id": item.id,
-                        "width": item.file.width,
-                        "height": item.file.height,
-                        "aspect_ratio": item.file.width / item.file.height,
+                        "width": item.file.width || 0,
+                        "height": item.file.height || 0,
+                        "aspect_ratio": (item.file.width && item.file.height) ? item.file.width / item.file.height : 1,
                         "tags": allTags,
-                        "rating": item.rating,
+                        "rating": item.rating || "s",
                         "is_nsfw": false,
-                        "md5": item.file.md5,
-                        "preview_url": item.preview.url,
-                        "sample_url": item.sample.url ? item.sample.url : item.file.url,
+                        "md5": item.file.md5 || "",
+                        "preview_url": (item.preview && item.preview.url) ? item.preview.url : item.file.url,
+                        "sample_url": (item.sample && item.sample.url) ? item.sample.url : item.file.url,
                         "file_url": item.file.url,
-                        "file_ext": item.file.ext,
+                        "file_ext": item.file.ext || "jpg",
                         "source": getWorkingImageSource(sourceUrl) ? getWorkingImageSource(sourceUrl) : item.file.url,
                     })
                 }
@@ -599,9 +670,13 @@ Singleton {
             },
             "tagSearchTemplate": "https://e926.net/tags.json?limit=10&search[name_matches]={{query}}*&search[order]=count",
             "tagMapFunc": (response) => {
-                return response.map(item => {
-                    return { "name": item.name, "count": item.post_count }
-                })
+                if (!response || !Array.isArray(response)) return []
+                var result = []
+                for (var i = 0; i < response.length; i++) {
+                    var item = response[i]
+                    result.push({ "name": item.name || "", "count": item.post_count || 0 })
+                }
+                return result
             }
         },
         "wallhaven": {
@@ -610,29 +685,31 @@ Singleton {
             "api": "https://wallhaven.cc/api/v1/search",
             "description": "Desktop wallpapers | High quality, all resolutions",
             "mapFunc": (response) => {
+                if (!response || !response.data || !Array.isArray(response.data)) return []
                 var result = []
                 for (var i = 0; i < response.data.length; i++) {
                     var item = response.data[i]
+                    if (!item || !item.path) continue
                     // Extract tag names if tags array exists
                     var tagNames = ""
-                    if (item.tags && item.tags.length > 0) {
+                    if (item.tags && Array.isArray(item.tags) && item.tags.length > 0) {
                         var names = []
                         for (var j = 0; j < item.tags.length; j++) {
-                            names.push(item.tags[j].name)
+                            if (item.tags[j] && item.tags[j].name) names.push(item.tags[j].name)
                         }
                         tagNames = names.join(" ")
                     }
                     result.push({
-                        "id": item.id,
-                        "width": item.dimension_x,
-                        "height": item.dimension_y,
-                        "aspect_ratio": item.dimension_x / item.dimension_y,
+                        "id": item.id || i,
+                        "width": item.dimension_x || 0,
+                        "height": item.dimension_y || 0,
+                        "aspect_ratio": (item.dimension_x && item.dimension_y) ? item.dimension_x / item.dimension_y : 1,
                         "tags": tagNames,
                         "rating": item.purity === "sfw" ? "s" : (item.purity === "sketchy" ? "q" : "e"),
                         "is_nsfw": item.purity === "nsfw",
-                        "md5": item.id,
-                        "preview_url": item.thumbs.small,
-                        "sample_url": item.thumbs.large,
+                        "md5": item.id || "",
+                        "preview_url": (item.thumbs && item.thumbs.small) ? item.thumbs.small : item.path,
+                        "sample_url": (item.thumbs && item.thumbs.large) ? item.thumbs.large : item.path,
                         "file_url": item.path,
                         "file_ext": item.path.split('.').pop(),
                         "source": item.source ? item.source : item.path,
@@ -652,9 +729,11 @@ Singleton {
             "api": "https://nekos.best/api/v2/neko",
             "description": "Anime characters | Random images, high quality",
             "mapFunc": (response) => {
+                if (!response || !response.results || !Array.isArray(response.results)) return []
                 var result = []
                 for (var i = 0; i < response.results.length; i++) {
                     var item = response.results[i]
+                    if (!item || !item.url) continue
                     var ext = item.url.split('.').pop()
                     result.push({
                         "id": i,
@@ -681,20 +760,21 @@ Singleton {
             "api": "https://xbooru.com/index.php?page=dapi&s=post&q=index&json=1",
             "description": "Hentai focused imageboard",
             "mapFunc": (response) => {
+                if (!response || !Array.isArray(response)) return []
                 var result = []
                 for (var i = 0; i < response.length; i++) {
                     var item = response[i]
                     if (!item.file_url) continue
                     result.push({
                         "id": item.id,
-                        "width": item.width,
-                        "height": item.height,
-                        "aspect_ratio": item.width / item.height,
-                        "tags": item.tags,
+                        "width": item.width || 0,
+                        "height": item.height || 0,
+                        "aspect_ratio": (item.width && item.height) ? item.width / item.height : 1,
+                        "tags": item.tags || "",
                         "rating": item.rating ? item.rating.charAt(0) : "e",
                         "is_nsfw": true,
-                        "md5": item.hash,
-                        "preview_url": item.preview_url,
+                        "md5": item.hash || "",
+                        "preview_url": item.preview_url || item.file_url,
                         "sample_url": item.sample_url ? item.sample_url : item.file_url,
                         "file_url": item.file_url,
                         "file_ext": item.file_url.split('.').pop(),
@@ -710,20 +790,22 @@ Singleton {
             "api": "https://tbib.org/index.php?page=dapi&s=post&q=index&json=1",
             "description": "The Big ImageBoard | 8M+ images aggregator",
             "mapFunc": (response) => {
+                if (!response || !Array.isArray(response)) return []
                 var result = []
                 for (var i = 0; i < response.length; i++) {
                     var item = response[i]
+                    if (!item || !item.directory || !item.image) continue
                     var fileUrl = "https://tbib.org/images/" + item.directory + "/" + item.image
-                    var previewUrl = "https://tbib.org/thumbnails/" + item.directory + "/thumbnail_" + item.hash + ".jpg"
+                    var previewUrl = "https://tbib.org/thumbnails/" + item.directory + "/thumbnail_" + (item.hash || "") + ".jpg"
                     result.push({
                         "id": item.id,
-                        "width": item.width,
-                        "height": item.height,
-                        "aspect_ratio": item.width / item.height,
-                        "tags": item.tags,
+                        "width": item.width || 0,
+                        "height": item.height || 0,
+                        "aspect_ratio": (item.width && item.height) ? item.width / item.height : 1,
+                        "tags": item.tags || "",
                         "rating": item.rating ? item.rating.charAt(0) : "q",
                         "is_nsfw": (item.rating !== "safe"),
-                        "md5": item.hash,
+                        "md5": item.hash || "",
                         "preview_url": previewUrl,
                         "sample_url": fileUrl,
                         "file_url": fileUrl,
@@ -741,23 +823,28 @@ Singleton {
             "description": "Rule34 (Shimmie) | 3.5M+ images",
             "isXml": true,
             "mapFunc": (xmlDoc) => {
+                if (!xmlDoc) return []
                 var result = []
                 var posts = xmlDoc.getElementsByTagName("tag")
+                if (!posts) return []
                 for (var i = 0; i < posts.length; i++) {
                     var item = posts[i]
-                    var previewPath = item.getAttribute("preview_url")
-                    var previewUrl = (previewPath && previewPath.indexOf("http") === 0) ? previewPath : "https://rule34.paheal.net" + previewPath
                     var fileUrl = item.getAttribute("file_url")
+                    if (!fileUrl) continue
+                    var previewPath = item.getAttribute("preview_url")
+                    var previewUrl = (previewPath && previewPath.indexOf("http") === 0) ? previewPath : "https://rule34.paheal.net" + (previewPath || "")
                     var fileName = item.getAttribute("file_name") ? item.getAttribute("file_name") : "unknown.jpg"
+                    var width = parseInt(item.getAttribute("width")) || 0
+                    var height = parseInt(item.getAttribute("height")) || 0
                     result.push({
-                        "id": parseInt(item.getAttribute("id")),
-                        "width": parseInt(item.getAttribute("width")),
-                        "height": parseInt(item.getAttribute("height")),
-                        "aspect_ratio": parseInt(item.getAttribute("width")) / parseInt(item.getAttribute("height")),
-                        "tags": item.getAttribute("tags"),
+                        "id": parseInt(item.getAttribute("id")) || 0,
+                        "width": width,
+                        "height": height,
+                        "aspect_ratio": (width && height) ? width / height : 1,
+                        "tags": item.getAttribute("tags") || "",
                         "rating": "e",
                         "is_nsfw": true,
-                        "md5": item.getAttribute("md5"),
+                        "md5": item.getAttribute("md5") || "",
                         "preview_url": previewUrl,
                         "sample_url": fileUrl,
                         "file_url": fileUrl,
@@ -774,20 +861,21 @@ Singleton {
             "api": "https://hypnohub.net/index.php?page=dapi&s=post&q=index&json=1",
             "description": "Hypnosis/mind control themed | ~92k images",
             "mapFunc": (response) => {
+                if (!response || !Array.isArray(response)) return []
                 var result = []
                 for (var i = 0; i < response.length; i++) {
                     var item = response[i]
                     if (!item.file_url) continue
                     result.push({
                         "id": item.id,
-                        "width": item.width,
-                        "height": item.height,
-                        "aspect_ratio": item.width / item.height,
-                        "tags": item.tags,
+                        "width": item.width || 0,
+                        "height": item.height || 0,
+                        "aspect_ratio": (item.width && item.height) ? item.width / item.height : 1,
+                        "tags": item.tags || "",
                         "rating": item.rating ? item.rating.charAt(0) : "q",
                         "is_nsfw": true,
-                        "md5": item.hash,
-                        "preview_url": item.preview_url,
+                        "md5": item.hash || "",
+                        "preview_url": item.preview_url || item.file_url,
                         "sample_url": item.sample_url ? item.sample_url : item.file_url,
                         "file_url": item.file_url,
                         "file_ext": item.file_url.split('.').pop(),
@@ -803,23 +891,24 @@ Singleton {
             "api": "https://aibooru.online/posts.json",
             "description": "AI-generated art | ~150k images",
             "mapFunc": (response) => {
+                if (!response || !Array.isArray(response)) return []
                 var result = []
                 for (var i = 0; i < response.length; i++) {
                     var item = response[i]
                     if (!item.file_url || item.is_deleted) continue
                     result.push({
                         "id": item.id,
-                        "width": item.image_width,
-                        "height": item.image_height,
-                        "aspect_ratio": item.image_width / item.image_height,
-                        "tags": item.tag_string,
-                        "rating": item.rating,
+                        "width": item.image_width || 0,
+                        "height": item.image_height || 0,
+                        "aspect_ratio": (item.image_width && item.image_height) ? item.image_width / item.image_height : 1,
+                        "tags": item.tag_string || "",
+                        "rating": item.rating || "s",
                         "is_nsfw": (item.rating === 'q' || item.rating === 'e'),
-                        "md5": item.md5,
-                        "preview_url": item.preview_file_url,
+                        "md5": item.md5 || "",
+                        "preview_url": item.preview_file_url || item.file_url,
                         "sample_url": item.large_file_url ? item.large_file_url : item.file_url,
                         "file_url": item.file_url,
-                        "file_ext": item.file_ext,
+                        "file_ext": item.file_ext || "jpg",
                         "source": item.source ? item.source : item.file_url,
                     })
                 }
@@ -827,9 +916,13 @@ Singleton {
             },
             "tagSearchTemplate": "https://aibooru.online/tags.json?limit=10&search[name_matches]={{query}}*",
             "tagMapFunc": (response) => {
-                return response.map(item => {
-                    return { "name": item.name, "count": item.post_count }
-                })
+                if (!response || !Array.isArray(response)) return []
+                var result = []
+                for (var i = 0; i < response.length; i++) {
+                    var item = response[i]
+                    result.push({ "name": item.name || "", "count": item.post_count || 0 })
+                }
+                return result
             }
         }
     }
@@ -862,6 +955,15 @@ Singleton {
     }
 
     function clearResponses() {
+        // Abort all pending XHR requests to prevent stale updates
+        for (var i = 0; i < pendingXhrRequests.length; i++) {
+            try {
+                pendingXhrRequests[i].abort()
+            } catch (e) {
+                // Ignore abort errors
+            }
+        }
+        pendingXhrRequests = []
         responses = []
     }
 
@@ -1012,8 +1114,8 @@ Singleton {
         var url = constructRequestUrl(tags, nsfw, limit, page)
         console.log("[Booru] " + currentProvider + " request: " + url)
         if (currentProvider == "rule34") {
-            console.log("[Booru] Rule34 API key: " + (rule34ApiKey ? "set (" + rule34ApiKey.substring(0,8) + "...)" : "NOT SET"))
-            console.log("[Booru] Rule34 User ID: " + (rule34UserId ? rule34UserId : "NOT SET"))
+            // Only log whether credentials are set, not their values (security)
+            console.log("[Booru] Rule34 credentials: " + (rule34ApiKey && rule34UserId ? "configured" : "NOT SET"))
         }
 
         var newResponse = root.booruResponseDataComponent.createObject(null, {
@@ -1034,9 +1136,34 @@ Singleton {
                 console.log("[Booru] Could not set User-Agent for " + requestProvider)
             }
         }
+
+        // Helper to remove XHR from pending list
+        function removeFromPending() {
+            var idx = root.pendingXhrRequests.indexOf(xhr)
+            if (idx !== -1) {
+                root.pendingXhrRequests.splice(idx, 1)
+            }
+        }
+
+        // Helper to add response with limit enforcement
+        function addResponse(resp) {
+            if (root.replaceOnNextResponse) {
+                root.responses = [resp]
+                root.replaceOnNextResponse = false
+            } else {
+                var newResponses = root.responses.concat([resp])
+                // Enforce max responses limit (remove oldest)
+                while (newResponses.length > root.maxResponses) {
+                    newResponses.shift()
+                }
+                root.responses = newResponses
+            }
+        }
+
         xhr.onreadystatechange = function() {
             if (xhr.readyState === XMLHttpRequest.DONE) {
                 console.log("[Booru] " + requestProvider + " done - HTTP " + xhr.status)
+                removeFromPending()
             }
             if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
                 try {
@@ -1058,30 +1185,21 @@ Singleton {
                     console.log("[Booru] Failed to parse " + requestProvider + ": " + e)
                     newResponse.message = root.failMessage
                 } finally {
-                    root.runningRequests--;
-                    if (root.replaceOnNextResponse) {
-                        root.responses = [newResponse]
-                        root.replaceOnNextResponse = false
-                    } else {
-                        root.responses = root.responses.concat([newResponse])
-                    }
+                    root.runningRequests--
+                    addResponse(newResponse)
                 }
             } else if (xhr.readyState === XMLHttpRequest.DONE) {
                 console.log("[Booru] " + requestProvider + " failed - HTTP " + xhr.status)
                 if (xhr.responseText) console.log("[Booru] Response: " + xhr.responseText.substring(0, 200))
                 newResponse.message = root.failMessage
-                root.runningRequests--;
-                if (root.replaceOnNextResponse) {
-                    root.responses = [newResponse]
-                    root.replaceOnNextResponse = false
-                } else {
-                    root.responses = root.responses.concat([newResponse])
-                }
+                root.runningRequests--
+                addResponse(newResponse)
             }
             root.responseFinished()
         }
 
-        root.runningRequests++;
+        root.runningRequests++
+        root.pendingXhrRequests.push(xhr)
         xhr.send()
     }
 

@@ -25,11 +25,16 @@ Item {
     property int tagSuggestionDelay: 250
     property var suggestionList: []
     property bool showControlsMenu: false
+    property string lastTagQuery: ""  // Track last query to prevent stale suggestions
 
     Connections {
         target: Booru
         function onTagSuggestion(query, suggestions) {
-            root.suggestionList = suggestions;
+            // Only apply suggestions if query matches current input state
+            // This prevents stale suggestions from appearing after input is cleared
+            if (query === root.lastTagQuery && tagInputField.text.length > 0) {
+                root.suggestionList = suggestions
+            }
         }
     }
 
@@ -46,8 +51,8 @@ Item {
 
     function handleInput(inputText) {
         if (inputText.startsWith(root.commandPrefix)) {
-            const command = inputText.split(" ")[0].substring(1);
-            const args = inputText.split(" ").slice(1);
+            var command = inputText.split(" ")[0].substring(1)
+            var args = inputText.split(" ").slice(1)
 
             if (command === "mode" && args.length > 0) {
                 Booru.setProvider(args[0]);
@@ -55,8 +60,8 @@ Item {
                 Booru.clearResponses();
             } else if (command === "next") {
                 if (root.responses.length > 0) {
-                    const lastResponse = root.responses[root.responses.length - 1];
-                    root.handleInput(`${lastResponse.tags.join(" ")} ${parseInt(lastResponse.page) + 1}`);
+                    var lastResponse = root.responses[root.responses.length - 1]
+                    root.handleInput(lastResponse.tags.join(" ") + " " + (parseInt(lastResponse.page) + 1))
                 }
             } else if (command === "safe") {
                 Booru.allowNsfw = false;
@@ -189,11 +194,11 @@ Item {
                 Booru.addSystemMessage("Unknown command: " + command);
             }
         } else if (inputText.trim() === "+") {
-            root.handleInput(`${root.commandPrefix}next`);
+            root.handleInput(root.commandPrefix + "next")
         } else {
-            const tagList = inputText.split(/\s+/).filter(tag => tag.length > 0);
-            let pageIndex = 1;
-            for (let i = 0; i < tagList.length; ++i) {
+            var tagList = inputText.split(/\s+/).filter(function(tag) { return tag.length > 0 })
+            var pageIndex = 1
+            for (var i = 0; i < tagList.length; ++i) {
                 if (/^\d+$/.test(tagList[i])) {
                     pageIndex = parseInt(tagList[i], 10);
                     tagList.splice(i, 1);
@@ -323,7 +328,7 @@ Item {
                     }
 
                     onClicked: {
-                        const words = tagInputField.text.trim().split(/\s+/);
+                        var words = tagInputField.text.trim().split(/\s+/)
                         if (words.length > 0) {
                             words[words.length - 1] = modelData.name;
                         } else {
@@ -368,36 +373,38 @@ Item {
                             interval: root.tagSuggestionDelay
                             repeat: false
                             onTriggered: {
-                                const words = tagInputField.text.trim().split(/\s+/);
+                                var words = tagInputField.text.trim().split(/\s+/)
                                 if (words.length > 0 && words[words.length - 1].length > 0) {
-                                    Booru.triggerTagSearch(words[words.length - 1]);
+                                    root.lastTagQuery = words[words.length - 1]
+                                    Booru.triggerTagSearch(root.lastTagQuery)
                                 }
                             }
                         }
 
                         onTextChanged: {
                             if (text.length === 0) {
-                                root.suggestionList = [];
-                                searchTimer.stop();
-                                return;
+                                root.suggestionList = []
+                                root.lastTagQuery = ""  // Clear to prevent stale suggestions
+                                searchTimer.stop()
+                                return
                             }
 
-                            if (text.startsWith(`${root.commandPrefix}mode`)) {
+                            if (text.startsWith(root.commandPrefix + "mode")) {
                                 var parts = text.split(" ");
-                                const query = parts.length > 1 ? parts[1] : "";
+                                var query = parts.length > 1 ? parts[1] : ""
                                 root.suggestionList = Booru.providerList
-                                    .filter(p => p.includes(query.toLowerCase()))
-                                    .map(p => ({
-                                        name: `/mode ${p}`,
+                                    .filter(function(p) { return p.includes(query.toLowerCase()) })
+                                    .map(function(p) { return {
+                                        name: "/mode " + p,
                                         displayName: Booru.providers[p].name,
                                         description: Booru.providers[p].description
-                                    }));
+                                    }})
                                 searchTimer.stop();
                                 return;
                             }
 
                             // /mirror autocomplete
-                            if (text.startsWith(`${root.commandPrefix}mirror`)) {
+                            if (text.startsWith(root.commandPrefix + "mirror")) {
                                 var mirrorParts = text.split(" ");
                                 var mirrorQuery = mirrorParts.length > 1 ? mirrorParts[1].toLowerCase() : "";
 
@@ -438,9 +445,9 @@ Item {
                                 return;
                             }
 
-                            if (text.startsWith(`${root.commandPrefix}sort`)) {
+                            if (text.startsWith(root.commandPrefix + "sort")) {
                                 var sortParts = text.split(" ");
-                                const sortQuery = sortParts.length > 1 ? sortParts[1] : "";
+                                var sortQuery = sortParts.length > 1 ? sortParts[1] : ""
                                 var providerOptions = Booru.getSortOptions();
 
                                 // If provider doesn't support sorting, show message
@@ -529,24 +536,24 @@ Item {
 
                             if (text.startsWith(root.commandPrefix)) {
                                 root.suggestionList = root.allCommands
-                                    .filter(cmd => cmd.name.startsWith(text.substring(1)))
-                                    .map(cmd => ({
-                                        name: `${root.commandPrefix}${cmd.name}`,
+                                    .filter(function(cmd) { return cmd.name.startsWith(text.substring(1)) })
+                                    .map(function(cmd) { return {
+                                        name: root.commandPrefix + cmd.name,
                                         description: cmd.description
-                                    }));
-                                searchTimer.stop();
-                                return;
+                                    }})
+                                searchTimer.stop()
+                                return
                             }
 
-                            searchTimer.restart();
+                            searchTimer.restart()
                         }
 
-                        Keys.onPressed: (event) => {
+                        Keys.onPressed: function(event) {
                             if (event.key === Qt.Key_Enter || event.key === Qt.Key_Return) {
                                 if (!(event.modifiers & Qt.ShiftModifier)) {
-                                    root.handleInput(text);
-                                    text = "";
-                                    event.accepted = true;
+                                    root.handleInput(text)
+                                    text = ""
+                                    event.accepted = true
                                 }
                             }
                         }

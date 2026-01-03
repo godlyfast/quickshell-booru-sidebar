@@ -79,15 +79,12 @@ Process {
         running = true
     }
 
+    property string lastOutput: ""
+
     stdout: StdioCollector {
         onStreamFinished: {
-            // Grabber outputs "Downloaded images successfully." on success
-            var output = text.trim()
-            if (output.indexOf("successfully") >= 0) {
-                root.done(true, output)
-            } else if (output.length > 0) {
-                root.done(true, output)
-            }
+            // Store output but don't report success here - wait for onExited
+            root.lastOutput = text.trim()
         }
     }
 
@@ -100,12 +97,20 @@ Process {
         }
     }
 
-    onExited: (code, status) => {
+    onExited: function(code, status) {
         downloading = false
-        if (code !== 0 && lastError.length === 0) {
-            lastError = "Grabber exited with code " + code
-        }
-        if (code !== 0) {
+        // Success: exit code 0 AND stdout contains "successfully" OR has download path
+        var isSuccess = (code === 0) && (
+            root.lastOutput.indexOf("successfully") >= 0 ||
+            root.lastOutput.indexOf("Downloaded") >= 0 ||
+            (root.lastOutput.length > 0 && root.lastError.length === 0)
+        )
+        if (isSuccess) {
+            done(true, root.lastOutput)
+        } else {
+            if (lastError.length === 0) {
+                lastError = "Grabber exited with code " + code
+            }
             done(false, lastError)
         }
     }

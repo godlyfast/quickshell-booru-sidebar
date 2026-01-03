@@ -32,6 +32,13 @@ Button {
 
     property bool showActions: false
 
+    // Shell escape helper - escapes single quotes for safe shell string embedding
+    // 'foo'bar' -> 'foo'\''bar' (end quote, escaped quote, start quote)
+    function shellEscape(str) {
+        if (!str) return "";
+        return str.replace(/'/g, "'\\''");
+    }
+
     // Video detection - fallback to extracting from URL if file_ext not provided
     property string fileExt: {
         var ext = imageData.file_ext ? imageData.file_ext.toLowerCase() : ""
@@ -56,6 +63,16 @@ Button {
     // Local file paths for progressive loading (manual download providers)
     property string localHighResSource: ""
 
+    // Local dimension overrides - don't mutate shared model data
+    property int localWidth: 0
+    property int localHeight: 0
+    property real localAspectRatio: 0
+
+    // Effective dimensions - prefer model data, fall back to locally computed
+    property int effectiveWidth: root.imageData.width || root.localWidth || 300
+    property int effectiveHeight: root.imageData.height || root.localHeight || 300
+    property real effectiveAspectRatio: root.imageData.aspect_ratio || root.localAspectRatio || 1
+
     // Manual download for preview images (providers that block direct requests)
     ImageDownloaderProcess {
         id: imageDownloader
@@ -65,10 +82,11 @@ Button {
         property string downloadedPath: ""
         onDone: (path, width, height) => {
             downloadedPath = path
-            if (!modelData.width || !modelData.height) {
-                modelData.width = width
-                modelData.height = height
-                modelData.aspect_ratio = width / height
+            // Store dimensions locally instead of mutating shared model
+            if (!root.imageData.width || !root.imageData.height) {
+                root.localWidth = width
+                root.localHeight = height
+                root.localAspectRatio = width / height
             }
         }
     }
@@ -215,11 +233,15 @@ Button {
     }
 
     // Timer to trigger download after cache check
+    // Uses repeat: false and internal guard to prevent race conditions
     Timer {
         id: ugoiraDownloadTrigger
         interval: 100
-        running: root.isArchive && root.ugoiraCacheChecked && root.localUgoiraSource === "" && root.ugoiraSampleUrl.length > 0 && !ugoiraDownloader.downloading && !root.ugoiraDownloading
+        repeat: false
+        running: root.isArchive && root.ugoiraCacheChecked && root.localUgoiraSource === "" && root.ugoiraSampleUrl.length > 0
         onTriggered: {
+            // Guard against race condition - check flags inside handler
+            if (root.ugoiraDownloading || ugoiraDownloader.downloading) return
             root.ugoiraDownloading = true
             ugoiraDownloader.running = true
         }
@@ -243,8 +265,11 @@ Button {
                 // Fallback to curl on Grabber failure
                 console.log("[BooruImage] Grabber failed, falling back to curl: " + message)
                 var targetPath = root.imageData.is_nsfw ? root.nsfwPath : root.downloadPath
+                var escapedPath = shellEscape(targetPath)
+                var escapedUrl = shellEscape(root.imageData.file_url)
+                var escapedFile = shellEscape(root.fileName)
                 Quickshell.execDetached(["bash", "-c",
-                    "mkdir -p '" + targetPath + "' && curl -sL '" + root.imageData.file_url + "' -o '" + targetPath + "/" + root.fileName + "' && notify-send 'Download complete' '" + targetPath + "/" + root.fileName + "' -a 'Booru'"
+                    "mkdir -p '" + escapedPath + "' && curl -sL '" + escapedUrl + "' -o '" + escapedPath + "/" + escapedFile + "' && notify-send 'Download complete' '" + escapedPath + "/" + escapedFile + "' -a 'Booru'"
                 ])
             }
         }
@@ -263,8 +288,11 @@ Button {
                 // Fallback to curl on Grabber failure
                 console.log("[BooruImage] Grabber wallpaper failed, falling back to curl: " + message)
                 var wallpaperPath = root.downloadPath.replace(/\/booru$/, '/wallpapers')
+                var escapedWpPath = shellEscape(wallpaperPath)
+                var escapedUrl = shellEscape(root.imageData.file_url)
+                var escapedFile = shellEscape(root.fileName)
                 Quickshell.execDetached(["bash", "-c",
-                    "mkdir -p '" + wallpaperPath + "' && curl -sL '" + root.imageData.file_url + "' -o '" + wallpaperPath + "/" + root.fileName + "' && notify-send 'Wallpaper saved' '" + wallpaperPath + "/" + root.fileName + "' -a 'Booru'"
+                    "mkdir -p '" + escapedWpPath + "' && curl -sL '" + escapedUrl + "' -o '" + escapedWpPath + "/" + escapedFile + "' && notify-send 'Wallpaper saved' '" + escapedWpPath + "/" + escapedFile + "' -a 'Booru'"
                 ])
             }
         }
@@ -325,12 +353,12 @@ Button {
     }
 
     padding: 0
-    implicitWidth: root.rowHeight * (modelData.aspect_ratio || 1)
+    implicitWidth: root.rowHeight * (root.effectiveAspectRatio)
     implicitHeight: root.rowHeight
     z: showActions ? 100 : 0
 
     background: Rectangle {
-        implicitWidth: root.rowHeight * (modelData.aspect_ratio || 1)
+        implicitWidth: root.rowHeight * (root.effectiveAspectRatio)
         implicitHeight: root.rowHeight
         radius: imageRadius
         color: Appearance.colors.colLayer2
@@ -350,7 +378,7 @@ Button {
             layer.enabled: true
             layer.effect: OpacityMask {
                 maskSource: Rectangle {
-                    width: root.rowHeight * (modelData.aspect_ratio || 1)
+                    width: root.rowHeight * (root.effectiveAspectRatio)
                     height: root.rowHeight
                     radius: imageRadius
                 }
@@ -404,7 +432,7 @@ Button {
                         }
                         return modelData.preview_url ? modelData.preview_url : ""
                     }
-                    sourceSize.width: root.rowHeight * (modelData.aspect_ratio || 1)
+                    sourceSize.width: root.rowHeight * (root.effectiveAspectRatio)
                     sourceSize.height: root.rowHeight
                     asynchronous: true
                     cache: true
@@ -827,8 +855,11 @@ Button {
                             grabberDownloader.startDownload()
                         } else {
                             // Fallback to curl for unsupported providers
+                            var escapedPath = shellEscape(targetPath)
+                            var escapedUrl = shellEscape(root.imageData.file_url)
+                            var escapedFile = shellEscape(root.fileName)
                             Quickshell.execDetached(["bash", "-c",
-                                "mkdir -p '" + targetPath + "' && curl -sL '" + root.imageData.file_url + "' -o '" + targetPath + "/" + root.fileName + "' && notify-send 'Download complete' '" + targetPath + "/" + root.fileName + "' -a 'Booru'"
+                                "mkdir -p '" + escapedPath + "' && curl -sL '" + escapedUrl + "' -o '" + escapedPath + "/" + escapedFile + "' && notify-send 'Download complete' '" + escapedPath + "/" + escapedFile + "' -a 'Booru'"
                             ])
                         }
                     }
@@ -854,8 +885,11 @@ Button {
                             wallpaperDownloader.startDownload()
                         } else {
                             // Fallback to curl for unsupported providers
+                            var escapedWpPath = shellEscape(wallpaperPath)
+                            var escapedUrl = shellEscape(root.imageData.file_url)
+                            var escapedFile = shellEscape(root.fileName)
                             Quickshell.execDetached(["bash", "-c",
-                                "mkdir -p '" + wallpaperPath + "' && curl -sL '" + root.imageData.file_url + "' -o '" + wallpaperPath + "/" + root.fileName + "' && notify-send 'Wallpaper saved' '" + wallpaperPath + "/" + root.fileName + "' -a 'Booru'"
+                                "mkdir -p '" + escapedWpPath + "' && curl -sL '" + escapedUrl + "' -o '" + escapedWpPath + "/" + escapedFile + "' && notify-send 'Wallpaper saved' '" + escapedWpPath + "/" + escapedFile + "' -a 'Booru'"
                             ])
                         }
                     }
