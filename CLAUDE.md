@@ -156,11 +156,53 @@ QML uses V4 engine which **does not support ES6+**. All JavaScript must be ES5:
 const x = item?.property ?? "default"
 const arr = [...items]
 const str = `template ${value}`
+items.map(i => i.name)
 
 // CORRECT - ES5 syntax
 var x = (item && item.property) ? item.property : "default"
 var arr = items.slice()
 var str = "template " + value
+items.map(function(i) { return i.name })
+```
+
+**Files requiring ES5**: All `.js` files in `modules/common/functions/` and inline JavaScript in QML files.
+
+### Security: Shell Command Escaping
+
+When executing shell commands with user-provided data (URLs, paths), use `shellEscape()`:
+
+```javascript
+// BooruImage.qml - prevents command injection
+function shellEscape(str) {
+    if (!str) return ""
+    return str.replace(/'/g, "'\\''")
+}
+
+// Usage in Process commands
+command: ["bash", "-c", "curl -sL '" + shellEscape(url) + "' -o '" + shellEscape(path) + "'"]
+```
+
+**Protected locations**: Download commands, ugoira converter, image fallback downloads.
+
+### API Resilience
+
+**XHR Request Management** (`Booru.qml`):
+- `pendingXhrRequests: []` - Tracks all active XHR objects
+- `clearResponses()` - Aborts all pending requests before clearing
+- Prevents stale responses from updating UI after user clears
+
+**Response Limiting**:
+- `maxResponses: 50` - Caps stored responses to prevent memory bloat
+- Oldest responses evicted first when limit exceeded
+- ~1000 images max in memory (50 responses × 20 images)
+
+**Provider MapFunc Safety**:
+All provider `mapFunc` and `tagMapFunc` include null checks:
+```javascript
+mapFunc: function(response) {
+    if (!response || !Array.isArray(response)) return []
+    // ... safe iteration
+}
 ```
 
 ### Normalized Image Object

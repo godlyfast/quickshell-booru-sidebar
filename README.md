@@ -6,13 +6,15 @@ A beautiful anime image browser sidebar for [Quickshell](https://quickshell.outf
 
 ## Features
 
-- **Multiple Booru Sources**: yande.re, Konachan, Danbooru, Gelbooru, waifu.im
-- **Tag Search**: Search images by tags with autocomplete suggestions
-- **NSFW Toggle**: Filter content based on your preferences
-- **Image Actions**: Open source, view full image, download to custom paths
-- **Responsive Grid**: Auto-sizing image grid with smooth scrolling
-- **Material Design**: Beautiful Material 3 inspired UI with Catppuccin colors
-- **Keyboard Support**: ESC to close, click outside to dismiss
+- **12+ Booru Sources**: yande.re, Danbooru, Gelbooru, e621, Wallhaven, Rule34, and more
+- **Animated Media**: GIFs, videos, and ugoira (Pixiv ZIP animations) play automatically
+- **Smart Downloads**: Filename templates with artist/character metadata via imgbrd-grabber
+- **4K+ Wallpapers**: Wallhaven filtering by resolution (3840x2160+) and toplist periods
+- **Tag Autocomplete**: Fuzzy search with provider-specific suggestions
+- **NSFW Filtering**: Per-provider toggle with SFW-only options
+- **Sorting Options**: Score, date, favorites, random (provider-dependent)
+- **Material Design**: Material 3 inspired UI with Catppuccin colors
+- **IPC Control**: Keybind integration via Quickshell messaging
 
 ## Requirements
 
@@ -21,17 +23,33 @@ A beautiful anime image browser sidebar for [Quickshell](https://quickshell.outf
 - `ttf-material-symbols-variable` font (for icons)
 - `curl` (for image downloads)
 
+### Optional Dependencies
+
+- [imgbrd-grabber](https://github.com/Bionus/imgbrd-grabber) - Enhanced downloads with artist-aware filenames and Cloudflare bypass
+- `ffmpeg` + `unzip` - Required for ugoira (animated ZIP) playback
+
+#### Why imgbrd-grabber?
+
+imgbrd-grabber is a powerful booru downloader that provides:
+- **Smart Filenames**: Include artist, character, copyright in filenames (e.g., `yande.re 1249799 - kantoku.jpg`)
+- **Cloudflare Bypass**: Works with sites that block direct API access (Danbooru)
+- **Duplicate Detection**: Automatically skips already-downloaded images
+- **Rich Metadata**: Access to tag categories (artist, character, copyright) not available in raw APIs
+
+Without imgbrd-grabber, downloads use generic filenames based on the image ID only.
+
 ### Install Dependencies (Arch Linux)
 
 ```bash
-# Quickshell (AUR)
+# Core dependencies
 yay -S quickshell-git
+sudo pacman -S ttf-material-symbols-variable curl
 
-# Material Symbols font
-sudo pacman -S ttf-material-symbols-variable
+# Optional: for ugoira support
+sudo pacman -S ffmpeg unzip
 
-# curl (usually pre-installed)
-sudo pacman -S curl
+# Optional: for enhanced downloads
+yay -S imgbrd-grabber
 ```
 
 ## Installation
@@ -105,6 +123,50 @@ To start the sidebar with Hyprland, add to your startup config:
 exec-once = qs -c booru-sidebar -d
 ```
 
+## Commands
+
+Type these in the search bar:
+
+| Command | Description |
+|---------|-------------|
+| `/mode <provider>` | Switch provider (e.g., `/mode danbooru`) |
+| `/mirror <name>` | Switch provider mirror (e.g., `/mirror konachan.com`) |
+| `/sort <option>` | Set sorting (e.g., `/sort score`, `/sort random`) |
+| `/res <resolution>` | Wallhaven resolution filter (e.g., `/res 3840x2160`) |
+| `/safe` | Disable NSFW content |
+| `/lewd` | Enable NSFW content |
+| `/clear` | Clear image list |
+| `/next` or `+` | Load next page |
+
+## Supported Providers
+
+| Provider | Key | API Type | NSFW | Auth Required |
+|----------|-----|----------|------|---------------|
+| yande.re | `yandere` | Moebooru | Yes | No |
+| Konachan.net | `konachan` | Moebooru | SFW only | No |
+| Konachan.com | `konachan` + mirror | Moebooru | Yes | No |
+| Danbooru | `danbooru` | Danbooru | Yes | No |
+| Gelbooru | `gelbooru` | Gelbooru | Yes | **Yes** |
+| Safebooru | `safebooru` | Gelbooru | SFW only | No |
+| Rule34 | `rule34` | Gelbooru | NSFW only | **Yes** |
+| e621 | `e621` | e621 | Yes | No |
+| e926 | `e926` | e621 | SFW only | No |
+| Wallhaven | `wallhaven` | REST | Yes* | Optional |
+| waifu.im | `waifu.im` | REST | Yes | No |
+| nekos.best | `nekos_best` | REST | SFW only | No |
+| AIBooru | `aibooru` | Danbooru | Yes | No |
+
+*Wallhaven NSFW requires API key
+
+### Additional Providers
+
+| Provider | Key | Notes |
+|----------|-----|-------|
+| Xbooru | `xbooru` | NSFW focused |
+| TBIB | `tbib` | 8M+ images aggregator |
+| Paheal | `paheal` | Rule34 Shimmie |
+| Hypnohub | `hypnohub` | Niche themed |
+
 ## Configuration
 
 Edit `config.json` to customize:
@@ -116,8 +178,12 @@ Edit `config.json` to customize:
     "nsfw": false,
     "downloadPath": "~/Pictures/booru",
     "nsfwPath": "~/Pictures/booru/nsfw",
+    "filenameTemplate": "%website% %id% - %artist%.%ext%",
     "gelbooruApiKey": "",
-    "gelbooruUserId": ""
+    "gelbooruUserId": "",
+    "rule34ApiKey": "",
+    "rule34UserId": "",
+    "wallhavenApiKey": ""
   },
   "appearance": {
     "transparency": 0.5,
@@ -133,32 +199,59 @@ Edit `config.json` to customize:
 }
 ```
 
-## Supported Booru APIs
+### Filename Template Tokens (imgbrd-grabber)
 
-| Provider | API Type | NSFW Support | Auth Required |
-|----------|----------|--------------|---------------|
-| yande.re | Moebooru | Yes | No |
-| Konachan | Moebooru | Yes | No |
-| Danbooru | Danbooru | Yes | No |
-| Gelbooru | Gelbooru | Yes | **Yes** |
-| waifu.im | REST | Yes | No |
+These tokens are available when [imgbrd-grabber](https://github.com/Bionus/imgbrd-grabber) is installed. Configure via `filenameTemplate` in config.json:
 
-### Gelbooru API Key
+| Token | Description |
+|-------|-------------|
+| `%website%` | Source site name |
+| `%id%` | Post ID |
+| `%artist%` | Artist name(s) |
+| `%copyright%` | Series/copyright |
+| `%character%` | Character name(s) |
+| `%md5%` | File hash |
+| `%ext%` | File extension |
 
-Gelbooru requires API authentication. To use Gelbooru:
+Example: `%website% %id% - %artist%.%ext%` → `yande.re 1249799 - kantoku.jpg`
+
+See [imgbrd-grabber documentation](https://bionus.github.io/imgbrd-grabber/docs/filename.html) for the full list of available tokens.
+
+## API Keys
+
+### Gelbooru
 
 1. Create an account at [gelbooru.com](https://gelbooru.com)
 2. Go to [Account Options](https://gelbooru.com/index.php?page=account&s=options)
 3. Copy your **API Key** and **User ID**
-4. Add them to your `config.json`:
+4. Add to `config.json`:
 
 ```json
-{
-  "booru": {
-    "gelbooruApiKey": "your_api_key_here",
-    "gelbooruUserId": "your_user_id_here"
-  }
-}
+"gelbooruApiKey": "your_api_key",
+"gelbooruUserId": "your_user_id"
+```
+
+### Rule34
+
+1. Create an account at [rule34.xxx](https://rule34.xxx)
+2. Go to [Account Options](https://rule34.xxx/index.php?page=account&s=options)
+3. Copy your **API Key** and **User ID**
+4. Add to `config.json`:
+
+```json
+"rule34ApiKey": "your_api_key",
+"rule34UserId": "your_user_id"
+```
+
+### Wallhaven (for NSFW)
+
+1. Create an account at [wallhaven.cc](https://wallhaven.cc)
+2. Go to [Settings > Account](https://wallhaven.cc/settings/account)
+3. Copy your **API Key**
+4. Add to `config.json`:
+
+```json
+"wallhavenApiKey": "your_api_key"
 ```
 
 ## IPC Commands
