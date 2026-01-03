@@ -139,6 +139,25 @@ Type these in the search bar:
 | `/clear` | Clear image list |
 | `/next` or `+` | Load next page |
 
+## Sorting Options
+
+Each provider supports different sort options. Use `/sort <option>` or click the sort chip.
+
+| Provider Type | Sort Options |
+|---------------|--------------|
+| **yandere, konachan** | `score`, `score_asc`, `favcount`, `random`, `rank`, `id`, `id_desc`, `change`, `comment`, `mpixels`, `landscape`, `portrait` |
+| **danbooru, aibooru** | `rank`, `score`, `favcount`, `random`, `id`, `id_desc`, `change`, `comment`, `note`, `mpixels`, `landscape`, `portrait` |
+| **e621, e926** | `score`, `favcount`, `random`, `id`, `id_asc`, `comment_count`, `tagcount`, `mpixels`, `filesize`, `landscape`, `portrait` |
+| **gelbooru, safebooru, rule34, xbooru** | `score`, `score:asc`, `score:desc`, `id`, `id:asc`, `updated`, `random` |
+| **wallhaven** | `toplist`, `random`, `date_added`, `relevance`, `views`, `favorites`, `hot` |
+
+### Age Filter
+
+For providers with large datasets, an age filter prevents search timeouts when sorting by score or favorites.
+
+- **Providers**: yandere, konachan, danbooru, aibooru
+- **Options**: 1d, 1w, 1M, 3M, 1y, All (click the clock chip to cycle)
+
 ## Supported Providers
 
 | Provider | Key | API Type | NSFW | Auth Required |

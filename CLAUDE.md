@@ -32,9 +32,9 @@ timeout 120 qs --path tests    # With timeout (tests take ~60-90s)
 | Provider | Key | API Type | Sorting | Notes |
 |----------|-----|----------|---------|-------|
 | yande.re | `yandere` | Moebooru | `order:X` | Default provider |
-| Konachan.net | `konachan` | Moebooru | `order:X` | SFW-only |
-| Konachan.com | `konachan_com` | Moebooru | `order:X` | More NSFW than .net |
-| Danbooru | `danbooru` | Danbooru | `order:X` | Strict Cloudflare |
+| Konachan | `konachan` | Moebooru | `order:X` | Has .net (SFW) and .com (NSFW) mirrors |
+| Danbooru | `danbooru` | Danbooru | `order:X` | Strict Cloudflare, uses Grabber |
+| AIBooru | `aibooru` | Danbooru | `order:X` | AI-generated art |
 | Gelbooru | `gelbooru` | Gelbooru | `sort:X` | Requires API key |
 | Safebooru | `safebooru` | Gelbooru | `sort:X` | SFW-only |
 | Rule34 | `rule34` | Gelbooru | `sort:X` | NSFW-only, requires API key |
@@ -43,9 +43,13 @@ timeout 120 qs --path tests    # With timeout (tests take ~60-90s)
 | Wallhaven | `wallhaven` | REST | `sorting=X` param | Desktop wallpapers, 4K+ filter |
 | waifu.im | `waifu.im` | REST | None | Limited tag set |
 | nekos.best | `nekos_best` | REST | None | Random images only |
+| Xbooru | `xbooru` | Gelbooru | `sort:X` | NSFW focused |
+| TBIB | `tbib` | Gelbooru | `sort:X` | 8M+ images aggregator |
+| Paheal | `paheal` | Shimmie | None | Rule34 Shimmie |
+| Hypnohub | `hypnohub` | Gelbooru | `sort:X` | Niche themed |
 
-**SFW-only providers** (NSFW toggle hidden): `safebooru`, `e926`, `nekos_best`, `konachan`
-**NSFW-only providers**: `rule34`
+**SFW-only providers** (NSFW toggle hidden): `safebooru`, `e926`, `nekos_best`
+**NSFW-only providers**: `rule34`, `xbooru`, `tbib`, `paheal`, `hypnohub`
 
 ## Architecture
 
@@ -351,6 +355,35 @@ Providers skipped in tests: `danbooru` (strict Cloudflare JS challenge)
 - **Wallhaven**: Has separate `order` param (asc/desc) in addition to `sorting`
 - **waifu.im**: Tags returned as objects; only supports specific tag names
 - **nekos_best**: Random images only, ignores search tags
+
+## Sorting Options
+
+Each provider has API-specific sort options. Use `/sort <option>` command.
+
+### Sort Options by API Type
+
+| API Type | Providers | Sort Options |
+|----------|-----------|--------------|
+| **Moebooru** | yandere, konachan | `score`, `score_asc`, `favcount`, `random`, `rank`, `id`, `id_desc`, `change`, `comment`, `mpixels`, `landscape`, `portrait` |
+| **Danbooru** | danbooru, aibooru | `rank`, `score`, `favcount`, `random`, `id`, `id_desc`, `change`, `comment`, `comment_bumped`, `note`, `mpixels`, `landscape`, `portrait` |
+| **e621** | e621, e926 | `score`, `favcount`, `random`, `id`, `id_asc`, `comment_count`, `tagcount`, `mpixels`, `filesize`, `landscape`, `portrait` |
+| **Gelbooru** | gelbooru, safebooru, rule34, xbooru | `score`, `score:asc`, `score:desc`, `id`, `id:asc`, `updated`, `random` |
+| **Gelbooru** | tbib, hypnohub | `score`, `score:asc`, `score:desc`, `id`, `id:asc`, `updated` |
+| **Wallhaven** | wallhaven | `toplist`, `random`, `date_added`, `relevance`, `views`, `favorites`, `hot` |
+| **None** | waifu.im, nekos_best, paheal | No sorting support |
+
+### Age Filter
+
+Providers supporting the `age:` metatag show an age chip in the UI. This prevents search timeouts when sorting by score/favcount on large datasets.
+
+**Supported providers**: `danbooru`, `aibooru`, `yandere`, `konachan`
+
+**Options**: `1d`, `1w`, `1M`, `3M`, `1y`, `All`
+
+**Properties** (`Booru.qml`):
+- `ageFilter` - Current age filter value (default: "1month")
+- `ageFilterProviders` - Array of providers supporting age filter
+- `providerSupportsAgeFilter` - Boolean for UI binding
 
 ## imgbrd-grabber Integration
 
