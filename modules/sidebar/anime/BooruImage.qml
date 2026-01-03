@@ -188,16 +188,18 @@ Button {
         }
     }
 
-    // Download pre-converted WebM from Danbooru's sample_url
-    // Uses curl with browser headers to bypass Cloudflare
+    // Download pre-converted WebM from sample_url (works for Danbooru, AIBooru, etc.)
+    // Uses bash to create cache directory, then curl with browser headers
     Process {
         id: ugoiraDownloader
         property bool downloading: false
         running: false
-        command: ["curl", "-sL", root.ugoiraSampleUrl,
-            "-H", "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
-            "-H", "Referer: https://danbooru.donmai.us/",
-            "-o", root.ugoiraVideoPath]
+        command: ["bash", "-c",
+            "mkdir -p \"$(dirname '" + root.ugoiraVideoPath + "')\" && " +
+            "curl -sL '" + root.ugoiraSampleUrl + "' " +
+            "-H 'User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36' " +
+            "-o '" + root.ugoiraVideoPath + "'"
+        ]
 
         onRunningChanged: {
             if (running) downloading = true
