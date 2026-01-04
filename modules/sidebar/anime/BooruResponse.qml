@@ -222,21 +222,59 @@ Rectangle {
             }
         }
 
-        // Load more button (appends next page to feed)
+        // Pagination navigation (Prev/Next)
         RowLayout {
             visible: root.responseData.page > 0
             Layout.fillWidth: true
+            spacing: 8
+
+            // Previous button
+            RippleButton {
+                implicitHeight: 32
+                implicitWidth: prevRow.implicitWidth + 20
+                buttonRadius: Appearance.rounding.small
+                colBackground: Appearance.colors.colLayer2
+                enabled: root.responseData.page > 1
+                opacity: enabled ? 1.0 : 0.4
+
+                onClicked: {
+                    Booru.makeRequest(
+                        root.responseData.tags || [],
+                        Booru.allowNsfw,
+                        Booru.limit,
+                        parseInt(root.responseData.page) - 1
+                    )
+                }
+
+                contentItem: Row {
+                    id: prevRow
+                    anchors.centerIn: parent
+                    spacing: 4
+
+                    MaterialSymbol {
+                        iconSize: 18
+                        color: Appearance.m3colors.m3surfaceText
+                        text: "chevron_left"
+                    }
+
+                    StyledText {
+                        text: "Prev"
+                        font.pixelSize: Appearance.font.pixelSize.textSmall
+                        color: Appearance.m3colors.m3surfaceText
+                    }
+                }
+            }
 
             Item { Layout.fillWidth: true }
 
+            // Next button
             RippleButton {
                 implicitHeight: 32
-                implicitWidth: loadMoreRow.implicitWidth + 20
+                implicitWidth: nextRow.implicitWidth + 20
                 buttonRadius: Appearance.rounding.small
                 colBackground: Appearance.colors.colLayer2
 
                 onClicked: {
-                    // Directly call API - appends by default, no input field manipulation
                     Booru.makeRequest(
                         root.responseData.tags || [],
                         Booru.allowNsfw,
@@ -246,20 +284,20 @@ Rectangle {
                 }
 
                 contentItem: Row {
-                    id: loadMoreRow
+                    id: nextRow
                     anchors.centerIn: parent
                     spacing: 4
+
+                    StyledText {
+                        text: "Next"
+                        font.pixelSize: Appearance.font.pixelSize.textSmall
+                        color: Appearance.m3colors.m3surfaceText
+                    }
 
                     MaterialSymbol {
                         iconSize: 18
                         color: Appearance.m3colors.m3surfaceText
-                        text: "add"
-                    }
-
-                    StyledText {
-                        text: "Load More"
-                        font.pixelSize: Appearance.font.pixelSize.textSmall
-                        color: Appearance.m3colors.m3surfaceText
+                        text: "chevron_right"
                     }
                 }
             }

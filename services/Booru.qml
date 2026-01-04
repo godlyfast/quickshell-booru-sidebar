@@ -31,7 +31,10 @@ Singleton {
     property var responses: []
     property int runningRequests: 0
     property var pendingXhrRequests: []  // Track XHR for abort on clear
-    property int maxResponses: 50  // Limit memory: ~50 responses = ~1000 images
+
+    // Pagination state (single page at a time)
+    property int currentPage: 1
+    property var currentTags: []
     property string defaultUserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
     property var providerList: {
         var list = Object.keys(providers).filter(function(provider) {
@@ -828,10 +831,10 @@ Singleton {
     }
 
     function makeRequest(tags, nsfw=false, limit=20, page=1) {
-        // Clear existing results on new search (page 1)
-        if (page === 1) {
-            clearResponses()
-        }
+        // Single page pagination - always clear and replace
+        clearResponses()
+        currentTags = tags
+        currentPage = page
 
         var requestProvider = currentProvider  // Capture provider at request time
 
@@ -877,14 +880,9 @@ Singleton {
             }
         }
 
-        // Helper to add response with limit enforcement
+        // Helper to add response (single page, already cleared)
         function addResponse(resp) {
-            var newResponses = root.responses.concat([resp])
-            // Enforce max responses limit (remove oldest)
-            while (newResponses.length > root.maxResponses) {
-                newResponses.shift()
-            }
-            root.responses = newResponses
+            root.responses = [resp]
         }
 
         xhr.onreadystatechange = function() {

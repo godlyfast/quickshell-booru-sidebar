@@ -66,7 +66,7 @@ Scope {
         if (!previewImageData) return -1
         var images = getAllImages()
         for (var i = 0; i < images.length; i++) {
-            if (images[i].data.id === previewImageData.id) return i
+            if (String(images[i].data.id) === String(previewImageData.id)) return i
         }
         return -1
     }
@@ -110,18 +110,17 @@ Scope {
         return "file://" + cachePath
     }
 
-    // Navigate to prev/next image in preview
+    // Navigate to prev/next image in preview (circular)
     function navigatePreview(delta) {
         var images = getAllImages()
         if (images.length === 0) return
         var idx = getCurrentImageIndex()
         if (idx < 0) idx = 0
-        var newIdx = Math.max(0, Math.min(images.length - 1, idx + delta))
-        if (newIdx !== idx || idx < 0) {
-            var img = images[newIdx]
-            var cachedPath = getCachedPath(img.data, img.provider)
-            showPreview(img.data, cachedPath, false, img.provider)
-        }
+        // Circular wrap-around
+        var newIdx = (idx + delta + images.length) % images.length
+        var img = images[newIdx]
+        var cachedPath = getCachedPath(img.data, img.provider)
+        showPreview(img.data, cachedPath, false, img.provider)
     }
 
     // Download paths
@@ -380,7 +379,7 @@ Scope {
                             }
                         }
 
-                        // h/l: prev/next image (always works, use for non-videos with arrows too)
+                        // h/l: prev/next image in preview
                         if (event.key === Qt.Key_H || (!isVideo && event.key === Qt.Key_Left)) {
                             root.navigatePreview(-1)
                             event.accepted = true
@@ -444,17 +443,33 @@ Scope {
                         }
                     }
 
-                    // === LIST NAVIGATION ===
-                    if (event.key === Qt.Key_J || event.key === Qt.Key_Down) {
-                        animeContent.scrollDown()
+                    // === h/l: Navigate images (works with preview open or closed) ===
+                    if (!root.previewActive) {
+                        if (event.key === Qt.Key_H) {
+                            root.navigatePreview(-1)
+                            event.accepted = true
+                            return
+                        }
+                        if (event.key === Qt.Key_L) {
+                            root.navigatePreview(1)
+                            event.accepted = true
+                            return
+                        }
+                    }
+
+                    // === VIEWPORT SCROLLING (j/k) ===
+                    if (event.key === Qt.Key_J) {
+                        animeContent.scrollDown(100)
                         event.accepted = true
                         return
                     }
-                    if (event.key === Qt.Key_K || event.key === Qt.Key_Up) {
-                        animeContent.scrollUp()
+                    if (event.key === Qt.Key_K) {
+                        animeContent.scrollUp(100)
                         event.accepted = true
                         return
                     }
+
+                    // === VIEWPORT SCROLLING (Ctrl+u/d, gg, G) ===
                     if (event.key === Qt.Key_G && !(event.modifiers & Qt.ShiftModifier)) {
                         root.pendingKey = "g"
                         event.accepted = true
@@ -479,6 +494,11 @@ Scope {
                     // === PAGINATION ===
                     if (event.key === Qt.Key_N && !(event.modifiers & Qt.ShiftModifier)) {
                         animeContent.loadNextPage()
+                        event.accepted = true
+                        return
+                    }
+                    if (event.key === Qt.Key_N && (event.modifiers & Qt.ShiftModifier)) {
+                        animeContent.loadPrevPage()
                         event.accepted = true
                         return
                     }
@@ -612,15 +632,13 @@ Scope {
                         Column {
                             spacing: 4
                             StyledText { text: "Navigation"; font.bold: true; color: Appearance.m3colors.m3primary }
-                            StyledText { text: "j / ↓  Scroll down"; color: "#ffffff" }
-                            StyledText { text: "k / ↑  Scroll up"; color: "#ffffff" }
+                            StyledText { text: "j / k  Scroll viewport"; color: "#ffffff" }
                             StyledText { text: "gg     Jump to top"; color: "#ffffff" }
                             StyledText { text: "G      Jump to bottom"; color: "#ffffff" }
                             StyledText { text: "Ctrl+d Page down"; color: "#ffffff" }
                             StyledText { text: "Ctrl+u Page up"; color: "#ffffff" }
-                            StyledText { text: "n      Next page"; color: "#ffffff" }
-                            StyledText { text: "h / ←  Prev image (preview)"; color: "#ffffff" }
-                            StyledText { text: "l / →  Next image (preview)"; color: "#ffffff" }
+                            StyledText { text: "n / N  Next/prev page"; color: "#ffffff" }
+                            StyledText { text: "h / l  Prev/next image"; color: "#ffffff" }
                         }
 
                         // Preview column

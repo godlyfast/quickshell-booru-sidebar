@@ -39,12 +39,14 @@ Item {
 
     // Scroll functions for vim-like navigation
     function scrollUp(amount) {
-        booruResponseListView.contentY = Math.max(0, booruResponseListView.contentY - (amount || 100))
+        var newY = booruResponseListView.contentY - (amount || 100)
+        booruResponseListView.contentY = Math.max(0, newY)
     }
 
     function scrollDown(amount) {
         var maxY = booruResponseListView.contentHeight - booruResponseListView.height
-        booruResponseListView.contentY = Math.min(maxY, booruResponseListView.contentY + (amount || 100))
+        var newY = booruResponseListView.contentY + (amount || 100)
+        booruResponseListView.contentY = Math.min(Math.max(0, maxY), newY)
     }
 
     function scrollToTop() {
@@ -66,6 +68,11 @@ Item {
     // Load next page
     function loadNextPage() {
         handleInput("+")
+    }
+
+    // Load previous page
+    function loadPrevPage() {
+        handleInput("/prev")
     }
 
     // Focus the input field
@@ -105,9 +112,12 @@ Item {
             } else if (command === "clear") {
                 Booru.clearResponses();
             } else if (command === "next") {
-                if (root.responses.length > 0) {
-                    var lastResponse = root.responses[root.responses.length - 1]
-                    root.handleInput(lastResponse.tags.join(" ") + " " + (parseInt(lastResponse.page) + 1))
+                if (Booru.responses.length > 0) {
+                    Booru.makeRequest(Booru.currentTags, Booru.allowNsfw, Booru.limit, Booru.currentPage + 1)
+                }
+            } else if (command === "prev") {
+                if (Booru.responses.length > 0 && Booru.currentPage > 1) {
+                    Booru.makeRequest(Booru.currentTags, Booru.allowNsfw, Booru.limit, Booru.currentPage - 1)
                 }
             } else if (command === "safe") {
                 Booru.allowNsfw = false;
@@ -260,7 +270,7 @@ Item {
         anchors.margins: root.padding
         spacing: root.padding
 
-        // Image list
+        // Image list (single page at a time)
         ListView {
             id: booruResponseListView
             Layout.fillWidth: true

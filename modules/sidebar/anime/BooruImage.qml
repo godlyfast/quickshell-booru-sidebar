@@ -1416,6 +1416,7 @@ Button {
                 }
             }
         }
+
     }
 
     // Track if this image's preview is currently shown
