@@ -27,6 +27,12 @@ qs --path tests                # From repo root
 timeout 120 qs --path tests    # With timeout (tests take ~60-90s)
 ```
 
+### Deploy for Development
+```bash
+./deploy.sh                    # Stop, copy to ~/.config/quickshell/booru-sidebar/, restart
+```
+Deploys repo files to the quickshell config directory. Preserves user's config.json.
+
 ## Supported Providers
 
 | Provider | Key | API Type | Sorting | Notes |
