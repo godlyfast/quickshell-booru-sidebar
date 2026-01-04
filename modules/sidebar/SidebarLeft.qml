@@ -26,6 +26,7 @@ Scope {
 
     // Called by BooruImage when clicked to show preview
     function showPreview(imageData, cachedSource, manualDownload, provider) {
+        console.log("[showPreview] Opening preview for image:", imageData ? imageData.id : "null", "provider:", provider)
         root.previewImageData = imageData
         root.previewCachedSource = cachedSource || ""
         root.previewManualDownload = manualDownload || false
@@ -70,6 +71,45 @@ Scope {
         return -1
     }
 
+    // Compute expected cache path for an image
+    property string cacheDir: Directories.cacheDir + "/booru/previews"
+
+    function getCachedPath(imageData, provider) {
+        if (!imageData || !imageData.file_url) return ""
+
+        // Extract filename from file_url
+        var url = imageData.file_url
+        var path = url.substring(url.lastIndexOf('/') + 1)
+        var queryIdx = path.indexOf('?')
+        if (queryIdx > 0) path = path.substring(0, queryIdx)
+        var fileName = decodeURIComponent(path)
+
+        // Get file extension
+        var ext = imageData.file_ext ? imageData.file_ext.toLowerCase() : ""
+        if (!ext) {
+            ext = fileName.split('.').pop().toLowerCase()
+        }
+
+        // Determine cache path based on media type
+        var cachePath
+        if (ext === "gif") {
+            // GIFs use gif_ prefix
+            cachePath = cacheDir + "/gif_" + fileName
+        } else if (ext === "mp4" || ext === "webm") {
+            // Videos use video_ prefix with md5/id
+            cachePath = cacheDir + "/video_" + (imageData.md5 ? imageData.md5 : imageData.id) + "." + ext
+        } else {
+            // Images use hires_ prefix
+            cachePath = cacheDir + "/hires_" + fileName
+            // For danbooru, use md5/id based naming
+            if (provider === "danbooru") {
+                cachePath = cacheDir + "/hires_" + (imageData.md5 ? imageData.md5 : imageData.id) + "." + ext
+            }
+        }
+
+        return "file://" + cachePath
+    }
+
     // Navigate to prev/next image in preview
     function navigatePreview(delta) {
         var images = getAllImages()
@@ -79,7 +119,8 @@ Scope {
         var newIdx = Math.max(0, Math.min(images.length - 1, idx + delta))
         if (newIdx !== idx || idx < 0) {
             var img = images[newIdx]
-            showPreview(img.data, "", false, img.provider)
+            var cachedPath = getCachedPath(img.data, img.provider)
+            showPreview(img.data, cachedPath, false, img.provider)
         }
     }
 
@@ -254,6 +295,7 @@ Scope {
                 radius: Appearance.rounding.large
 
                 Keys.onPressed: (event) => {
+                    console.log("[Keys] Key pressed:", event.key, "previewActive:", root.previewActive, "hasFocus:", sidebarBackground.activeFocus)
                     // Skip if input field is focused (let it handle keys normally)
                     if (animeContent.inputField && animeContent.inputField.activeFocus) {
                         // Escape blurs input
@@ -297,12 +339,15 @@ Scope {
 
                     // === PREVIEW NAVIGATION (h/l) ===
                     if (root.previewActive) {
+                        console.log("[Keys] Preview active, key:", event.key, "H:", Qt.Key_H, "L:", Qt.Key_L)
                         if (event.key === Qt.Key_H || event.key === Qt.Key_Left) {
+                            console.log("[Keys] H/Left pressed - navigating prev")
                             root.navigatePreview(-1)
                             event.accepted = true
                             return
                         }
                         if (event.key === Qt.Key_L || event.key === Qt.Key_Right) {
+                            console.log("[Keys] L/Right pressed - navigating next")
                             root.navigatePreview(1)
                             event.accepted = true
                             return

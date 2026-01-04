@@ -45,6 +45,10 @@ Scope {
     property real minZoom: 1.0
     property real maxZoom: 5.0
 
+    // Track cache fallback state (reset on image change)
+    property bool imageCacheTriedAndFailed: false
+    property bool gifCacheTriedAndFailed: false
+
     // Update stable cache only when image ID changes
     onImageDataChanged: {
         if (!imageData) {
@@ -61,6 +65,9 @@ Scope {
             zoomLevel = 1.0
             panX = 0
             panY = 0
+            // Reset cache fallback flags
+            imageCacheTriedAndFailed = false
+            gifCacheTriedAndFailed = false
             // Determine URL
             if (cachedSource && cachedSource.length > 0) {
                 stableImageUrl = cachedSource
@@ -322,7 +329,21 @@ Scope {
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
                 cache: true
-                source: root.stableImageUrl
+                source: {
+                    // If cache failed, use network URL directly
+                    if (root.imageCacheTriedAndFailed && root.imageData) {
+                        return root.imageData.file_url || root.imageData.sample_url || ""
+                    }
+                    return root.stableImageUrl
+                }
+
+                onStatusChanged: {
+                    // If cached file:// source failed, fall back to network
+                    if (status === Image.Error && root.stableImageUrl.indexOf("file://") === 0 && !root.imageCacheTriedAndFailed) {
+                        console.log("[PreviewPanel] Cache miss, falling back to network:", root.stableImageUrl)
+                        root.imageCacheTriedAndFailed = true
+                    }
+                }
 
                 transform: [
                     Scale {
@@ -453,7 +474,21 @@ Scope {
                 asynchronous: true
                 playing: true
                 cache: true
-                source: root.stableImageUrl
+                source: {
+                    // If cache failed, use network URL directly
+                    if (root.gifCacheTriedAndFailed && root.imageData) {
+                        return root.imageData.file_url || root.imageData.sample_url || ""
+                    }
+                    return root.stableImageUrl
+                }
+
+                onStatusChanged: {
+                    // If cached file:// source failed, fall back to network
+                    if (status === Image.Error && root.stableImageUrl.indexOf("file://") === 0 && !root.gifCacheTriedAndFailed) {
+                        console.log("[PreviewPanel] GIF cache miss, falling back to network:", root.stableImageUrl)
+                        root.gifCacheTriedAndFailed = true
+                    }
+                }
 
                 transform: [
                     Scale {
