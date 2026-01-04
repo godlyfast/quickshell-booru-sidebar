@@ -100,6 +100,50 @@ Scope {
     // Signal to request saving as wallpaper
     signal requestSaveWallpaper(var imageData)
 
+    // Video control functions (for keyboard shortcuts)
+    // These safely no-op if current preview isn't a video
+    function togglePlayPause() {
+        if (!root.isVideo || !contentLoader.item) return
+        var player = contentLoader.item.mediaPlayer
+        if (!player) return
+        if (player.playbackState === MediaPlayer.PlayingState) {
+            player.pause()
+        } else {
+            player.play()
+        }
+    }
+
+    function toggleMute() {
+        if (!root.isVideo || !contentLoader.item) return
+        var audio = contentLoader.item.audioOutput
+        if (audio) audio.muted = !audio.muted
+    }
+
+    function seekRelative(ms) {
+        if (!root.isVideo || !contentLoader.item) return
+        var player = contentLoader.item.mediaPlayer
+        if (!player) return
+        var newPos = Math.max(0, Math.min(player.duration, player.position + ms))
+        player.position = newPos
+    }
+
+    function changeSpeed(delta) {
+        if (!root.isVideo || !contentLoader.item) return
+        var player = contentLoader.item.mediaPlayer
+        if (!player) return
+        var speeds = [0.5, 1.0, 1.5, 2.0]
+        var currentIdx = -1
+        for (var i = 0; i < speeds.length; i++) {
+            if (Math.abs(player.playbackRate - speeds[i]) < 0.01) {
+                currentIdx = i
+                break
+            }
+        }
+        if (currentIdx < 0) currentIdx = 1  // Default to 1.0x
+        var newIdx = Math.max(0, Math.min(speeds.length - 1, currentIdx + delta))
+        player.playbackRate = speeds[newIdx]
+    }
+
     Loader {
         id: panelLoader
         active: true
@@ -604,6 +648,10 @@ Scope {
 
         Item {
             id: videoContainer
+
+            // Expose player and audio for external control
+            property alias mediaPlayer: mediaPlayer
+            property alias audioOutput: audioOutput
 
             MediaPlayer {
                 id: mediaPlayer

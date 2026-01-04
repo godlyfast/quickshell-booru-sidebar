@@ -337,17 +337,56 @@ Scope {
                         return
                     }
 
-                    // === PREVIEW NAVIGATION (h/l) ===
+                    // === PREVIEW NAVIGATION & VIDEO CONTROLS ===
                     if (root.previewActive) {
-                        console.log("[Keys] Preview active, key:", event.key, "H:", Qt.Key_H, "L:", Qt.Key_L)
-                        if (event.key === Qt.Key_H || event.key === Qt.Key_Left) {
-                            console.log("[Keys] H/Left pressed - navigating prev")
+                        var isVideo = previewPanel.isVideo
+
+                        // Video controls (only when viewing video)
+                        if (isVideo) {
+                            // Space: play/pause
+                            if (event.key === Qt.Key_Space) {
+                                previewPanel.togglePlayPause()
+                                event.accepted = true
+                                return
+                            }
+                            // m: mute toggle
+                            if (event.key === Qt.Key_M) {
+                                previewPanel.toggleMute()
+                                event.accepted = true
+                                return
+                            }
+                            // comma (<): decrease speed
+                            if (event.key === Qt.Key_Comma || event.key === Qt.Key_Less) {
+                                previewPanel.changeSpeed(-1)
+                                event.accepted = true
+                                return
+                            }
+                            // period (>): increase speed
+                            if (event.key === Qt.Key_Period || event.key === Qt.Key_Greater) {
+                                previewPanel.changeSpeed(1)
+                                event.accepted = true
+                                return
+                            }
+                            // Left/Right: seek (for videos only, images use these for prev/next)
+                            if (event.key === Qt.Key_Left) {
+                                previewPanel.seekRelative(-5000)  // 5s back
+                                event.accepted = true
+                                return
+                            }
+                            if (event.key === Qt.Key_Right) {
+                                previewPanel.seekRelative(5000)   // 5s forward
+                                event.accepted = true
+                                return
+                            }
+                        }
+
+                        // h/l: prev/next image (always works, use for non-videos with arrows too)
+                        if (event.key === Qt.Key_H || (!isVideo && event.key === Qt.Key_Left)) {
                             root.navigatePreview(-1)
                             event.accepted = true
                             return
                         }
-                        if (event.key === Qt.Key_L || event.key === Qt.Key_Right) {
-                            console.log("[Keys] L/Right pressed - navigating next")
+                        if (event.key === Qt.Key_L || (!isVideo && event.key === Qt.Key_Right)) {
                             root.navigatePreview(1)
                             event.accepted = true
                             return
@@ -596,6 +635,18 @@ Scope {
                             StyledText { text: "+ / =  Zoom in"; color: "#ffffff" }
                             StyledText { text: "-      Zoom out"; color: "#ffffff" }
                             StyledText { text: "0 / r  Reset zoom"; color: "#ffffff" }
+                        }
+
+                        // Video column
+                        Column {
+                            spacing: 4
+                            StyledText { text: "Video"; font.bold: true; color: Appearance.m3colors.m3primary }
+                            StyledText { text: "Space  Play/pause"; color: "#ffffff" }
+                            StyledText { text: "m      Mute toggle"; color: "#ffffff" }
+                            StyledText { text: "←      Seek -5s"; color: "#ffffff" }
+                            StyledText { text: "→      Seek +5s"; color: "#ffffff" }
+                            StyledText { text: ",      Slower"; color: "#ffffff" }
+                            StyledText { text: ".      Faster"; color: "#ffffff" }
                         }
 
                         // Toggles column
