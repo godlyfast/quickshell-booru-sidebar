@@ -381,12 +381,51 @@ Scope {
                         root.panX = 0
                         root.panY = 0
                     }
+                    zoomIndicator.show()
                 }
 
                 onDoubleClicked: {
                     root.zoomLevel = 1.0
                     root.panX = 0
                     root.panY = 0
+                    zoomIndicator.show()
+                }
+            }
+
+            // Zoom percentage indicator
+            Rectangle {
+                id: zoomIndicator
+                anchors.left: parent.left
+                anchors.bottom: parent.bottom
+                anchors.margins: 16
+                width: zoomText.implicitWidth + 16
+                height: zoomText.implicitHeight + 8
+                radius: Appearance.rounding.small
+                color: Qt.rgba(0, 0, 0, 0.6)
+                opacity: 0
+                visible: opacity > 0
+
+                function show() {
+                    opacity = 1
+                    hideTimer.restart()
+                }
+
+                Timer {
+                    id: hideTimer
+                    interval: 1000
+                    onTriggered: zoomIndicator.opacity = 0
+                }
+
+                Behavior on opacity {
+                    NumberAnimation { duration: 150 }
+                }
+
+                StyledText {
+                    id: zoomText
+                    anchors.centerIn: parent
+                    text: Math.round(root.zoomLevel * 100) + "%"
+                    font.pixelSize: Appearance.font.pixelSize.textSmall
+                    color: "#ffffff"
                 }
             }
 
