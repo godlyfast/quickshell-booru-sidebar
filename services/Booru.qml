@@ -630,6 +630,30 @@ Singleton {
         return null
     }
 
+    // Pre-populate cache index with filenames from API response
+    // Runs a single batch check instead of per-image checks
+    function preBatchCacheCheck(images) {
+        if (!images || images.length === 0) return
+        var filenames = []
+        for (var i = 0; i < images.length; i++) {
+            var img = images[i]
+            if (img.file_url) {
+                var url = img.file_url
+                // Strip query parameters (e.g., Sankaku signed URLs)
+                var queryIdx = url.indexOf('?')
+                if (queryIdx > 0) url = url.substring(0, queryIdx)
+                // Extract filename from URL
+                var filename = url.substring(url.lastIndexOf('/') + 1)
+                if (filename.length > 0) {
+                    filenames.push(decodeURIComponent(filename))
+                }
+            }
+        }
+        if (filenames.length > 0) {
+            CacheIndex.batchCheck(filenames)
+        }
+    }
+
     function setProvider(provider) {
         provider = provider.toLowerCase()
         if (providerList.indexOf(provider) !== -1) {
@@ -908,6 +932,9 @@ Singleton {
                     console.log("[Booru] " + requestProvider + " mapped to " + response.length + " items")
                     newResponse.images = response
                     newResponse.message = response.length > 0 ? "" : root.failMessage
+
+                    // Pre-populate cache index for instant lookups
+                    preBatchCacheCheck(response)
                 } catch (e) {
                     console.log("[Booru] Failed to parse " + requestProvider + ": " + e)
                     newResponse.message = root.failMessage
@@ -983,6 +1010,8 @@ Singleton {
             console.log("[Booru] Grabber returned " + images.length + " images")
             newResponse.images = images
             newResponse.message = images.length > 0 ? "" : root.failMessage
+            // Pre-populate cache index for instant lookups
+            preBatchCacheCheck(images)
             root.runningRequests--
             root.responses = root.responses.concat([newResponse])
             root.responseFinished()

@@ -85,8 +85,13 @@ Button {
     property string localHighResSource: ""
 
     // Universal cache - applies to ALL providers, not just manualDownload
-    property bool universalCacheChecked: false
-    property string cachedImageSource: ""  // file:// path if found in cache/downloads
+    // CacheIndex provides instant O(1) lookup, no need for per-image Process
+    property bool universalCacheChecked: Services.CacheIndex.initialized
+    property string cachedImageSource: {
+        if (!Services.CacheIndex.initialized) return ""
+        // Look up by filename (without hires_ prefix, CacheIndex checks variants)
+        return Services.CacheIndex.lookup(root.fileName)
+    }
 
     // Local dimension overrides - don't mutate shared model data
     property int localWidth: 0
@@ -160,30 +165,13 @@ Button {
         }
     }
 
-    // Universal cache check - runs for ALL providers (static images)
-    // Checks: hi-res cache, preview cache (for previewIsFullRes), download folder, NSFW folder, wallpaper folder
+    // Universal cache check - REPLACED by CacheIndex singleton for O(1) lookups
+    // Previously spawned a bash Process per image; now uses in-memory index
+    // Process retained for backwards compatibility but never runs
     Process {
         id: universalCacheCheck
-        running: !root.universalCacheChecked && !root.isVideo && !root.isGif && !root.isArchive
-                 && root.highResFilePath.length > 0
-        command: ["bash", "-c",
-            "for f in '" + root.highResFilePath + "' '" + root.filePath + "' '" + root.savedFilePath + "' '" +
-            root.savedNsfwFilePath + "' '" + root.wallpaperFilePath + "'; do " +
-            "[ -f \"$f\" ] && echo \"$f\" && exit 0; done; exit 1"
-        ]
-
-        stdout: StdioCollector {
-            onStreamFinished: {
-                var path = text.trim()
-                if (path.length > 0) {
-                    root.cachedImageSource = "file://" + path
-                }
-            }
-        }
-
-        onExited: function(code, status) {
-            root.universalCacheChecked = true
-        }
+        running: false  // Disabled - CacheIndex handles cache lookups
+        command: ["true"]
     }
 
     // Download hi-res to cache for non-manual providers (after cache check)
@@ -197,6 +185,8 @@ Button {
         onDone: function(path, width, height) {
             if (path.length > 0) {
                 root.cachedImageSource = "file://" + path
+                // Register in CacheIndex for instant future lookups
+                Services.CacheIndex.register(root.highResFileName, path)
             }
         }
     }
@@ -255,9 +245,16 @@ Button {
     property string gifFilePath: root.previewDownloadPath + "/gif_" + root.gifFileName
     property string localGifSource: ""
 
-    // Universal GIF cache
-    property bool gifCacheChecked: false
-    property string cachedGifSource: ""
+    // Universal GIF cache - uses CacheIndex for O(1) lookups
+    property bool gifCacheChecked: Services.CacheIndex.initialized
+    property string cachedGifSource: {
+        if (!Services.CacheIndex.initialized || !root.isGif) return ""
+        // Look up GIF with gif_ prefix variant
+        var cached = Services.CacheIndex.lookup("gif_" + root.gifFileName)
+        if (cached.length > 0) return cached
+        // Also check without prefix (user downloads)
+        return Services.CacheIndex.lookup(root.gifFileName)
+    }
 
     ImageDownloaderProcess {
         id: gifDownloader
@@ -274,28 +271,11 @@ Button {
         }
     }
 
-    // Universal GIF cache check - runs for ALL providers
+    // Universal GIF cache check - REPLACED by CacheIndex singleton
     Process {
         id: gifCacheCheck
-        running: root.isGif && !root.gifCacheChecked && root.gifFilePath.length > 0
-        command: ["bash", "-c",
-            "for f in '" + root.gifFilePath + "' '" + root.savedFilePath + "' '" +
-            root.savedNsfwFilePath + "'; do " +
-            "[ -f \"$f\" ] && echo \"$f\" && exit 0; done; exit 1"
-        ]
-
-        stdout: StdioCollector {
-            onStreamFinished: {
-                var path = text.trim()
-                if (path.length > 0) {
-                    root.cachedGifSource = "file://" + path
-                }
-            }
-        }
-
-        onExited: function(code, status) {
-            root.gifCacheChecked = true
-        }
+        running: false  // Disabled - CacheIndex handles cache lookups
+        command: ["true"]
     }
 
     // Download GIF to cache for non-manual providers
@@ -308,6 +288,8 @@ Button {
         onDone: function(path, width, height) {
             if (path.length > 0) {
                 root.cachedGifSource = "file://" + path
+                // Register in CacheIndex for instant future lookups
+                Services.CacheIndex.register("gif_" + root.gifFileName, path)
             }
         }
     }
@@ -375,9 +357,17 @@ Button {
         }
     }
 
-    // Universal video cache
-    property bool videoCacheChecked: false
-    property string cachedVideoSource: ""
+    // Universal video cache - uses CacheIndex for O(1) lookups
+    property bool videoCacheChecked: Services.CacheIndex.initialized
+    property string cachedVideoSource: {
+        if (!Services.CacheIndex.initialized || !root.isVideo) return ""
+        // Look up video with video_ prefix
+        var videoName = "video_" + (root.imageData.md5 ? root.imageData.md5 : root.imageData.id) + "." + root.fileExt
+        var cached = Services.CacheIndex.lookup(videoName)
+        if (cached.length > 0) return cached
+        // Also check by filename (user downloads)
+        return Services.CacheIndex.lookup(root.fileName)
+    }
     property bool videoDownloadFailed: false
     property string videoFilePath: root.previewDownloadPath + "/video_" + (root.imageData.md5 ? root.imageData.md5 : root.imageData.id) + "." + root.fileExt
 
@@ -466,35 +456,12 @@ Button {
         }
     }
 
-    // Universal video cache check - runs for ALL providers
-    // Validates file is actually a video (not HTML error page)
+    // Universal video cache check - REPLACED by CacheIndex singleton
+    // Note: Video validation (checking file is not HTML error) now relies on MediaPlayer error handling
     Process {
         id: videoCacheCheck
-        running: root.isVideo && !root.videoCacheChecked && root.videoFilePath.length > 0
-        command: ["bash", "-c",
-            "for f in '" + root.videoFilePath + "' '" + root.savedFilePath + "' '" +
-            root.savedNsfwFilePath + "'; do " +
-            "if [ -f \"$f\" ]; then " +
-            "  if file -b \"$f\" | grep -qiE 'video|MP4|WebM|ISO Media'; then " +
-            "    echo \"$f\"; exit 0; " +  // Valid video found
-            "  else " +
-            "    rm -f \"$f\"; " +  // Delete corrupt file (HTML error page)
-            "  fi; " +
-            "fi; done; exit 1"
-        ]
-
-        stdout: StdioCollector {
-            onStreamFinished: {
-                var path = text.trim()
-                if (path.length > 0) {
-                    root.cachedVideoSource = "file://" + path
-                }
-            }
-        }
-
-        onExited: function(code, status) {
-            root.videoCacheChecked = true
-        }
+        running: false  // Disabled - CacheIndex handles cache lookups
+        command: ["true"]
     }
 
     // Video download progress tracking
@@ -550,6 +517,9 @@ Button {
                 root.videoDownloadFailed = false
                 root.videoDownloadProgress = 100
                 root.cachedVideoSource = "file://" + root.videoFilePath
+                // Register in CacheIndex for instant future lookups
+                var videoName = "video_" + (root.imageData.md5 ? root.imageData.md5 : root.imageData.id) + "." + root.fileExt
+                Services.CacheIndex.register(videoName, root.videoFilePath)
             } else {
                 // Retry on failure
                 if (retryCount < maxRetries) {

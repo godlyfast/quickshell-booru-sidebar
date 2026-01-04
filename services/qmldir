@@ -1,4 +1,5 @@
 module services
 singleton Booru 1.0 Booru.qml
+singleton CacheIndex 1.0 CacheIndex.qml
 singleton ConfigLoader 1.0 ConfigLoader.qml
 BooruResponseData 1.0 BooruResponseData.qml

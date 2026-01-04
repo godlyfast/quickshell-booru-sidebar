@@ -278,6 +278,7 @@ Item {
             spacing: 10
             clip: true
             boundsBehavior: Flickable.DragAndOvershootBounds
+            cacheBuffer: 300  // Pre-load ~2 rows beyond viewport for smoother scrolling
 
             model: root.responses
             delegate: BooruResponse {
