@@ -32,7 +32,6 @@ Singleton {
     property int runningRequests: 0
     property var pendingXhrRequests: []  // Track XHR for abort on clear
     property int maxResponses: 50  // Limit memory: ~50 responses = ~1000 images
-    property bool replaceOnNextResponse: false  // When true, replace responses instead of appending
     property string defaultUserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
     property var providerList: {
         var list = Object.keys(providers).filter(function(provider) {
@@ -880,17 +879,12 @@ Singleton {
 
         // Helper to add response with limit enforcement
         function addResponse(resp) {
-            if (root.replaceOnNextResponse) {
-                root.responses = [resp]
-                root.replaceOnNextResponse = false
-            } else {
-                var newResponses = root.responses.concat([resp])
-                // Enforce max responses limit (remove oldest)
-                while (newResponses.length > root.maxResponses) {
-                    newResponses.shift()
-                }
-                root.responses = newResponses
+            var newResponses = root.responses.concat([resp])
+            // Enforce max responses limit (remove oldest)
+            while (newResponses.length > root.maxResponses) {
+                newResponses.shift()
             }
+            root.responses = newResponses
         }
 
         xhr.onreadystatechange = function() {
@@ -992,12 +986,7 @@ Singleton {
             newResponse.images = images
             newResponse.message = images.length > 0 ? "" : root.failMessage
             root.runningRequests--
-            if (root.replaceOnNextResponse) {
-                root.responses = [newResponse]
-                root.replaceOnNextResponse = false
-            } else {
-                root.responses = root.responses.concat([newResponse])
-            }
+            root.responses = root.responses.concat([newResponse])
             root.responseFinished()
             grabberReq.destroy()
         })
@@ -1006,12 +995,7 @@ Singleton {
             console.log("[Booru] Grabber failed: " + error)
             newResponse.message = root.failMessage + "\n(Grabber: " + error + ")"
             root.runningRequests--
-            if (root.replaceOnNextResponse) {
-                root.responses = [newResponse]
-                root.replaceOnNextResponse = false
-            } else {
-                root.responses = root.responses.concat([newResponse])
-            }
+            root.responses = root.responses.concat([newResponse])
             root.responseFinished()
             grabberReq.destroy()
         })

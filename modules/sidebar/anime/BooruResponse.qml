@@ -222,79 +222,44 @@ Rectangle {
             }
         }
 
-        // Pagination buttons
+        // Load more button (appends next page to feed)
         RowLayout {
             visible: root.responseData.page > 0
             Layout.fillWidth: true
-            spacing: 8
-
-            // Previous page button
-            RippleButton {
-                visible: root.responseData.page > 1
-                implicitHeight: 32
-                implicitWidth: prevPageRow.implicitWidth + 20
-                buttonRadius: Appearance.rounding.small
-                colBackground: Appearance.colors.colLayer2
-
-                onClicked: {
-                    if (root.tagInputField) {
-                        Booru.replaceOnNextResponse = true
-                        root.tagInputField.text = (root.responseData.tags || []).join(" ") + " " + (parseInt(root.responseData.page) - 1)
-                        root.tagInputField.accepted()
-                    }
-                }
-
-                contentItem: Row {
-                    id: prevPageRow
-                    anchors.centerIn: parent
-                    spacing: 4
-
-                    MaterialSymbol {
-                        iconSize: 18
-                        color: Appearance.m3colors.m3surfaceText
-                        text: "chevron_left"
-                    }
-
-                    StyledText {
-                        text: "Prev"
-                        font.pixelSize: Appearance.font.pixelSize.textSmall
-                        color: Appearance.m3colors.m3surfaceText
-                    }
-                }
-            }
 
             Item { Layout.fillWidth: true }
 
-            // Next page button
             RippleButton {
                 implicitHeight: 32
-                implicitWidth: nextPageRow.implicitWidth + 20
+                implicitWidth: loadMoreRow.implicitWidth + 20
                 buttonRadius: Appearance.rounding.small
                 colBackground: Appearance.colors.colLayer2
 
                 onClicked: {
-                    if (root.tagInputField) {
-                        Booru.replaceOnNextResponse = true
-                        root.tagInputField.text = (root.responseData.tags || []).join(" ") + " " + (parseInt(root.responseData.page) + 1)
-                        root.tagInputField.accepted()
-                    }
+                    // Directly call API - appends by default, no input field manipulation
+                    Booru.makeRequest(
+                        root.responseData.tags || [],
+                        Booru.allowNsfw,
+                        Booru.limit,
+                        parseInt(root.responseData.page) + 1
+                    )
                 }
 
                 contentItem: Row {
-                    id: nextPageRow
+                    id: loadMoreRow
                     anchors.centerIn: parent
                     spacing: 4
-
-                    StyledText {
-                        text: "Next"
-                        font.pixelSize: Appearance.font.pixelSize.textSmall
-                        color: Appearance.m3colors.m3surfaceText
-                    }
 
                     MaterialSymbol {
                         iconSize: 18
                         color: Appearance.m3colors.m3surfaceText
-                        text: "chevron_right"
+                        text: "add"
+                    }
+
+                    StyledText {
+                        text: "Load More"
+                        font.pixelSize: Appearance.font.pixelSize.textSmall
+                        color: Appearance.m3colors.m3surfaceText
                     }
                 }
             }
