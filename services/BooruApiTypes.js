@@ -501,27 +501,37 @@ var zerochan = {
         for (var i = 0; i < response.items.length; i++) {
             var item = response.items[i]
             if (!item) continue
-            // Zerochan uses full URL for images
-            var fullUrl = "https://static.zerochan.net/" + (item.id || "") + ".full." + (item.ext || "jpg")
-            var previewUrl = "https://static.zerochan.net/" + (item.id || "") + ".240." + (item.ext || "jpg")
-            // Tags are typically in item.tag or item.tags
+
+            // Zerochan URL patterns:
+            // - Thumbnail (240px): Provided directly in item.thumbnail
+            // - Sample (600px): s1.zerochan.net/<tag.dotted>.600.<id>.jpg
+            // - Full: static.zerochan.net/<tag.dotted>.full.<id>.<ext>
+            var mainTag = (item.tag || "Image").replace(/ /g, ".")
+            var id = item.id || i
+            var previewUrl = item.thumbnail || ("https://s3.zerochan.net/240/00/00/" + id + ".jpg")
+            var sampleUrl = "https://s1.zerochan.net/" + mainTag + ".600." + id + ".jpg"
+            var fullUrl = "https://static.zerochan.net/" + mainTag + ".full." + id + ".jpg"
+
+            // Tags: combine main tag + tags array
             var tags = ""
             if (item.tag) tags = item.tag
-            else if (item.tags && Array.isArray(item.tags)) tags = item.tags.join(" ")
+            if (item.tags && Array.isArray(item.tags)) {
+                tags = tags ? (tags + " " + item.tags.join(" ")) : item.tags.join(" ")
+            }
             result.push({
-                id: item.id || i,
+                id: id,
                 width: item.width || 0,
                 height: item.height || 0,
                 aspect_ratio: (item.width && item.height) ? item.width / item.height : 1,
                 tags: tags,
                 rating: "s",
                 is_nsfw: false,
-                md5: item.hash || "",
+                md5: item.md5 || "",
                 preview_url: previewUrl,
-                sample_url: fullUrl,
+                sample_url: sampleUrl,
                 file_url: fullUrl,
-                file_ext: item.ext || "jpg",
-                source: item.source || fullUrl
+                file_ext: "jpg",
+                source: item.source || ("https://www.zerochan.net/" + id)
             })
         }
         return result

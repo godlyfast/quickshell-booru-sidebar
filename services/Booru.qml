@@ -5,6 +5,7 @@ import "../modules/common"
 import "../modules/common/utils"
 import QtQuick
 import Quickshell
+import Quickshell.Io
 
 // Import API family mappers to reduce code duplication
 import "BooruApiTypes.js" as ApiTypes
@@ -74,7 +75,9 @@ Singleton {
     readonly property alias danbooruAgeOptions: root.ageFilterOptions
     readonly property alias danbooruAgeLabels: root.ageFilterLabels
     // Providers that support the age: metatag
-    readonly property var ageFilterProviders: ["danbooru", "aibooru", "yandere", "konachan", "sakugabooru", "3dbooru"]
+    // Only providers that support the age: metatag (Danbooru/Moebooru with date indexing)
+    // Note: sakugabooru and 3dbooru do NOT support age: metatag despite being Moebooru
+    readonly property var ageFilterProviders: ["danbooru", "aibooru", "yandere", "konachan"]
     property bool providerSupportsAgeFilter: ageFilterProviders.indexOf(currentProvider) !== -1
 
     // Universal sorting - works with all providers that support it
@@ -155,6 +158,9 @@ Singleton {
     // Get your key at: https://wallhaven.cc/settings/account
     property string wallhavenApiKey: (ConfigOptions.booru && ConfigOptions.booru.wallhavenApiKey) ? ConfigOptions.booru.wallhavenApiKey : ""
 
+    // Providers that require curl (User-Agent header needed, XHR can't set it)
+    property var curlProviders: ["zerochan"]
+
     // Danbooru API credentials (higher rate limits, access to restricted content)
     // Get your key at: https://danbooru.donmai.us/profile → API Key
     property string danbooruLogin: (ConfigOptions.booru && ConfigOptions.booru.danbooruLogin) ? ConfigOptions.booru.danbooruLogin : ""
@@ -232,6 +238,8 @@ Singleton {
     // Providers that should use Grabber for API requests (bypasses Cloudflare)
     // Toggle via /grabber command
     property bool useGrabberFallback: true
+    // Providers that prefer Grabber over direct API (bypasses User-Agent/Cloudflare issues)
+    // Note: zerochan requires authentication, not currently supported
     property var grabberPreferredProviders: ["danbooru"]
 
     // Check if provider should use Grabber for requests
@@ -665,6 +673,9 @@ Singleton {
             if (provider === "rule34" && (!rule34ApiKey || !rule34UserId)) {
                 msg += "\n⚠️ Rule34 requires API key. Get yours at:\nrule34.xxx/index.php?page=account&s=options"
             }
+            if (provider === "wallhaven" && !wallhavenApiKey) {
+                msg += "\n⚠️ Wallhaven requires API key for NSFW content.\nGet yours at: wallhaven.cc/settings/account"
+            }
             root.addSystemMessage(msg)
         } else {
             root.addSystemMessage("Invalid API provider. Supported:\n- " + providerList.join("\n- "))
@@ -730,7 +741,7 @@ Singleton {
         }
 
         // Inject age filter for providers that support it (prevents timeout on heavy sorts)
-        // ageFilterProviders: danbooru, aibooru, yandere, konachan
+        // ageFilterProviders: danbooru, aibooru, yandere, konachan (NOT sakugabooru/3dbooru)
         if (ageFilter !== "any" && ageFilterProviders.indexOf(currentProvider) !== -1) {
             tagString = tagString + " age:<" + ageFilter
         }
@@ -767,10 +778,16 @@ Singleton {
             params.push("limit=" + Math.min(limit, 30))
             params.push("is_nsfw=" + (nsfw ? "null" : "false"))
         } else if (currentProvider === "zerochan") {
-            // Zerochan URL format: https://www.zerochan.net/tag?p=page&l=limit&json&s=sort
-            // The tag becomes part of the URL path, handled differently
-            var zerochanTag = tagString.trim().split(" ")[0] || "anime"  // First tag only
-            url = baseUrl + "/" + encodeURIComponent(zerochanTag)
+            // Zerochan URL format: https://www.zerochan.net/Tag+Name?p=page&l=limit&json&s=sort
+            // Multi-word tags use + separator in URL path
+            var zerochanTag = tagString.trim().replace(/ /g, "+")
+            // If tag exists, add to path; otherwise root triggers bot check (avoid)
+            if (zerochanTag && zerochanTag.length > 0) {
+                url = baseUrl + "/" + zerochanTag
+            } else {
+                // Default to a popular series to avoid bot check on root path
+                url = baseUrl + "/Vocaloid"
+            }
             params.push("p=" + page)
             params.push("l=" + limit)
             params.push("json")
@@ -866,6 +883,13 @@ Singleton {
         if (shouldUseGrabber(requestProvider)) {
             console.log("[Booru] Using Grabber for " + requestProvider)
             makeGrabberRequest(tags, nsfw, limit, page, requestProvider)
+            return
+        }
+
+        // Use curl for providers that need User-Agent header
+        if (curlProviders.indexOf(requestProvider) !== -1) {
+            console.log("[Booru] Using curl for " + requestProvider)
+            makeCurlRequest(tags, nsfw, limit, page, requestProvider)
             return
         }
 
@@ -1028,6 +1052,74 @@ Singleton {
         })
 
         grabberReq.startRequest()
+    }
+
+    // Make request using curl (for providers that need User-Agent header)
+    function makeCurlRequest(tags, nsfw, limit, page, requestProvider) {
+        var newResponse = root.booruResponseDataComponent.createObject(null, {
+            "provider": requestProvider,
+            "tags": tags,
+            "page": page,
+            "images": [],
+            "message": ""
+        })
+
+        var url = constructRequestUrl(tags, nsfw, limit, page)
+        console.log("[Booru] curl request: " + url)
+
+        root.runningRequests++
+
+        // Create and start curl process
+        var curlProcess = curlFetcherComponent.createObject(root, {
+            "curlUrl": url,
+            "requestProvider": requestProvider,
+            "responseObj": newResponse
+        })
+        curlProcess.running = true
+    }
+
+    // Component for curl-based fetching (providers that need User-Agent)
+    property Component curlFetcherComponent: Component {
+        Process {
+            id: curlProc
+            property string curlUrl: ""
+            property string requestProvider: ""
+            property var responseObj: null
+            property string outputText: ""
+
+            // Use simple app UA for zerochan (blocks browser-like UAs), default for others
+            property string userAgent: requestProvider === "zerochan" ? "QuickshellBooruSidebar/1.0" : root.defaultUserAgent
+            command: ["curl", "-s", "-A", userAgent, curlUrl]
+
+            stdout: SplitParser {
+                onRead: data => { curlProc.outputText += data }
+            }
+
+            onExited: function(code, status) {
+                console.log("[Booru] curl " + requestProvider + " exited with code " + code)
+                if (code === 0 && curlProc.outputText.length > 0) {
+                    try {
+                        var response = JSON.parse(curlProc.outputText)
+                        var mapFunc = root.getProviderMapFunc(requestProvider)
+                        var images = mapFunc(response, root.providers[requestProvider])
+                        console.log("[Booru] curl " + requestProvider + " mapped " + images.length + " images")
+                        responseObj.images = images
+                        responseObj.message = images.length > 0 ? "" : root.failMessage
+                        root.preBatchCacheCheck(images)
+                    } catch (e) {
+                        console.log("[Booru] curl parse error: " + e)
+                        responseObj.message = root.failMessage
+                    }
+                } else {
+                    console.log("[Booru] curl failed or empty response")
+                    responseObj.message = root.failMessage
+                }
+                root.runningRequests--
+                root.responses = [responseObj]
+                root.responseFinished()
+                curlProc.destroy()
+            }
+        }
     }
 
     property var currentTagRequest: null

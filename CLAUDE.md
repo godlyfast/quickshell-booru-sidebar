@@ -38,30 +38,30 @@ Deploys repo files to the quickshell config directory. Preserves user's config.j
 | Provider | Key | API Type | Sorting | Notes |
 |----------|-----|----------|---------|-------|
 | **Moebooru** |||||
-| yande.re | `yandere` | Moebooru | `order:X` | Default provider |
+| yande.re | `yandere` | Moebooru | `order:X` | High quality scans |
 | Konachan | `konachan` | Moebooru | `order:X` | Has .net (SFW) and .com (NSFW) mirrors |
 | Sakugabooru | `sakugabooru` | Moebooru | `order:X` | Animation sakuga clips |
-| 3Dbooru | `3dbooru` | Moebooru | `order:X` | 3D renders, connection issues |
+| 3Dbooru | `3dbooru` | Moebooru | `order:X` | 3D renders (connection issues) |
 | **Danbooru** |||||
 | Danbooru | `danbooru` | Danbooru | `order:X` | Strict Cloudflare, uses Grabber |
 | AIBooru | `aibooru` | Danbooru | `order:X` | AI-generated art |
 | **Gelbooru** |||||
-| Gelbooru | `gelbooru` | Gelbooru | `sort:X` | Requires API key |
+| Gelbooru | `gelbooru` | Gelbooru | `sort:X` | Requires API key (warns if missing) |
 | Safebooru | `safebooru` | Gelbooru | `sort:X` | SFW-only |
-| Rule34 | `rule34` | Gelbooru | `sort:X` | NSFW-only, requires API key |
+| Rule34 | `rule34` | Gelbooru | `sort:X` | NSFW-only, requires API key (warns if missing) |
 | Xbooru | `xbooru` | Gelbooru | `sort:X` | NSFW focused |
 | TBIB | `tbib` | Gelbooru | `sort:X` | 8M+ images aggregator |
-| Hypnohub | `hypnohub` | Gelbooru | `sort:X` | Niche themed, returns XML |
+| Hypnohub | `hypnohub` | Gelbooru | `sort:X` | Niche themed (connection issues) |
 | **e621** |||||
 | e621 | `e621` | e621 | `order:X` | Furry, has e926.net SFW mirror |
 | **Philomena** |||||
 | Derpibooru | `derpibooru` | Philomena | `sf=X` param | MLP content |
 | **Sankaku** |||||
-| Sankaku | `sankaku` | Sankaku | `order:X` | API requires auth (blocked) |
-| Idol Sankaku | `idol_sankaku` | Sankaku | `order:X` | Japanese idols (blocked) |
+| Sankaku | `sankaku` | Sankaku | `order:X` | Large anime database |
+| Idol Sankaku | `idol_sankaku` | Sankaku | `order:X` | Japanese idols |
 | **Other** |||||
-| Wallhaven | `wallhaven` | REST | `sorting=X` param | Desktop wallpapers, 4K+ filter |
-| Zerochan | `zerochan` | REST | `s=X` param | High-quality art, API blocked |
+| Wallhaven | `wallhaven` | REST | `sorting=X` param | Default provider, 4K+ filter, API key for NSFW |
+| Zerochan | `zerochan` | REST | `s=X` param | High-quality art, requires User-Agent (curl) |
 | waifu.im | `waifu.im` | REST | None | Limited tag set |
 | nekos.best | `nekos_best` | REST | None | Random images only |
 | Paheal | `paheal` | Shimmie | None | Rule34 Shimmie |
@@ -292,7 +292,7 @@ All provider `mapFunc` results use this schema:
 **GIFs**: `AnimatedImage` with `cache: true` (required for network looping per Qt docs)
 **Videos**: `MediaPlayer` + `VideoOutput` with `loops: MediaPlayer.Infinite`
 
-Some providers (e621, e926) require `ImageDownloaderProcess` to curl images with User-Agent.
+Some providers (e621, e926, zerochan) require `ImageDownloaderProcess` to curl images with User-Agent.
 
 ## Universal Cache-First Loading
 
@@ -409,7 +409,7 @@ API keys: Gelbooru at `gelbooru.com/index.php?page=account&s=options`, Rule34 at
 - Tag autocomplete functionality
 - Sorting configuration per provider
 - Edge cases: null URL fallbacks (`solo` tag on e621/e926)
-- Cloudflare bypass requirements (curl with User-Agent for e621/e926)
+- Cloudflare bypass requirements (curl with User-Agent for e621/e926/zerochan)
 
 Providers skipped in tests: `danbooru` (strict Cloudflare JS challenge)
 
@@ -417,6 +417,7 @@ Providers skipped in tests: `danbooru` (strict Cloudflare JS challenge)
 
 - **Danbooru**: Uses Grabber fallback by default (Cloudflare bypass)
 - **e621/e926**: Require User-Agent header; `solo` tag often has null `sample_url`
+- **Zerochan**: Requires simple User-Agent (blocks browser UAs), tag in URL path with `+` separator
 - **Wallhaven**: Has separate `order` param (asc/desc) in addition to `sorting`
 - **waifu.im**: Tags returned as objects; only supports specific tag names
 - **nekos_best**: Random images only, ignores search tags

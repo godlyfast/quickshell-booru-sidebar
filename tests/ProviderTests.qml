@@ -24,14 +24,14 @@ Item {
     // Providers that need curl (User-Agent) to bypass Cloudflare
     // Note: e621 works with curl for image tests, danbooru has stricter protections
     // paheal uses XML which QML XMLHttpRequest.responseXML doesn't handle well
-    property var curlProviders: ["e621", "paheal"]
+    // zerochan requires User-Agent header
+    property var curlProviders: ["e621", "paheal", "zerochan"]
 
     // Providers that cannot be tested due to Cloudflare JS challenges or API blocks
     // danbooru: strict Cloudflare JS challenge
-    // zerochan: returns 503, requires authentication
     // hypnohub: returns XML/HTML instead of JSON
     // 3dbooru: connection issues (times out)
-    property var cloudflareProviders: ["danbooru", "zerochan", "hypnohub", "3dbooru"]
+    property var cloudflareProviders: ["danbooru", "hypnohub", "3dbooru"]
 
     // Providers that use Grabber-only (no direct API)
     property var grabberOnlyProviders: ["anime_pictures", "e_shuushuu"]
@@ -275,6 +275,9 @@ Item {
         if (providerKey === "waifu.im") return "waifu"
         // sakugabooru is animation-focused, "landscape" uncommon
         if (providerKey === "sakugabooru") return "effects"
+        // zerochan needs character/series names, not generic tags
+        // Root path triggers bot check, so use a popular character name
+        if (providerKey === "zerochan") return "Hatsune Miku"
         return "landscape"
     }
 
@@ -507,6 +510,10 @@ Item {
     property int mirrorPassedCount: 0
     property int mirrorFailedCount: 0
 
+    // NSFW filter test counters
+    property int nsfwPassedCount: 0
+    property int nsfwFailedCount: 0
+
     function startSortingTests() {
         console.log("")
         console.log("--- Sorting Configuration Tests ---")
@@ -549,7 +556,7 @@ Item {
         console.log("")
         console.log("Mirror Tests: " + mirrorPassedCount + " passed, " + mirrorFailedCount + " failed")
 
-        finishAllTests()
+        startNsfwFilterTests()
     }
 
     function testMirrorHelperFunctions() {
@@ -857,6 +864,269 @@ Item {
         }
     }
 
+    // --- NSFW Filtering Tests ---
+
+    function startNsfwFilterTests() {
+        console.log("")
+        console.log("--- NSFW Filtering Tests ---")
+
+        // Test SFW filter injection per provider type
+        testSfwFilterInjection()
+
+        // Test NSFW mode (no filter)
+        testNsfwModeNoFilter()
+
+        // Print NSFW test summary
+        console.log("")
+        console.log("NSFW Filter Tests: " + nsfwPassedCount + " passed, " + nsfwFailedCount + " failed")
+
+        startDefaultFilterTests()
+    }
+
+    function testSfwFilterInjection() {
+        console.log("Testing: SFW filter injection per provider")
+
+        // Provider-specific SFW filters (when nsfw=false)
+        var sfwFilters = {
+            "yandere": "rating%3Asafe",
+            "konachan": "rating%3Asafe",
+            "sakugabooru": "rating%3Asafe",
+            "3dbooru": "rating%3Asafe",
+            "danbooru": "rating%3Ageneral",
+            "aibooru": "rating%3Ageneral",
+            "gelbooru": "rating%3Ageneral",
+            "e621": "rating%3As",
+            "wallhaven": "purity=100",
+            "waifu.im": "is_nsfw=false",
+            "derpibooru": "filter_id=100277",
+            "sankaku": "rating%3Asafe",
+            "idol_sankaku": "rating%3Asafe"
+        }
+
+        var allPass = true
+        var originalProvider = Booru.currentProvider
+
+        for (var provider in sfwFilters) {
+            Booru.currentProvider = provider
+            var sfwUrl = Booru.constructRequestUrl(["landscape"], false, 5, 1)
+
+            // Verify SFW filter present when nsfw=false
+            var hasSfwFilter = sfwUrl.indexOf(sfwFilters[provider]) !== -1
+            if (!hasSfwFilter) {
+                console.log("  " + provider + " SFW filter... FAIL (expected '" + sfwFilters[provider] + "' in URL)")
+                allPass = false
+            }
+        }
+
+        Booru.currentProvider = originalProvider
+
+        if (allPass) {
+            console.log("  SFW filter injection... PASS")
+            nsfwPassedCount++
+        } else {
+            nsfwFailedCount++
+        }
+    }
+
+    function testNsfwModeNoFilter() {
+        console.log("Testing: NSFW mode removes SFW filter")
+
+        // When nsfw=true, SFW filters should NOT be present
+        var sfwFilters = {
+            "yandere": "rating%3Asafe",
+            "konachan": "rating%3Asafe",
+            "danbooru": "rating%3Ageneral",
+            "gelbooru": "rating%3Ageneral",
+            "e621": "rating%3As"
+        }
+
+        var allPass = true
+        var originalProvider = Booru.currentProvider
+
+        for (var provider in sfwFilters) {
+            Booru.currentProvider = provider
+            var nsfwUrl = Booru.constructRequestUrl(["landscape"], true, 5, 1)
+
+            // Verify SFW filter absent when nsfw=true
+            var hasNoSfwFilter = nsfwUrl.indexOf(sfwFilters[provider]) === -1
+            if (!hasNoSfwFilter) {
+                console.log("  " + provider + " NSFW mode... FAIL (SFW filter still present in URL)")
+                allPass = false
+            }
+        }
+
+        // Test wallhaven specifically (uses purity param)
+        Booru.currentProvider = "wallhaven"
+        var wallhavenNsfwUrl = Booru.constructRequestUrl(["nature"], true, 5, 1)
+        if (wallhavenNsfwUrl.indexOf("purity=100") !== -1) {
+            console.log("  wallhaven NSFW mode... FAIL (purity=100 still present)")
+            allPass = false
+        }
+        if (wallhavenNsfwUrl.indexOf("purity=111") === -1) {
+            console.log("  wallhaven NSFW mode... FAIL (expected purity=111 for NSFW)")
+            allPass = false
+        }
+
+        Booru.currentProvider = originalProvider
+
+        if (allPass) {
+            console.log("  NSFW mode no filter... PASS")
+            nsfwPassedCount++
+        } else {
+            nsfwFailedCount++
+        }
+    }
+
+    // --- Default Filter Tests ---
+
+    function startDefaultFilterTests() {
+        console.log("")
+        console.log("--- Default Filter Tests ---")
+
+        // Test Wallhaven default filters (resolution, topRange)
+        testWallhavenDefaults()
+
+        // Test waifu.im defaults
+        testWaifuImDefaults()
+
+        // Test SFW-only providers don't show NSFW toggle
+        testSfwOnlyProviders()
+
+        // Test NSFW-only providers don't add SFW filter
+        testNsfwOnlyProviders()
+
+        console.log("")
+        finishAllTests()
+    }
+
+    function testWallhavenDefaults() {
+        console.log("Testing: Wallhaven default filters")
+
+        var originalProvider = Booru.currentProvider
+        Booru.currentProvider = "wallhaven"
+
+        var url = Booru.constructRequestUrl([], false, 5, 1)
+        var allPass = true
+
+        // Should have resolution filter (atleast=) unless set to "any"
+        // Note: wallhavenResolution defaults to "1920x1080" or similar
+        // This test verifies the parameter is properly included
+        if (url.indexOf("sorting=") === -1) {
+            console.log("  wallhaven sorting param... FAIL (missing)")
+            allPass = false
+        }
+
+        if (url.indexOf("order=") === -1) {
+            console.log("  wallhaven order param... FAIL (missing)")
+            allPass = false
+        }
+
+        Booru.currentProvider = originalProvider
+
+        if (allPass) {
+            console.log("  Wallhaven defaults... PASS")
+            nsfwPassedCount++
+        } else {
+            nsfwFailedCount++
+        }
+    }
+
+    function testWaifuImDefaults() {
+        console.log("Testing: waifu.im default filters")
+
+        var originalProvider = Booru.currentProvider
+        Booru.currentProvider = "waifu.im"
+
+        var url = Booru.constructRequestUrl(["waifu"], false, 5, 1)
+        var allPass = true
+
+        // Should have limit parameter
+        if (url.indexOf("limit=") === -1) {
+            console.log("  waifu.im limit param... FAIL (missing)")
+            allPass = false
+        }
+
+        // Should have is_nsfw parameter
+        if (url.indexOf("is_nsfw=") === -1) {
+            console.log("  waifu.im is_nsfw param... FAIL (missing)")
+            allPass = false
+        }
+
+        // Should have included_tags parameter
+        if (url.indexOf("included_tags=") === -1) {
+            console.log("  waifu.im included_tags param... FAIL (missing)")
+            allPass = false
+        }
+
+        Booru.currentProvider = originalProvider
+
+        if (allPass) {
+            console.log("  waifu.im defaults... PASS")
+            nsfwPassedCount++
+        } else {
+            nsfwFailedCount++
+        }
+    }
+
+    function testSfwOnlyProviders() {
+        console.log("Testing: SFW-only providers")
+
+        var sfwOnlyList = ["safebooru", "nekos_best"]
+        var allPass = true
+
+        for (var i = 0; i < sfwOnlyList.length; i++) {
+            var provider = sfwOnlyList[i]
+            Booru.currentProvider = provider
+
+            // providerSupportsNsfw should be false for SFW-only providers
+            if (Booru.providerSupportsNsfw) {
+                console.log("  " + provider + " providerSupportsNsfw... FAIL (should be false)")
+                allPass = false
+            }
+        }
+
+        Booru.currentProvider = "yandere"
+
+        if (allPass) {
+            console.log("  SFW-only providers... PASS")
+            nsfwPassedCount++
+        } else {
+            nsfwFailedCount++
+        }
+    }
+
+    function testNsfwOnlyProviders() {
+        console.log("Testing: NSFW-only providers (no SFW filter)")
+
+        var nsfwOnlyList = ["rule34", "xbooru", "tbib", "paheal", "hypnohub"]
+        var allPass = true
+        var originalProvider = Booru.currentProvider
+
+        for (var i = 0; i < nsfwOnlyList.length; i++) {
+            var provider = nsfwOnlyList[i]
+            Booru.currentProvider = provider
+
+            // Even with nsfw=false, these providers should NOT add rating filter
+            // because they are NSFW-only
+            var url = Booru.constructRequestUrl(["test"], false, 5, 1)
+
+            // Should NOT have rating:safe or rating:general
+            if (url.indexOf("rating%3Asafe") !== -1 || url.indexOf("rating%3Ageneral") !== -1) {
+                console.log("  " + provider + " NSFW-only... FAIL (rating filter incorrectly added)")
+                allPass = false
+            }
+        }
+
+        Booru.currentProvider = originalProvider
+
+        if (allPass) {
+            console.log("  NSFW-only providers... PASS")
+            nsfwPassedCount++
+        } else {
+            nsfwFailedCount++
+        }
+    }
+
     function finishAllTests() {
         testsCompleted(passedCount, failedCount)
     }
@@ -889,8 +1159,11 @@ Item {
         property string curlUrl: ""
         property bool handled: false  // Prevent double-handling
 
+        // Use simple app UA for zerochan (blocks browser-like UAs), default for others
+        property string userAgent: pendingProviderKey === "zerochan" ? "QuickshellBooruSidebar/1.0" : Booru.defaultUserAgent
+
         running: enabled && curlUrl.length > 0
-        command: ["curl", "-s", "-A", Booru.defaultUserAgent, curlUrl]
+        command: ["curl", "-s", "-A", userAgent, curlUrl]
 
         onRunningChanged: {
             if (running) handled = false  // Reset on new run
