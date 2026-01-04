@@ -86,6 +86,12 @@ Scope {
 
     // Computed properties - use stableImageData instead of imageData
     property bool panelVisible: active && stableImageData !== null
+    onPanelVisibleChanged: {
+        // Stop video playback when preview is closed
+        if (!panelVisible && videoContainer.mediaPlayer) {
+            videoContainer.mediaPlayer.stop()
+        }
+    }
     property bool isVideo: stableImageData ? (stableImageData.file_ext === "mp4" || stableImageData.file_ext === "webm") : false
     // Check both API extension AND cached file extension (zerochan GIFs may be served from .jpg URLs)
     property bool isGif: (stableImageData && stableImageData.file_ext === "gif") || stableImageUrl.toLowerCase().endsWith(".gif")
