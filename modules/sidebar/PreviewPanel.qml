@@ -38,6 +38,13 @@ Scope {
     property string stableImageUrl: ""
     property string stableMediaType: "image"  // "image", "gif", or "video"
 
+    // Zoom/pan state for image preview
+    property real zoomLevel: 1.0
+    property real panX: 0
+    property real panY: 0
+    property real minZoom: 1.0
+    property real maxZoom: 5.0
+
     // Update stable cache only when image ID changes
     onImageDataChanged: {
         if (!imageData) {
@@ -50,6 +57,10 @@ Scope {
         if (imageData.id !== currentImageId) {
             currentImageId = imageData.id
             stableMediaType = isVideo ? "video" : (isGif ? "gif" : "image")
+            // Reset zoom/pan for new image
+            zoomLevel = 1.0
+            panX = 0
+            panY = 0
             // Determine URL
             if (cachedSource && cachedSource.length > 0) {
                 stableImageUrl = cachedSource
@@ -296,20 +307,89 @@ Scope {
         }
     }
 
-    // Image preview component
+    // Image preview component with zoom/pan support
     Component {
         id: imagePreviewComponent
 
-        Image {
-            id: imagePreview
-            fillMode: Image.PreserveAspectFit
-            asynchronous: true
-            cache: true
+        Item {
+            id: zoomContainer
 
-            // Use stable URL to prevent re-renders
-            source: root.stableImageUrl
+            Image {
+                id: imagePreview
+                anchors.centerIn: parent
+                width: parent.width
+                height: parent.height
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
+                cache: true
+                source: root.stableImageUrl
 
-            // Loading indicator
+                transform: [
+                    Scale {
+                        xScale: root.zoomLevel
+                        yScale: root.zoomLevel
+                        origin.x: imagePreview.width / 2
+                        origin.y: imagePreview.height / 2
+                    },
+                    Translate {
+                        x: root.panX
+                        y: root.panY
+                    }
+                ]
+
+                Behavior on scale {
+                    NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
+                }
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton
+
+                property real startX: 0
+                property real startY: 0
+                property real startPanX: 0
+                property real startPanY: 0
+
+                cursorShape: root.zoomLevel > 1.0 ? Qt.OpenHandCursor : Qt.ArrowCursor
+
+                onPressed: function(mouse) {
+                    startX = mouse.x
+                    startY = mouse.y
+                    startPanX = root.panX
+                    startPanY = root.panY
+                    if (root.zoomLevel > 1.0) cursorShape = Qt.ClosedHandCursor
+                }
+
+                onReleased: {
+                    if (root.zoomLevel > 1.0) cursorShape = Qt.OpenHandCursor
+                }
+
+                onPositionChanged: function(mouse) {
+                    if (pressed && root.zoomLevel > 1.0) {
+                        root.panX = startPanX + (mouse.x - startX)
+                        root.panY = startPanY + (mouse.y - startY)
+                    }
+                }
+
+                onWheel: function(wheel) {
+                    var zoomDelta = wheel.angleDelta.y > 0 ? 1.15 : 0.87
+                    var newZoom = Math.max(root.minZoom, Math.min(root.maxZoom, root.zoomLevel * zoomDelta))
+                    root.zoomLevel = newZoom
+                    // Reset pan when zooming back to 1.0
+                    if (newZoom <= 1.0) {
+                        root.panX = 0
+                        root.panY = 0
+                    }
+                }
+
+                onDoubleClicked: {
+                    root.zoomLevel = 1.0
+                    root.panX = 0
+                    root.panY = 0
+                }
+            }
+
             BusyIndicator {
                 anchors.centerIn: parent
                 running: imagePreview.status === Image.Loading
