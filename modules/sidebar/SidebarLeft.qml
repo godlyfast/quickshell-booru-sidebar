@@ -45,6 +45,7 @@ Scope {
     // Vim keybinding state
     property string pendingKey: ""  // For multi-key sequences like 'gg'
     property bool showKeybindingsHelp: false
+    property bool showPickerDialog: false
 
     // Get flat list of all images from all responses
     function getAllImages() {
@@ -507,8 +508,16 @@ Scope {
                     }
 
                     // === TOGGLES ===
-                    if (event.key === Qt.Key_P) {
-                        sidebarRoot.pinned = !sidebarRoot.pinned
+                    console.log("[Keys] Reached toggles section, key:", event.key, "Key_P:", Qt.Key_P, "equal?:", event.key === Qt.Key_P, "==?:", event.key == Qt.Key_P)
+                    // p: Provider picker (Shift+P: pin sidebar)
+                    if (event.key == Qt.Key_P) {
+                        console.log("[Keys] P key matched!")
+                        if (event.modifiers & Qt.ShiftModifier) {
+                            sidebarRoot.pinned = !sidebarRoot.pinned
+                        } else {
+                            root.showPickerDialog = true
+                            console.log("[Keys] showPickerDialog set to true")
+                        }
                         event.accepted = true
                         return
                     }
@@ -523,13 +532,18 @@ Scope {
                         return
                     }
 
-                    // === QUICK PROVIDER SWITCH (1-9) ===
+                    // === QUICK PROVIDER SWITCH (1-9 via favorites) ===
                     var numKey = -1
                     if (event.key >= Qt.Key_1 && event.key <= Qt.Key_9) {
                         numKey = event.key - Qt.Key_1
                     }
-                    if (numKey >= 0 && numKey < Booru.providerList.length) {
-                        Booru.setProvider(Booru.providerList[numKey])
+                    if (numKey >= 0) {
+                        var favorites = (ConfigOptions.booru && ConfigOptions.booru.favorites)
+                            ? ConfigOptions.booru.favorites
+                            : Booru.providerList.slice(0, 9)
+                        if (numKey < favorites.length) {
+                            Booru.setProvider(favorites[numKey])
+                        }
                         event.accepted = true
                         return
                     }
@@ -572,6 +586,23 @@ Scope {
                         root.previewCachedSource = cachedSource
                         // Also notify PreviewPanel directly to update its display
                         previewPanel.updateCachedSource(cachedSource)
+                    }
+                }
+
+                // Provider picker overlay (inside sidebarBackground for proper z-order)
+                PickerDialog {
+                    id: pickerDialog
+                    visible: root.showPickerDialog && root.sidebarOpen
+                    anchors.fill: parent
+                    z: 100
+
+                    onProviderSelected: function(key) {
+                        Booru.setProvider(key)
+                    }
+
+                    onClosed: {
+                        root.showPickerDialog = false
+                        sidebarBackground.forceActiveFocus()
                     }
                 }
             }
@@ -679,10 +710,11 @@ Scope {
                         Column {
                             spacing: 4
                             StyledText { text: "Toggles"; font.bold: true; color: Appearance.m3colors.m3primary }
-                            StyledText { text: "p      Pin sidebar"; color: "#ffffff" }
+                            StyledText { text: "P      Pin sidebar"; color: "#ffffff" }
                             StyledText { text: "x      Toggle NSFW"; color: "#ffffff" }
                             StyledText { text: "i      Focus input"; color: "#ffffff" }
-                            StyledText { text: "1-9    Quick provider"; color: "#ffffff" }
+                            StyledText { text: "p      Provider picker"; color: "#ffffff" }
+                            StyledText { text: "1-9    Favorite providers"; color: "#ffffff" }
                             StyledText { text: ""; color: "transparent" }
                             StyledText { text: "General"; font.bold: true; color: Appearance.m3colors.m3primary }
                             StyledText { text: "q/Esc  Close"; color: "#ffffff" }

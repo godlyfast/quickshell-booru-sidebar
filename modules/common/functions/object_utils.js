@@ -34,11 +34,13 @@ function applyToQtObject(qtObj, jsonObj) {
         var value = qtObj[key];
         var jsonValue = jsonObj[key];
 
-        // If it's an object and not an array, recurse
-        if (value && typeof value === "object" && !Array.isArray(value)) {
+        // If it's a QtObject (has objectName property), recurse into it
+        // Plain JS objects (property var) should be assigned directly
+        if (value && typeof value === "object" && !Array.isArray(value) &&
+            value.hasOwnProperty("objectName")) {
             applyToQtObject(value, jsonValue);
         } else {
-            // Otherwise, assign the value
+            // Assign the value directly (covers primitives, arrays, and plain JS objects)
             qtObj[key] = jsonValue;
         }
     }

@@ -23,10 +23,28 @@ Singleton {
         console.log("Providers: " + providerList.join(", "))
     }
 
+    // Restore provider settings after config is loaded
+    Connections {
+        target: ConfigLoader
+        function onConfigLoaded() {
+            var savedProvider = ConfigOptions.booru.activeProvider
+            if (savedProvider && savedProvider.length > 0 && providerList.indexOf(savedProvider) !== -1) {
+                loadingSettings = true
+                currentProvider = savedProvider
+                loadProviderSettings(savedProvider)
+                loadingSettings = false
+                console.log("[Booru] Restored active provider:", savedProvider)
+            }
+            // Now allow property change handlers to save
+            configReady = true
+        }
+    }
+
     property Component booruResponseDataComponent: BooruResponseData {}
 
     signal tagSuggestion(string query, var suggestions)
     signal responseFinished()
+    signal providerUsageUpdated()
 
     property string failMessage: "That didn't work. Tips:\n- Check your tags and NSFW settings\n- If you don't have a tag in mind, type a page number"
     property var responses: []
@@ -82,6 +100,40 @@ Singleton {
 
     // Universal sorting - works with all providers that support it
     property string currentSorting: ""  // Empty = provider default
+
+    // Debounce timer for saving settings on property changes
+    Timer {
+        id: settingsSaveTimer
+        interval: 500  // Save after 500ms of no changes
+        repeat: false
+        onTriggered: {
+            saveProviderSettings()
+            ConfigLoader.saveConfig()
+        }
+    }
+
+    // Track if we're loading settings to avoid save loops
+    property bool loadingSettings: false
+    // Don't save until config has been loaded at least once
+    property bool configReady: false
+
+    onCurrentSortingChanged: {
+        if (configReady && !loadingSettings && currentProvider.length > 0) {
+            settingsSaveTimer.restart()
+        }
+    }
+
+    onAgeFilterChanged: {
+        if (configReady && !loadingSettings && currentProvider.length > 0) {
+            settingsSaveTimer.restart()
+        }
+    }
+
+    onAllowNsfwChanged: {
+        if (configReady && !loadingSettings && currentProvider.length > 0) {
+            settingsSaveTimer.restart()
+        }
+    }
 
     // Per-provider sort options (empty array = no sorting support)
     // Based on API documentation for each booru type
@@ -665,7 +717,30 @@ Singleton {
     function setProvider(provider) {
         provider = provider.toLowerCase()
         if (providerList.indexOf(provider) !== -1) {
+            // Save current provider settings before switching
+            if (currentProvider && currentProvider.length > 0) {
+                saveProviderSettings()
+            }
+
             root.currentProvider = provider
+
+            // Save active provider to config
+            ConfigOptions.booru.activeProvider = provider
+
+            // Load saved settings for new provider
+            loadProviderSettings(provider)
+
+            // Track provider usage for popularity sorting
+            var usage = ConfigOptions.booru.providerUsage || {}
+            // Create a new object to trigger property change
+            var newUsage = JSON.parse(JSON.stringify(usage))
+            newUsage[provider] = (newUsage[provider] || 0) + 1
+            ConfigOptions.booru.providerUsage = newUsage
+            root.providerUsageUpdated()
+
+            // Persist all changes to config
+            ConfigLoader.saveConfig()
+
             var msg = "Provider set to " + providers[provider].name
             if (provider === "gelbooru" && (!gelbooruApiKey || !gelbooruUserId)) {
                 msg += "\n⚠️ Gelbooru requires API key. Get yours at:\ngelbooru.com/index.php?page=account&s=options"
@@ -703,6 +778,40 @@ Singleton {
             "images": [],
             "message": message
         })])
+    }
+
+    // Save current provider settings (sorting, ageFilter, nsfw)
+    function saveProviderSettings() {
+        var settings = ConfigOptions.booru.providerSettings || {}
+        // Create new object to trigger property change
+        var newSettings = JSON.parse(JSON.stringify(settings))
+        newSettings[currentProvider] = {
+            sorting: currentSorting,
+            ageFilter: ageFilter,
+            nsfw: allowNsfw
+        }
+        ConfigOptions.booru.providerSettings = newSettings
+        console.log("[Booru] Saved settings for", currentProvider, ":", JSON.stringify(newSettings[currentProvider]))
+    }
+
+    // Load saved provider settings
+    function loadProviderSettings(provider) {
+        loadingSettings = true  // Prevent save loops
+        var settings = ConfigOptions.booru.providerSettings || {}
+        if (settings[provider]) {
+            var s = settings[provider]
+            if (s.sorting !== undefined) currentSorting = s.sorting
+            if (s.ageFilter !== undefined) ageFilter = s.ageFilter
+            if (s.nsfw !== undefined) allowNsfw = s.nsfw
+            console.log("[Booru] Loaded settings for", provider, ":", JSON.stringify(s))
+        } else {
+            // Reset to defaults for new provider
+            currentSorting = ""
+            ageFilter = "1month"
+            // Keep allowNsfw as-is or reset based on provider type
+            console.log("[Booru] No saved settings for", provider, ", using defaults")
+        }
+        loadingSettings = false
     }
 
     function constructRequestUrl(tags, nsfw=true, limit=20, page=1) {

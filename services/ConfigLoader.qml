@@ -21,6 +21,8 @@ Singleton {
     property string filePath: Directories.shellConfigPath
     property bool firstLoad: true
 
+    signal configLoaded()
+
     function loadConfig() {
         configFileView.reload()
     }
@@ -60,6 +62,9 @@ Singleton {
             } else {
                 Hyprland.dispatch(`exec notify-send "${qsTr("Shell configuration reloaded")}" "${root.filePath}"`)
             }
+
+            // Notify listeners that config is loaded
+            root.configLoaded()
         } catch (e) {
             console.error("[ConfigLoader] Error reading file:", e);
             Hyprland.dispatch(`exec notify-send "${qsTr("Shell configuration failed to load")}" "${root.filePath}"`)

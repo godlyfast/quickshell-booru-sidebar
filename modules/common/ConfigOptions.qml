@@ -51,5 +51,13 @@ Singleton {
         property string wallhavenApiKey: ""
         property string danbooruLogin: ""
         property string danbooruApiKey: ""
+        // Last used provider (restored on startup)
+        property string activeProvider: "wallhaven"
+        // Provider picker favorites (1-9 keys)
+        property var favorites: ["yandere", "wallhaven", "danbooru", "gelbooru", "konachan", "e621", "safebooru", "aibooru", "sankaku"]
+        // Provider usage counts for popularity sorting
+        property var providerUsage: ({})
+        // Per-provider settings: { "provider": { sorting: "", ageFilter: "", nsfw: false } }
+        property var providerSettings: ({})
     }
 }
