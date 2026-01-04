@@ -192,6 +192,41 @@ Singleton {
         return grabberSources[provider] ? grabberSources[provider] : null
     }
 
+    // Get the booru post URL for viewing on the site
+    function getPostUrl(provider, imageId) {
+        var p = providers[provider]
+        if (!p || !imageId) return ""
+
+        var baseUrl = p.url
+        var apiType = p.apiType || ""
+
+        // URL patterns by API type
+        switch (apiType) {
+            case "moebooru":
+                return baseUrl + "/post/show/" + imageId
+            case "danbooru":
+                return baseUrl + "/posts/" + imageId
+            case "gelbooru":
+            case "gelbooruNsfw":
+                return baseUrl + "/index.php?page=post&s=view&id=" + imageId
+            case "e621":
+                return baseUrl + "/posts/" + imageId
+            case "wallhaven":
+                return baseUrl + "/w/" + imageId
+            case "sankaku":
+                return baseUrl + "/post/show/" + imageId
+            case "shimmie":
+                return baseUrl + "/post/view/" + imageId
+            case "philomena":
+                return baseUrl + "/images/" + imageId
+            case "zerochan":
+                return baseUrl + "/" + imageId
+            default:
+                // waifuIm, nekosBest don't have post pages
+                return ""
+        }
+    }
+
     // Providers that should use Grabber for API requests (bypasses Cloudflare)
     // Toggle via /grabber command
     property bool useGrabberFallback: true

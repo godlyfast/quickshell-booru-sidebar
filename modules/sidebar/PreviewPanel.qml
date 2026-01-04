@@ -8,6 +8,7 @@ import Quickshell.Hyprland
 import "../common"
 import "../common/widgets"
 import "./preview"
+import "../../services"
 
 /**
  * Full-size preview panel that slides out from the sidebar edge.
@@ -216,10 +217,31 @@ Scope {
                             onClicked: root.requestSaveWallpaper(root.imageData)
                         }
 
-                        // Open source button
+                        // Go to booru post button
+                        RippleButton {
+                            id: goToPostButton
+                            property string postUrl: Booru.getPostUrl(root.provider, root.imageData ? root.imageData.id : "")
+                            visible: postUrl.length > 0
+                            implicitWidth: 32
+                            implicitHeight: 32
+                            buttonRadius: Appearance.rounding.full
+                            colBackground: Qt.rgba(0, 0, 0, 0.4)
+                            colBackgroundHover: Qt.rgba(0, 0, 0, 0.6)
+
+                            contentItem: MaterialSymbol {
+                                horizontalAlignment: Text.AlignHCenter
+                                iconSize: 18
+                                color: "#ffffff"
+                                text: "language"
+                            }
+
+                            onClicked: Qt.openUrlExternally(postUrl)
+                        }
+
+                        // Open original source button (Pixiv, Twitter, etc.)
                         RippleButton {
                             id: openSourceButton
-                            visible: root.imageData && (root.imageData.source || root.imageData.file_url)
+                            visible: root.imageData && root.imageData.source && root.imageData.source.length > 0
                             implicitWidth: 32
                             implicitHeight: 32
                             buttonRadius: Appearance.rounding.full
@@ -233,9 +255,7 @@ Scope {
                                 text: "open_in_new"
                             }
 
-                            onClicked: {
-                                Qt.openUrlExternally(root.imageData.source || root.imageData.file_url)
-                            }
+                            onClicked: Qt.openUrlExternally(root.imageData.source)
                         }
 
                         // Close button
