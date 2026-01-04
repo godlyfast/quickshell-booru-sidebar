@@ -29,6 +29,18 @@ Scope {
     // STABLE image data - only updated via setImageData(), immune to external binding issues
     property var stableImageData: null
 
+    // Helper to detect media type from extension or URL
+    function detectMediaType(ext, url) {
+        ext = ext ? ext.toLowerCase() : ""
+        var urlLower = url ? url.toLowerCase() : ""
+        if (ext === "mp4" || ext === "webm" || urlLower.endsWith(".mp4") || urlLower.endsWith(".webm")) {
+            return "video"
+        } else if (ext === "gif" || urlLower.endsWith(".gif")) {
+            return "gif"
+        }
+        return "image"
+    }
+
     // Explicit update function to avoid binding-related issues
     function setImageData(newImageData, newCachedSource) {
         // Store in STABLE property, not the externally-bound one
@@ -36,28 +48,24 @@ Scope {
         // Force update of stable values
         if (newImageData) {
             currentImageId = newImageData.id
-            var ext = newImageData.file_ext ? newImageData.file_ext.toLowerCase() : ""
-            if (ext === "mp4" || ext === "webm") {
-                stableMediaType = "video"
-            } else if (ext === "gif") {
-                stableMediaType = "gif"
-            } else {
-                stableMediaType = "image"
+            // Determine URL first so we can check its extension
+            var url = ""
+            if (newCachedSource && newCachedSource.length > 0) {
+                url = newCachedSource
+            } else if (newImageData.file_url) {
+                url = newImageData.file_url
+            } else if (newImageData.sample_url) {
+                url = newImageData.sample_url
             }
+            stableImageUrl = url
+            // Detect media type from API extension OR cached file extension
+            var ext = newImageData.file_ext ? newImageData.file_ext.toLowerCase() : ""
+            stableMediaType = detectMediaType(ext, url)
             zoomLevel = 1.0
             panX = 0
             panY = 0
             imageCacheTriedAndFailed = false
             gifCacheTriedAndFailed = false
-            if (newCachedSource && newCachedSource.length > 0) {
-                stableImageUrl = newCachedSource
-            } else if (newImageData.file_url) {
-                stableImageUrl = newImageData.file_url
-            } else if (newImageData.sample_url) {
-                stableImageUrl = newImageData.sample_url
-            } else {
-                stableImageUrl = ""
-            }
         } else {
             stableImageUrl = ""
             stableMediaType = "image"
@@ -68,6 +76,9 @@ Scope {
     function updateCachedSource(newSource) {
         if (newSource && newSource.length > 0) {
             stableImageUrl = newSource
+            // Re-detect media type from new source (may have different extension)
+            var ext = stableImageData ? stableImageData.file_ext : ""
+            stableMediaType = detectMediaType(ext, newSource)
             imageCacheTriedAndFailed = false
             gifCacheTriedAndFailed = false
         }
@@ -76,7 +87,8 @@ Scope {
     // Computed properties - use stableImageData instead of imageData
     property bool panelVisible: active && stableImageData !== null
     property bool isVideo: stableImageData ? (stableImageData.file_ext === "mp4" || stableImageData.file_ext === "webm") : false
-    property bool isGif: stableImageData ? (stableImageData.file_ext === "gif") : false
+    // Check both API extension AND cached file extension (zerochan GIFs may be served from .jpg URLs)
+    property bool isGif: (stableImageData && stableImageData.file_ext === "gif") || stableImageUrl.toLowerCase().endsWith(".gif")
 
     // Cached image ID to detect actual changes (var comparison is unreliable)
     property var currentImageId: null

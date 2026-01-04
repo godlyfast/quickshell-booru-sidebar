@@ -63,10 +63,14 @@ Singleton {
                 var ext = imageExtensions[i]
                 // Try different extension
                 var altName = baseName + ext
-                if (root.index[altName]) return "file://" + root.index[altName]
+                if (root.index[altName]) {
+                    return "file://" + root.index[altName]
+                }
                 // Try with hires_ prefix
                 var hiresAlt = "hires_" + altName
-                if (root.index[hiresAlt]) return "file://" + root.index[hiresAlt]
+                if (root.index[hiresAlt]) {
+                    return "file://" + root.index[hiresAlt]
+                }
             }
         }
 

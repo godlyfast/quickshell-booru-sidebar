@@ -70,7 +70,9 @@ Button {
         return ext
     }
     property bool isVideo: (fileExt === "mp4" || fileExt === "webm")
-    property bool isGif: fileExt === "gif"
+    // Check both API-provided extension AND actual cached file extension
+    // (zerochan may have .gif content served from .jpg URL via fallback)
+    property bool isGif: fileExt === "gif" || cachedImageSource.toLowerCase().endsWith(".gif")
     property bool isArchive: (fileExt === "zip" || fileExt === "rar" || fileExt === "7z")  // Danbooru image packs
 
     // File paths for download status checks
@@ -912,6 +914,10 @@ Button {
                 if (!root.isGif) return ""
                 // Universal cache first
                 if (root.cachedGifSource.length > 0) return root.cachedGifSource
+                // Also check image cache (zerochan GIFs found via extension variant lookup with hires_ prefix)
+                if (root.cachedImageSource.length > 0 && root.cachedImageSource.toLowerCase().endsWith(".gif")) {
+                    return root.cachedImageSource
+                }
                 // Manual download providers
                 if (root.manualDownload) return root.localGifSource
                 // Wait for cache check
@@ -1454,6 +1460,9 @@ Button {
                         cachedSrc = gifSrc
                     } else if (root.cachedGifSource) {
                         cachedSrc = root.cachedGifSource
+                    } else if (root.cachedImageSource && root.cachedImageSource.toLowerCase().endsWith(".gif")) {
+                        // Zerochan GIFs found via extension variant lookup with hires_ prefix
+                        cachedSrc = root.cachedImageSource
                     }
                 } else if (root.cachedImageSource) {
                     cachedSrc = root.cachedImageSource
