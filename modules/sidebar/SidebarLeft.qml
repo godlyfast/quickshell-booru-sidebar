@@ -38,6 +38,51 @@ Scope {
         root.previewActive = false
     }
 
+    // Vim keybinding state
+    property string pendingKey: ""  // For multi-key sequences like 'gg'
+    property bool showKeybindingsHelp: false
+
+    // Get flat list of all images from all responses
+    function getAllImages() {
+        var images = []
+        var responses = Booru.responses
+        for (var i = 0; i < responses.length; i++) {
+            var resp = responses[i]
+            if (resp && resp.images) {
+                for (var j = 0; j < resp.images.length; j++) {
+                    images.push({
+                        data: resp.images[j],
+                        provider: resp.provider
+                    })
+                }
+            }
+        }
+        return images
+    }
+
+    // Get current image index in flat list
+    function getCurrentImageIndex() {
+        if (!previewImageData) return -1
+        var images = getAllImages()
+        for (var i = 0; i < images.length; i++) {
+            if (images[i].data.id === previewImageData.id) return i
+        }
+        return -1
+    }
+
+    // Navigate to prev/next image in preview
+    function navigatePreview(delta) {
+        var images = getAllImages()
+        if (images.length === 0) return
+        var idx = getCurrentImageIndex()
+        if (idx < 0) idx = 0
+        var newIdx = Math.max(0, Math.min(images.length - 1, idx + delta))
+        if (newIdx !== idx || idx < 0) {
+            var img = images[newIdx]
+            showPreview(img.data, "", false, img.provider)
+        }
+    }
+
     // Download paths
     property string downloadPath: FileUtils.trimFileProtocol(Directories.homeDir) + "/Pictures/booru"
     property string nsfwPath: FileUtils.trimFileProtocol(Directories.homeDir) + "/Pictures/booru/nsfw"
@@ -124,6 +169,16 @@ Scope {
         }
     }
 
+    // Clipboard process for yank (y) command
+    Process {
+        id: clipboardProcess
+        onExited: function(code, status) {
+            if (code === 0) {
+                Quickshell.execDetached(["notify-send", "URL copied", "Image URL copied to clipboard", "-a", "Booru"])
+            }
+        }
+    }
+
     Loader {
         id: sidebarLoader
         active: true
@@ -192,22 +247,184 @@ Scope {
                 anchors.leftMargin: 8
                 width: sidebarRoot.sidebarWidth
                 height: parent.height - 16
+                focus: true  // Enable keyboard focus for vim keybindings
                 color: Appearance.colors.colLayer0
                 border.width: 1
                 border.color: Appearance.m3colors.m3borderSecondary
                 radius: Appearance.rounding.large
 
                 Keys.onPressed: (event) => {
-                    // Close preview first with Q or Escape when preview is active
-                    if (root.previewActive && (event.key === Qt.Key_Q || event.key === Qt.Key_Escape)) {
-                        root.hidePreview()
+                    // Skip if input field is focused (let it handle keys normally)
+                    if (animeContent.inputField && animeContent.inputField.activeFocus) {
+                        // Escape blurs input
+                        if (event.key === Qt.Key_Escape) {
+                            animeContent.inputField.focus = false
+                            sidebarBackground.forceActiveFocus()
+                            event.accepted = true
+                        }
+                        return
+                    }
+
+                    // Handle multi-key sequences (gg)
+                    if (root.pendingKey === "g") {
+                        root.pendingKey = ""
+                        if (event.key === Qt.Key_G) {
+                            animeContent.scrollToTop()
+                            event.accepted = true
+                            return
+                        }
+                    }
+
+                    // === HELP ===
+                    if (event.key === Qt.Key_Question || (event.key === Qt.Key_Slash && event.modifiers & Qt.ShiftModifier)) {
+                        root.showKeybindingsHelp = !root.showKeybindingsHelp
                         event.accepted = true
                         return
                     }
-                    // Close sidebar with Q or Escape
+
+                    // === CLOSE/QUIT ===
                     if (event.key === Qt.Key_Q || event.key === Qt.Key_Escape) {
-                        sidebarRoot.hide()
+                        if (root.showKeybindingsHelp) {
+                            root.showKeybindingsHelp = false
+                        } else if (root.previewActive) {
+                            root.hidePreview()
+                        } else {
+                            sidebarRoot.hide()
+                        }
                         event.accepted = true
+                        return
+                    }
+
+                    // === PREVIEW NAVIGATION (h/l) ===
+                    if (root.previewActive) {
+                        if (event.key === Qt.Key_H || event.key === Qt.Key_Left) {
+                            root.navigatePreview(-1)
+                            event.accepted = true
+                            return
+                        }
+                        if (event.key === Qt.Key_L || event.key === Qt.Key_Right) {
+                            root.navigatePreview(1)
+                            event.accepted = true
+                            return
+                        }
+                        // Preview zoom controls
+                        if (event.key === Qt.Key_Plus || event.key === Qt.Key_Equal) {
+                            previewPanel.zoomLevel = Math.min(previewPanel.maxZoom, previewPanel.zoomLevel * 1.15)
+                            event.accepted = true
+                            return
+                        }
+                        if (event.key === Qt.Key_Minus) {
+                            previewPanel.zoomLevel = Math.max(previewPanel.minZoom, previewPanel.zoomLevel * 0.87)
+                            event.accepted = true
+                            return
+                        }
+                        if (event.key === Qt.Key_0 || event.key === Qt.Key_R) {
+                            previewPanel.zoomLevel = 1.0
+                            previewPanel.panX = 0
+                            previewPanel.panY = 0
+                            event.accepted = true
+                            return
+                        }
+                        // Preview actions
+                        if (event.key === Qt.Key_D) {
+                            root.downloadImage(root.previewImageData, false)
+                            event.accepted = true
+                            return
+                        }
+                        if (event.key === Qt.Key_W) {
+                            root.downloadImage(root.previewImageData, true)
+                            event.accepted = true
+                            return
+                        }
+                        if (event.key === Qt.Key_G) {
+                            var postUrl = Booru.getPostUrl(root.previewProvider, root.previewImageData ? root.previewImageData.id : "")
+                            if (postUrl) Qt.openUrlExternally(postUrl)
+                            event.accepted = true
+                            return
+                        }
+                        if (event.key === Qt.Key_S) {
+                            if (root.previewImageData && root.previewImageData.source) {
+                                Qt.openUrlExternally(root.previewImageData.source)
+                            }
+                            event.accepted = true
+                            return
+                        }
+                        if (event.key === Qt.Key_Y) {
+                            if (root.previewImageData && root.previewImageData.file_url) {
+                                // Copy URL to clipboard using Process
+                                clipboardProcess.command = ["wl-copy", root.previewImageData.file_url]
+                                clipboardProcess.running = true
+                            }
+                            event.accepted = true
+                            return
+                        }
+                    }
+
+                    // === LIST NAVIGATION ===
+                    if (event.key === Qt.Key_J || event.key === Qt.Key_Down) {
+                        animeContent.scrollDown()
+                        event.accepted = true
+                        return
+                    }
+                    if (event.key === Qt.Key_K || event.key === Qt.Key_Up) {
+                        animeContent.scrollUp()
+                        event.accepted = true
+                        return
+                    }
+                    if (event.key === Qt.Key_G && !(event.modifiers & Qt.ShiftModifier)) {
+                        root.pendingKey = "g"
+                        event.accepted = true
+                        return
+                    }
+                    if (event.key === Qt.Key_G && (event.modifiers & Qt.ShiftModifier)) {
+                        animeContent.scrollToBottom()
+                        event.accepted = true
+                        return
+                    }
+                    if (event.key === Qt.Key_D && (event.modifiers & Qt.ControlModifier)) {
+                        animeContent.scrollPageDown()
+                        event.accepted = true
+                        return
+                    }
+                    if (event.key === Qt.Key_U && (event.modifiers & Qt.ControlModifier)) {
+                        animeContent.scrollPageUp()
+                        event.accepted = true
+                        return
+                    }
+
+                    // === PAGINATION ===
+                    if (event.key === Qt.Key_N && !(event.modifiers & Qt.ShiftModifier)) {
+                        animeContent.loadNextPage()
+                        event.accepted = true
+                        return
+                    }
+
+                    // === TOGGLES ===
+                    if (event.key === Qt.Key_P) {
+                        sidebarRoot.pinned = !sidebarRoot.pinned
+                        event.accepted = true
+                        return
+                    }
+                    if (event.key === Qt.Key_X) {
+                        Booru.allowNsfw = !Booru.allowNsfw
+                        event.accepted = true
+                        return
+                    }
+                    if (event.key === Qt.Key_I) {
+                        animeContent.focusInput()
+                        event.accepted = true
+                        return
+                    }
+
+                    // === QUICK PROVIDER SWITCH (1-9) ===
+                    var numKey = -1
+                    if (event.key >= Qt.Key_1 && event.key <= Qt.Key_9) {
+                        numKey = event.key - Qt.Key_1
+                    }
+                    if (numKey >= 0 && numKey < Booru.providerList.length) {
+                        Booru.setProvider(Booru.providerList[numKey])
+                        event.accepted = true
+                        return
                     }
                 }
 
@@ -236,6 +453,7 @@ Scope {
 
                 // Content
                 Anime {
+                    id: animeContent
                     anchors.fill: parent
                     previewImageId: root.previewActive && root.previewImageData ? root.previewImageData.id : null
                     onShowPreview: function(imageData, cachedSource, manualDownload, provider) {
@@ -261,6 +479,104 @@ Scope {
         onRequestClose: root.hidePreview()
         onRequestDownload: function(imageData) { root.downloadImage(imageData, false) }
         onRequestSaveWallpaper: function(imageData) { root.downloadImage(imageData, true) }
+    }
+
+    // Keybindings help overlay
+    Loader {
+        active: root.showKeybindingsHelp && root.sidebarOpen
+        sourceComponent: PanelWindow {
+            id: helpWindow
+            visible: true
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.namespace: "booru-help"
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+            exclusiveZone: 0
+
+            anchors {
+                top: true
+                left: true
+            }
+            margins.top: (screen.height - height) / 2
+            margins.left: (screen.width - width) / 2
+
+            width: helpContent.width + 48
+            height: helpContent.height + 48
+            color: "transparent"
+
+            Rectangle {
+                anchors.fill: parent
+                color: Qt.rgba(0, 0, 0, 0.85)
+                radius: Appearance.rounding.large
+
+                Column {
+                    id: helpContent
+                    anchors.centerIn: parent
+                    spacing: 16
+
+                    StyledText {
+                        text: "Keyboard Shortcuts"
+                        font.pixelSize: Appearance.font.pixelSize.textLarge
+                        font.bold: true
+                        color: "#ffffff"
+                        anchors.horizontalCenter: parent.horizontalCenter
+                    }
+
+                    Row {
+                        spacing: 32
+
+                        // Navigation column
+                        Column {
+                            spacing: 4
+                            StyledText { text: "Navigation"; font.bold: true; color: Appearance.m3colors.m3primary }
+                            StyledText { text: "j / ↓  Scroll down"; color: "#ffffff" }
+                            StyledText { text: "k / ↑  Scroll up"; color: "#ffffff" }
+                            StyledText { text: "gg     Jump to top"; color: "#ffffff" }
+                            StyledText { text: "G      Jump to bottom"; color: "#ffffff" }
+                            StyledText { text: "Ctrl+d Page down"; color: "#ffffff" }
+                            StyledText { text: "Ctrl+u Page up"; color: "#ffffff" }
+                            StyledText { text: "n      Next page"; color: "#ffffff" }
+                            StyledText { text: "h / ←  Prev image (preview)"; color: "#ffffff" }
+                            StyledText { text: "l / →  Next image (preview)"; color: "#ffffff" }
+                        }
+
+                        // Preview column
+                        Column {
+                            spacing: 4
+                            StyledText { text: "Preview"; font.bold: true; color: Appearance.m3colors.m3primary }
+                            StyledText { text: "d      Download"; color: "#ffffff" }
+                            StyledText { text: "w      Save as wallpaper"; color: "#ffffff" }
+                            StyledText { text: "g      Go to booru post"; color: "#ffffff" }
+                            StyledText { text: "s      Open source"; color: "#ffffff" }
+                            StyledText { text: "y      Yank URL"; color: "#ffffff" }
+                            StyledText { text: "+ / =  Zoom in"; color: "#ffffff" }
+                            StyledText { text: "-      Zoom out"; color: "#ffffff" }
+                            StyledText { text: "0 / r  Reset zoom"; color: "#ffffff" }
+                        }
+
+                        // Toggles column
+                        Column {
+                            spacing: 4
+                            StyledText { text: "Toggles"; font.bold: true; color: Appearance.m3colors.m3primary }
+                            StyledText { text: "p      Pin sidebar"; color: "#ffffff" }
+                            StyledText { text: "x      Toggle NSFW"; color: "#ffffff" }
+                            StyledText { text: "i      Focus input"; color: "#ffffff" }
+                            StyledText { text: "1-9    Quick provider"; color: "#ffffff" }
+                            StyledText { text: ""; color: "transparent" }
+                            StyledText { text: "General"; font.bold: true; color: Appearance.m3colors.m3primary }
+                            StyledText { text: "q/Esc  Close"; color: "#ffffff" }
+                            StyledText { text: "?      This help"; color: "#ffffff" }
+                        }
+                    }
+
+                    StyledText {
+                        text: "Press ? or Escape to close"
+                        font.pixelSize: Appearance.font.pixelSize.textSmall
+                        color: Appearance.m3colors.m3secondaryText
+                        anchors.horizontalCenter: parent.horizontalCenter
+                    }
+                }
+            }
+        }
     }
 
     IpcHandler {

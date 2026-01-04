@@ -34,6 +34,45 @@ Item {
     property bool showControlsMenu: false
     property string lastTagQuery: ""  // Track last query to prevent stale suggestions
 
+    // Expose ListView for keyboard navigation
+    readonly property alias listView: booruResponseListView
+
+    // Scroll functions for vim-like navigation
+    function scrollUp(amount) {
+        booruResponseListView.contentY = Math.max(0, booruResponseListView.contentY - (amount || 100))
+    }
+
+    function scrollDown(amount) {
+        var maxY = booruResponseListView.contentHeight - booruResponseListView.height
+        booruResponseListView.contentY = Math.min(maxY, booruResponseListView.contentY + (amount || 100))
+    }
+
+    function scrollToTop() {
+        booruResponseListView.contentY = 0
+    }
+
+    function scrollToBottom() {
+        booruResponseListView.contentY = booruResponseListView.contentHeight - booruResponseListView.height
+    }
+
+    function scrollPageUp() {
+        scrollUp(booruResponseListView.height * 0.8)
+    }
+
+    function scrollPageDown() {
+        scrollDown(booruResponseListView.height * 0.8)
+    }
+
+    // Load next page
+    function loadNextPage() {
+        handleInput("+")
+    }
+
+    // Focus the input field
+    function focusInput() {
+        if (root.inputField) root.inputField.forceActiveFocus()
+    }
+
     Connections {
         target: Booru
         function onTagSuggestion(query, suggestions) {
