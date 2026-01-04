@@ -564,6 +564,10 @@ Scope {
                         root.showPreview(imageData, cachedSource, manualDownload, provider)
                     }
                     onHidePreview: root.hidePreview()
+                    onUpdatePreviewSource: function(cachedSource) {
+                        // Update preview panel's cached source when download completes
+                        root.previewCachedSource = cachedSource
+                    }
                 }
             }
         }

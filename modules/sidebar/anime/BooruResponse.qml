@@ -24,6 +24,7 @@ Rectangle {
     // Preview signals - forwarded to Anime
     signal showPreview(var imageData, string cachedSource, bool manualDownload, string provider)
     signal hidePreview()
+    signal updatePreviewSource(string cachedSource)
 
     property real availableWidth: parent ? parent.width : 400
     property real rowTooShortThreshold: 150
@@ -217,6 +218,9 @@ Rectangle {
                             root.showPreview(imageData, cachedSource, manualDownload, provider)
                         }
                         onHidePreview: root.hidePreview()
+                        onUpdatePreviewSource: function(cachedSource) {
+                            root.updatePreviewSource(cachedSource)
+                        }
                     }
                 }
             }

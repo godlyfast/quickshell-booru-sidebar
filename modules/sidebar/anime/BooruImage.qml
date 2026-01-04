@@ -27,6 +27,7 @@ Button {
     // Preview signals - emitted on hover for full-size preview
     signal showPreview(var imageData, string cachedSource, bool manualDownload, string provider)
     signal hidePreview()
+    signal updatePreviewSource(string cachedSource)  // Emitted when download completes while preview is active
 
     property string fileName: {
         var url = imageData.file_url ? imageData.file_url : ""
@@ -184,9 +185,14 @@ Button {
         sourceUrl: root.imageData.file_url ? root.imageData.file_url : ""
         onDone: function(path, width, height) {
             if (path.length > 0) {
-                root.cachedImageSource = "file://" + path
+                var cachedPath = "file://" + path
+                root.cachedImageSource = cachedPath
                 // Register in CacheIndex for instant future lookups
                 Services.CacheIndex.register(root.highResFileName, path)
+                // Update preview if it's showing this image
+                if (root.isPreviewActive) {
+                    root.updatePreviewSource(cachedPath)
+                }
             }
         }
     }
@@ -199,7 +205,12 @@ Button {
         sourceUrl: root.imageData.file_url ? root.imageData.file_url : ""
         onDone: (path, width, height) => {
             if (path.length > 0) {
-                root.localHighResSource = "file://" + path
+                var cachedPath = "file://" + path
+                root.localHighResSource = cachedPath
+                // Update preview if it's showing this image
+                if (root.isPreviewActive) {
+                    root.updatePreviewSource(cachedPath)
+                }
             } else {
                 // High-res blocked - use preview as fallback
                 root.localHighResSource = "file://" + imageDownloader.downloadedPath
@@ -217,7 +228,12 @@ Button {
         password: Services.Booru.danbooruApiKey
         onDone: (success, message) => {
             if (success) {
-                root.localHighResSource = "file://" + root.grabberHighResPath
+                var cachedPath = "file://" + root.grabberHighResPath
+                root.localHighResSource = cachedPath
+                // Update preview if it's showing this image
+                if (root.isPreviewActive) {
+                    root.updatePreviewSource(cachedPath)
+                }
             } else {
                 // Fallback to preview
                 root.localHighResSource = "file://" + imageDownloader.downloadedPath
@@ -287,9 +303,14 @@ Button {
         sourceUrl: root.imageData.file_url ? root.imageData.file_url : ""
         onDone: function(path, width, height) {
             if (path.length > 0) {
-                root.cachedGifSource = "file://" + path
+                var cachedPath = "file://" + path
+                root.cachedGifSource = cachedPath
                 // Register in CacheIndex for instant future lookups
                 Services.CacheIndex.register("gif_" + root.gifFileName, path)
+                // Update preview if it's showing this GIF
+                if (root.isPreviewActive) {
+                    root.updatePreviewSource(cachedPath)
+                }
             }
         }
     }
@@ -337,7 +358,12 @@ Button {
             downloading = false
             root.ugoiraDownloading = false
             if (code === 0) {
-                root.localUgoiraSource = "file://" + root.ugoiraVideoPath
+                var cachedPath = "file://" + root.ugoiraVideoPath
+                root.localUgoiraSource = cachedPath
+                // Update preview if it's showing this ugoira
+                if (root.isPreviewActive) {
+                    root.updatePreviewSource(cachedPath)
+                }
             }
         }
     }
@@ -516,10 +542,15 @@ Button {
                 retryCount = 0
                 root.videoDownloadFailed = false
                 root.videoDownloadProgress = 100
-                root.cachedVideoSource = "file://" + root.videoFilePath
+                var cachedPath = "file://" + root.videoFilePath
+                root.cachedVideoSource = cachedPath
                 // Register in CacheIndex for instant future lookups
                 var videoName = "video_" + (root.imageData.md5 ? root.imageData.md5 : root.imageData.id) + "." + root.fileExt
                 Services.CacheIndex.register(videoName, root.videoFilePath)
+                // Update preview if it's showing this video
+                if (root.isPreviewActive) {
+                    root.updatePreviewSource(cachedPath)
+                }
             } else {
                 // Retry on failure
                 if (retryCount < maxRetries) {
@@ -1399,10 +1430,23 @@ Button {
                 root.hidePreview()
             } else {
                 var cachedSrc = ""
-                if (root.isVideo && root.cachedVideoSource) {
-                    cachedSrc = root.cachedVideoSource
-                } else if (root.isGif && root.cachedGifSource) {
-                    cachedSrc = root.cachedGifSource
+                if (root.isVideo || root.isArchive) {
+                    // For videos/ugoira, prefer the actual playing source if it's local
+                    // This handles cases where video was downloaded after CacheIndex initialized
+                    var videoSrc = videoContainer.videoSource
+                    if (videoSrc && videoSrc.indexOf("file://") === 0) {
+                        cachedSrc = videoSrc
+                    } else if (root.cachedVideoSource) {
+                        cachedSrc = root.cachedVideoSource
+                    }
+                } else if (root.isGif) {
+                    // For GIFs, prefer the actual source if it's local
+                    var gifSrc = gifObject.source.toString()
+                    if (gifSrc && gifSrc.indexOf("file://") === 0) {
+                        cachedSrc = gifSrc
+                    } else if (root.cachedGifSource) {
+                        cachedSrc = root.cachedGifSource
+                    }
                 } else if (root.cachedImageSource) {
                     cachedSrc = root.cachedImageSource
                 } else if (root.localHighResSource) {

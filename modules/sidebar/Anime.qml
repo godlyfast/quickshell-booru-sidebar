@@ -18,6 +18,7 @@ Item {
     // Preview signals - forwarded to SidebarLeft
     signal showPreview(var imageData, string cachedSource, bool manualDownload, string provider)
     signal hidePreview()
+    signal updatePreviewSource(string cachedSource)
 
     // Currently previewed image ID (passed from SidebarLeft)
     property var previewImageId: null
@@ -292,6 +293,9 @@ Item {
                     root.showPreview(imageData, cachedSource, manualDownload, provider)
                 }
                 onHidePreview: root.hidePreview()
+                onUpdatePreviewSource: function(cachedSource) {
+                    root.updatePreviewSource(cachedSource)
+                }
             }
 
             ScrollBar.vertical: ScrollBar {
