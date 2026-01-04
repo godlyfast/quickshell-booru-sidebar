@@ -6,6 +6,8 @@ import Quickshell.Wayland
 import Quickshell.Hyprland
 import "../common"
 import "../common/widgets"
+import "../common/utils"
+import "../common/functions/file_utils.js" as FileUtils
 import "../../services"
 
 /**
@@ -22,7 +24,7 @@ Scope {
     property bool previewManualDownload: false
     property string previewProvider: ""
 
-    // Called by BooruImage when hovered
+    // Called by BooruImage when clicked to show preview
     function showPreview(imageData, cachedSource, manualDownload, provider) {
         root.previewImageData = imageData
         root.previewCachedSource = cachedSource || ""
@@ -31,9 +33,95 @@ Scope {
         root.previewActive = true
     }
 
-    // Called when preview should be hidden
+    // Called to hide preview (close button or clicking outside)
     function hidePreview() {
         root.previewActive = false
+    }
+
+    // Download paths
+    property string downloadPath: FileUtils.trimFileProtocol(Directories.homeDir) + "/Pictures/booru"
+    property string nsfwPath: FileUtils.trimFileProtocol(Directories.homeDir) + "/Pictures/booru/nsfw"
+    property string wallpaperPath: FileUtils.trimFileProtocol(Directories.homeDir) + "/Pictures/wallpapers"
+
+    // Shell escape helper
+    function shellEscape(str) {
+        if (!str) return ""
+        return str.replace(/'/g, "'\\''")
+    }
+
+    // Download image using Grabber or curl fallback
+    function downloadImage(imageData, isWallpaper) {
+        if (!imageData || !imageData.file_url) return
+
+        var targetPath = isWallpaper ? root.wallpaperPath : (imageData.is_nsfw ? root.nsfwPath : root.downloadPath)
+        var notifyTitle = isWallpaper ? "Wallpaper saved" : "Download complete"
+        var grabberSource = Booru.getGrabberSource(root.previewProvider)
+
+        if (grabberSource && grabberSource.length > 0) {
+            // Use Grabber for supported providers
+            var downloader = isWallpaper ? wallpaperDownloader : previewDownloader
+            downloader.source = grabberSource
+            downloader.imageId = String(imageData.id)
+            downloader.outputPath = targetPath
+            downloader.startDownload()
+        } else {
+            // Fallback to curl
+            var fileName = imageData.file_url.substring(imageData.file_url.lastIndexOf('/') + 1)
+            var queryIdx = fileName.indexOf('?')
+            if (queryIdx > 0) fileName = fileName.substring(0, queryIdx)
+            fileName = decodeURIComponent(fileName)
+
+            Quickshell.execDetached(["bash", "-c",
+                "mkdir -p '" + shellEscape(targetPath) + "' && " +
+                "curl -sL -A 'Mozilla/5.0 BooruSidebar/1.0' '" + shellEscape(imageData.file_url) + "' " +
+                "-o '" + shellEscape(targetPath) + "/" + shellEscape(fileName) + "' && " +
+                "notify-send '" + notifyTitle + "' '" + shellEscape(targetPath + "/" + fileName) + "' -a 'Booru'"
+            ])
+        }
+    }
+
+    // Curl fallback helper for Grabber failures
+    function curlFallback(imageData, targetPath, notifyTitle) {
+        var fileName = imageData.file_url.substring(imageData.file_url.lastIndexOf('/') + 1)
+        var queryIdx = fileName.indexOf('?')
+        if (queryIdx > 0) fileName = fileName.substring(0, queryIdx)
+        fileName = decodeURIComponent(fileName)
+
+        Quickshell.execDetached(["bash", "-c",
+            "mkdir -p '" + shellEscape(targetPath) + "' && " +
+            "curl -sL -A 'Mozilla/5.0 BooruSidebar/1.0' '" + shellEscape(imageData.file_url) + "' " +
+            "-o '" + shellEscape(targetPath) + "/" + shellEscape(fileName) + "' && " +
+            "notify-send '" + notifyTitle + "' '" + shellEscape(targetPath + "/" + fileName) + "' -a 'Booru'"
+        ])
+    }
+
+    // Grabber downloader for preview panel downloads
+    GrabberDownloader {
+        id: previewDownloader
+        filenameTemplate: Booru.filenameTemplate
+
+        onDone: function(success, message) {
+            if (success) {
+                Quickshell.execDetached(["notify-send", "Download complete", message, "-a", "Booru"])
+            } else if (root.previewImageData && root.previewImageData.file_url) {
+                var targetPath = root.previewImageData.is_nsfw ? root.nsfwPath : root.downloadPath
+                root.curlFallback(root.previewImageData, targetPath, "Download complete")
+            }
+        }
+    }
+
+    // Grabber downloader for wallpaper saves
+    GrabberDownloader {
+        id: wallpaperDownloader
+        filenameTemplate: Booru.filenameTemplate
+
+        onDone: function(success, message) {
+            if (success) {
+                Quickshell.execDetached(["notify-send", "Wallpaper saved", message, "-a", "Booru"])
+            } else if (root.previewImageData && root.previewImageData.file_url) {
+                root.curlFallback(root.previewImageData, root.wallpaperPath, "Wallpaper saved")
+            }
+        }
     }
 
     Loader {
@@ -71,7 +159,8 @@ Scope {
 
             HyprlandFocusGrab {
                 id: grab
-                windows: [sidebarRoot]
+                // Include preview panel in focus grab so clicking it doesn't close sidebar
+                windows: previewPanel.panelWindow ? [sidebarRoot, previewPanel.panelWindow] : [sidebarRoot]
                 active: sidebarRoot.visible && !sidebarRoot.pinned
                 onActiveChanged: {
                     if (active) {
@@ -141,6 +230,7 @@ Scope {
                 // Content
                 Anime {
                     anchors.fill: parent
+                    previewImageId: root.previewActive && root.previewImageData ? root.previewImageData.id : null
                     onShowPreview: function(imageData, cachedSource, manualDownload, provider) {
                         root.showPreview(imageData, cachedSource, manualDownload, provider)
                     }
@@ -152,6 +242,7 @@ Scope {
 
     // Full-size preview panel (slides out to the right)
     PreviewPanel {
+        id: previewPanel
         imageData: root.previewImageData
         active: root.previewActive && root.sidebarOpen
         cachedSource: root.previewCachedSource
@@ -161,6 +252,8 @@ Scope {
         sidebarX: 8
 
         onRequestClose: root.hidePreview()
+        onRequestDownload: function(imageData) { root.downloadImage(imageData, false) }
+        onRequestSaveWallpaper: function(imageData) { root.downloadImage(imageData, true) }
     }
 
     IpcHandler {

@@ -19,6 +19,9 @@ Item {
     signal showPreview(var imageData, string cachedSource, bool manualDownload, string provider)
     signal hidePreview()
 
+    // Currently previewed image ID (passed from SidebarLeft)
+    property var previewImageId: null
+
     property var inputField: null
     readonly property var responses: Booru.responses
     property string previewDownloadPath: Directories.cacheDir + "/booru/previews"
@@ -234,6 +237,7 @@ Item {
                 previewDownloadPath: root.previewDownloadPath
                 downloadPath: root.downloadPath
                 nsfwPath: root.nsfwPath
+                previewImageId: root.previewImageId
                 onShowPreview: function(imageData, cachedSource, manualDownload, provider) {
                     root.showPreview(imageData, cachedSource, manualDownload, provider)
                 }

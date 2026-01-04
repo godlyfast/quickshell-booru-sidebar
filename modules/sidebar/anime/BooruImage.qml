@@ -724,26 +724,6 @@ Button {
     implicitHeight: root.rowHeight
     z: showActions ? 100 : 0
 
-    // Emit preview signals on hover
-    onHoveredChanged: {
-        if (hovered) {
-            // Determine which cached source to use
-            var cachedSrc = ""
-            if (root.isVideo && root.cachedVideoSource) {
-                cachedSrc = root.cachedVideoSource
-            } else if (root.isGif && root.cachedGifSource) {
-                cachedSrc = root.cachedGifSource
-            } else if (root.cachedImageSource) {
-                cachedSrc = root.cachedImageSource
-            } else if (root.localHighResSource) {
-                cachedSrc = root.localHighResSource
-            }
-            root.showPreview(root.imageData, cachedSrc, root.manualDownload, root.provider)
-        } else {
-            root.hidePreview()
-        }
-    }
-
     background: Rectangle {
         implicitWidth: root.rowHeight * (root.effectiveAspectRatio)
         implicitHeight: root.rowHeight
@@ -1438,9 +1418,27 @@ Button {
         }
     }
 
+    // Track if this image's preview is currently shown
+    property bool isPreviewActive: false
+
     onClicked: {
         if (!showActions) {
-            Qt.openUrlExternally(imageData.source || imageData.file_url)
+            // Toggle preview - close if this image is already being previewed
+            if (root.isPreviewActive) {
+                root.hidePreview()
+            } else {
+                var cachedSrc = ""
+                if (root.isVideo && root.cachedVideoSource) {
+                    cachedSrc = root.cachedVideoSource
+                } else if (root.isGif && root.cachedGifSource) {
+                    cachedSrc = root.cachedGifSource
+                } else if (root.cachedImageSource) {
+                    cachedSrc = root.cachedImageSource
+                } else if (root.localHighResSource) {
+                    cachedSrc = root.localHighResSource
+                }
+                root.showPreview(root.imageData, cachedSrc, root.manualDownload, root.provider)
+            }
         }
     }
 }

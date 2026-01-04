@@ -30,22 +30,56 @@ Scope {
     property bool isVideo: imageData ? (imageData.file_ext === "mp4" || imageData.file_ext === "webm") : false
     property bool isGif: imageData ? (imageData.file_ext === "gif") : false
 
-    // Track if mouse is over the preview panel
-    property bool mouseOverPreview: false
+    // Cached image ID to detect actual changes (var comparison is unreliable)
+    property var currentImageId: null
 
-    // Close delay timer - prevents flicker when moving between sidebar and preview
-    Timer {
-        id: closeDelayTimer
-        interval: 200
-        onTriggered: {
-            if (!root.mouseOverPreview) {
-                root.active = false
+    // Stable URL cache - only updates when image actually changes
+    property string stableImageUrl: ""
+    property string stableMediaType: "image"  // "image", "gif", or "video"
+
+    // Update stable cache only when image ID changes
+    onImageDataChanged: {
+        if (!imageData) {
+            currentImageId = null
+            stableImageUrl = ""
+            stableMediaType = "image"
+            return
+        }
+        // Only update if image actually changed
+        if (imageData.id !== currentImageId) {
+            currentImageId = imageData.id
+            stableMediaType = isVideo ? "video" : (isGif ? "gif" : "image")
+            // Determine URL
+            if (cachedSource && cachedSource.length > 0) {
+                stableImageUrl = cachedSource
+            } else if (imageData.file_url) {
+                stableImageUrl = imageData.file_url
+            } else if (imageData.sample_url) {
+                stableImageUrl = imageData.sample_url
+            } else {
+                stableImageUrl = ""
             }
         }
     }
 
+    onCachedSourceChanged: {
+        // Update URL if cached source becomes available for current image
+        if (cachedSource && cachedSource.length > 0 && imageData && imageData.id === currentImageId) {
+            stableImageUrl = cachedSource
+        }
+    }
+
+    // Expose the panel window for HyprlandFocusGrab inclusion
+    property var panelWindow: panelLoader.item
+
     // Signal to notify parent that preview wants to close
     signal requestClose()
+
+    // Signal to request download of current image
+    signal requestDownload(var imageData)
+
+    // Signal to request saving as wallpaper
+    signal requestSaveWallpaper(var imageData)
 
     Loader {
         id: panelLoader
@@ -59,8 +93,11 @@ Scope {
             property real panelWidth: Math.min(screen.width - root.sidebarWidth - root.sidebarX - 24, 800)
             property real panelHeight: screen.height - 16
 
-            // Width needs to include sidebar offset + preview panel width
-            implicitWidth: root.sidebarX + root.sidebarWidth + 8 + panelWidth + 16
+            // Left margin to position right of sidebar (no overlap)
+            property real leftMargin: root.sidebarX + root.sidebarWidth + 8
+
+            // Only cover preview area, not sidebar
+            implicitWidth: panelWidth + 16
             implicitHeight: panelHeight
 
             // Layer shell configuration
@@ -71,22 +108,25 @@ Scope {
             exclusiveZone: 0
             color: "transparent"
 
-            // Anchor to left edge, use internal offset to position right of sidebar
+            // Use margins to position right of sidebar
+            WlrLayershell.margins.left: leftMargin
+
+            // Anchor to left edge (with margin), top, bottom
             anchors {
                 top: true
                 left: true
                 bottom: true
             }
 
-            // Animated content wrapper - positioned to the right of sidebar
+            // Content wrapper - no longer needs x offset
             Item {
                 id: contentWrapper
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
                 width: previewWindow.panelWidth + 16
 
-                // Position to right of sidebar + slide animation
-                x: root.sidebarX + root.sidebarWidth + 8 + (root.panelVisible ? 0 : -30)
+                // Slide animation (relative to panel, not screen)
+                x: root.panelVisible ? 0 : -30
                 opacity: root.panelVisible ? 1 : 0
 
                 Behavior on x {
@@ -105,54 +145,107 @@ Scope {
                     }
                 }
 
-                // Mouse area for detecting hover over the entire panel
-                MouseArea {
+                // Shadow
+                Rectangle {
+                    anchors.fill: previewBackground
+                    anchors.margins: -4
+                    radius: previewBackground.radius + 4
+                    color: "transparent"
+                    border.width: 8
+                    border.color: Qt.rgba(0, 0, 0, 0.3)
+                    z: -1
+                }
+
+                // Main background
+                Rectangle {
+                    id: previewBackground
                     anchors.fill: parent
-                    hoverEnabled: true
-                    onContainsMouseChanged: {
-                        root.mouseOverPreview = containsMouse
-                        if (!containsMouse) {
-                            closeDelayTimer.restart()
-                        } else {
-                            closeDelayTimer.stop()
-                        }
-                    }
+                    anchors.margins: 8
+                    anchors.leftMargin: 0  // No left margin - flush transition from sidebar
+                    color: Appearance.colors.colLayer0
+                    border.width: 1
+                    border.color: Appearance.m3colors.m3borderSecondary
+                    radius: Appearance.rounding.large
+                    clip: true
 
-                    // Shadow
-                    Rectangle {
-                        anchors.fill: previewBackground
-                        anchors.margins: -4
-                        radius: previewBackground.radius + 4
-                        color: "transparent"
-                        border.width: 8
-                        border.color: Qt.rgba(0, 0, 0, 0.3)
-                        z: -1
-                    }
-
-                    // Main background
-                    Rectangle {
-                        id: previewBackground
-                        anchors.fill: parent
+                    // Top-right button row
+                    Row {
+                        anchors.top: parent.top
+                        anchors.right: parent.right
                         anchors.margins: 8
-                        anchors.leftMargin: 0  // No left margin - flush transition from sidebar
-                        color: Appearance.colors.colLayer0
-                        border.width: 1
-                        border.color: Appearance.m3colors.m3borderSecondary
-                        radius: Appearance.rounding.large
-                        clip: true
+                        spacing: 8
+                        z: 100
 
-                        // Close button (top-right)
+                        // Download button
                         RippleButton {
-                            id: closeButton
-                            anchors.top: parent.top
-                            anchors.right: parent.right
-                            anchors.margins: 8
+                            id: downloadButton
+                            visible: root.imageData && root.imageData.file_url
                             implicitWidth: 32
                             implicitHeight: 32
                             buttonRadius: Appearance.rounding.full
                             colBackground: Qt.rgba(0, 0, 0, 0.4)
                             colBackgroundHover: Qt.rgba(0, 0, 0, 0.6)
-                            z: 100
+
+                            contentItem: MaterialSymbol {
+                                horizontalAlignment: Text.AlignHCenter
+                                iconSize: 18
+                                color: "#ffffff"
+                                text: "download"
+                            }
+
+                            onClicked: root.requestDownload(root.imageData)
+                        }
+
+                        // Save as wallpaper button
+                        RippleButton {
+                            id: wallpaperButton
+                            visible: root.imageData && root.imageData.file_url
+                            implicitWidth: 32
+                            implicitHeight: 32
+                            buttonRadius: Appearance.rounding.full
+                            colBackground: Qt.rgba(0, 0, 0, 0.4)
+                            colBackgroundHover: Qt.rgba(0, 0, 0, 0.6)
+
+                            contentItem: MaterialSymbol {
+                                horizontalAlignment: Text.AlignHCenter
+                                iconSize: 18
+                                color: "#ffffff"
+                                text: "wallpaper"
+                            }
+
+                            onClicked: root.requestSaveWallpaper(root.imageData)
+                        }
+
+                        // Open source button
+                        RippleButton {
+                            id: openSourceButton
+                            visible: root.imageData && (root.imageData.source || root.imageData.file_url)
+                            implicitWidth: 32
+                            implicitHeight: 32
+                            buttonRadius: Appearance.rounding.full
+                            colBackground: Qt.rgba(0, 0, 0, 0.4)
+                            colBackgroundHover: Qt.rgba(0, 0, 0, 0.6)
+
+                            contentItem: MaterialSymbol {
+                                horizontalAlignment: Text.AlignHCenter
+                                iconSize: 18
+                                color: "#ffffff"
+                                text: "open_in_new"
+                            }
+
+                            onClicked: {
+                                Qt.openUrlExternally(root.imageData.source || root.imageData.file_url)
+                            }
+                        }
+
+                        // Close button
+                        RippleButton {
+                            id: closeButton
+                            implicitWidth: 32
+                            implicitHeight: 32
+                            buttonRadius: Appearance.rounding.full
+                            colBackground: Qt.rgba(0, 0, 0, 0.4)
+                            colBackgroundHover: Qt.rgba(0, 0, 0, 0.6)
 
                             contentItem: MaterialSymbol {
                                 horizontalAlignment: Text.AlignHCenter
@@ -162,23 +255,23 @@ Scope {
                             }
 
                             onClicked: {
-                                root.active = false
                                 root.requestClose()
                             }
                         }
+                    }
 
-                        // Content loader - switches between image/gif/video
-                        Loader {
-                            id: contentLoader
-                            anchors.fill: parent
-                            anchors.margins: 8
+                    // Content loader - switches between image/gif/video
+                    Loader {
+                        id: contentLoader
+                        anchors.fill: parent
+                        anchors.margins: 8
 
-                            sourceComponent: {
-                                if (!root.imageData) return null
-                                if (root.isVideo) return videoPreviewComponent
-                                if (root.isGif) return gifPreviewComponent
-                                return imagePreviewComponent
-                            }
+                        // Use stable media type to prevent unnecessary reloads
+                        sourceComponent: {
+                            if (root.stableMediaType === "video") return videoPreviewComponent
+                            if (root.stableMediaType === "gif") return gifPreviewComponent
+                            if (root.stableImageUrl.length > 0) return imagePreviewComponent
+                            return null
                         }
                     }
                 }
@@ -194,15 +287,10 @@ Scope {
             id: imagePreview
             fillMode: Image.PreserveAspectFit
             asynchronous: true
+            cache: true
 
-            source: {
-                // 1. Use cached source if available
-                if (root.cachedSource && root.cachedSource.length > 0) return root.cachedSource
-                // 2. Use file_url or sample_url
-                if (root.imageData && root.imageData.file_url) return root.imageData.file_url
-                if (root.imageData && root.imageData.sample_url) return root.imageData.sample_url
-                return ""
-            }
+            // Use stable URL to prevent re-renders
+            source: root.stableImageUrl
 
             // Loading indicator
             BusyIndicator {
@@ -224,11 +312,8 @@ Scope {
             playing: true
             cache: true
 
-            source: {
-                if (root.cachedSource && root.cachedSource.length > 0) return root.cachedSource
-                if (root.imageData && root.imageData.file_url) return root.imageData.file_url
-                return ""
-            }
+            // Use stable URL to prevent re-renders
+            source: root.stableImageUrl
 
             // Loading indicator
             BusyIndicator {
@@ -248,11 +333,8 @@ Scope {
 
             MediaPlayer {
                 id: mediaPlayer
-                source: {
-                    if (root.cachedSource && root.cachedSource.length > 0) return root.cachedSource
-                    if (root.imageData && root.imageData.file_url) return root.imageData.file_url
-                    return ""
-                }
+                // Use stable URL to prevent re-renders
+                source: root.stableImageUrl
                 audioOutput: audioOutput
                 videoOutput: videoOutput
                 loops: MediaPlayer.Infinite

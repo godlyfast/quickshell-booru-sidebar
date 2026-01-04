@@ -18,6 +18,9 @@ Rectangle {
     property string downloadPath
     property string nsfwPath
 
+    // Currently previewed image ID (null if no preview)
+    property var previewImageId: null
+
     // Preview signals - forwarded to Anime
     signal showPreview(var imageData, string cachedSource, bool manualDownload, string provider)
     signal hidePreview()
@@ -209,6 +212,7 @@ Rectangle {
                         previewDownloadPath: root.previewDownloadPath
                         downloadPath: root.downloadPath
                         nsfwPath: root.nsfwPath
+                        isPreviewActive: root.previewImageId !== null && modelData.id === root.previewImageId
                         onShowPreview: function(imageData, cachedSource, manualDownload, provider) {
                             root.showPreview(imageData, cachedSource, manualDownload, provider)
                         }
