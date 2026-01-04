@@ -349,6 +349,26 @@ quickshell-booru-sidebar/
     └── BooruResponseData.qml # Data model
 ```
 
+## Development
+
+For development, clone the repo separately and use the deploy script to test changes:
+
+```bash
+# Clone to a development location
+git clone https://github.com/godlyfast/quickshell-booru-sidebar.git ~/quickshell-booru-sidebar
+cd ~/quickshell-booru-sidebar
+
+# Edit files, then deploy to test
+./deploy.sh
+```
+
+The `deploy.sh` script:
+1. Stops any running booru-sidebar instance
+2. Copies all source files to `~/.config/quickshell/booru-sidebar/`
+3. Restarts the sidebar
+
+Your `config.json` is preserved between deploys.
+
 ## Credits
 
 - Original implementation from [end-4/dots-hyprland](https://github.com/end-4/dots-hyprland)

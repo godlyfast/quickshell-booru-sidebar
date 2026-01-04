@@ -1,6 +1,15 @@
 #!/bin/bash
-# Reload booru sidebar: kill, copy fresh assets, restart
-# Usage: ./reload.sh
+# Deploy booru sidebar from repo to quickshell config directory
+#
+# This script:
+#   1. Stops any running booru-sidebar instance
+#   2. Copies all source files to ~/.config/quickshell/booru-sidebar/
+#   3. Restarts the sidebar
+#
+# Use this for development: edit files in repo, run ./deploy.sh to test changes.
+# Config.json is preserved if it already exists (won't overwrite user settings).
+#
+# Usage: ./deploy.sh
 
 set -e
 
@@ -8,7 +17,7 @@ REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONFIG_DIR="$HOME/.config/quickshell"
 SIDEBAR_DIR="$CONFIG_DIR/booru-sidebar"
 
-echo "=== Booru Sidebar Reload ==="
+echo "=== Booru Sidebar Deploy ==="
 
 # 1. Kill running sidebar instance
 echo "[1/3] Stopping running instance..."
@@ -62,4 +71,4 @@ else
     echo "  Warning: Sidebar may not have started"
 fi
 
-echo "=== Done ==="
+echo "=== Deploy Complete ==="
