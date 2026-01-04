@@ -437,21 +437,124 @@ Scope {
         }
     }
 
-    // GIF preview component
+    // GIF preview component with zoom/pan support
     Component {
         id: gifPreviewComponent
 
-        AnimatedImage {
-            id: gifPreview
-            fillMode: Image.PreserveAspectFit
-            asynchronous: true
-            playing: true
-            cache: true
+        Item {
+            id: gifZoomContainer
 
-            // Use stable URL to prevent re-renders
-            source: root.stableImageUrl
+            AnimatedImage {
+                id: gifPreview
+                anchors.centerIn: parent
+                width: parent.width
+                height: parent.height
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
+                playing: true
+                cache: true
+                source: root.stableImageUrl
 
-            // Loading indicator
+                transform: [
+                    Scale {
+                        xScale: root.zoomLevel
+                        yScale: root.zoomLevel
+                        origin.x: gifPreview.width / 2
+                        origin.y: gifPreview.height / 2
+                    },
+                    Translate {
+                        x: root.panX
+                        y: root.panY
+                    }
+                ]
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton
+
+                property real startX: 0
+                property real startY: 0
+                property real startPanX: 0
+                property real startPanY: 0
+
+                cursorShape: root.zoomLevel > 1.0 ? Qt.OpenHandCursor : Qt.ArrowCursor
+
+                onPressed: function(mouse) {
+                    startX = mouse.x
+                    startY = mouse.y
+                    startPanX = root.panX
+                    startPanY = root.panY
+                    if (root.zoomLevel > 1.0) cursorShape = Qt.ClosedHandCursor
+                }
+
+                onReleased: {
+                    if (root.zoomLevel > 1.0) cursorShape = Qt.OpenHandCursor
+                }
+
+                onPositionChanged: function(mouse) {
+                    if (pressed && root.zoomLevel > 1.0) {
+                        root.panX = startPanX + (mouse.x - startX)
+                        root.panY = startPanY + (mouse.y - startY)
+                    }
+                }
+
+                onWheel: function(wheel) {
+                    var zoomDelta = wheel.angleDelta.y > 0 ? 1.15 : 0.87
+                    var newZoom = Math.max(root.minZoom, Math.min(root.maxZoom, root.zoomLevel * zoomDelta))
+                    root.zoomLevel = newZoom
+                    if (newZoom <= 1.0) {
+                        root.panX = 0
+                        root.panY = 0
+                    }
+                    gifZoomIndicator.show()
+                }
+
+                onDoubleClicked: {
+                    root.zoomLevel = 1.0
+                    root.panX = 0
+                    root.panY = 0
+                    gifZoomIndicator.show()
+                }
+            }
+
+            // Zoom percentage indicator
+            Rectangle {
+                id: gifZoomIndicator
+                anchors.left: parent.left
+                anchors.bottom: parent.bottom
+                anchors.margins: 16
+                width: gifZoomText.implicitWidth + 16
+                height: gifZoomText.implicitHeight + 8
+                radius: Appearance.rounding.small
+                color: Qt.rgba(0, 0, 0, 0.6)
+                opacity: 0
+                visible: opacity > 0
+
+                function show() {
+                    opacity = 1
+                    gifHideTimer.restart()
+                }
+
+                Timer {
+                    id: gifHideTimer
+                    interval: 1000
+                    onTriggered: gifZoomIndicator.opacity = 0
+                }
+
+                Behavior on opacity {
+                    NumberAnimation { duration: 150 }
+                }
+
+                StyledText {
+                    id: gifZoomText
+                    anchors.centerIn: parent
+                    text: Math.round(root.zoomLevel * 100) + "%"
+                    font.pixelSize: Appearance.font.pixelSize.textSmall
+                    color: "#ffffff"
+                }
+            }
+
             BusyIndicator {
                 anchors.centerIn: parent
                 running: gifPreview.status === AnimatedImage.Loading
