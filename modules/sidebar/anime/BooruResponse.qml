@@ -18,6 +18,10 @@ Rectangle {
     property string downloadPath
     property string nsfwPath
 
+    // Preview signals - forwarded to Anime
+    signal showPreview(var imageData, string cachedSource, bool manualDownload, string provider)
+    signal hidePreview()
+
     property real availableWidth: parent ? parent.width : 400
     property real rowTooShortThreshold: 150
     property real imageSpacing: 5
@@ -205,6 +209,10 @@ Rectangle {
                         previewDownloadPath: root.previewDownloadPath
                         downloadPath: root.downloadPath
                         nsfwPath: root.nsfwPath
+                        onShowPreview: function(imageData, cachedSource, manualDownload, provider) {
+                            root.showPreview(imageData, cachedSource, manualDownload, provider)
+                        }
+                        onHidePreview: root.hidePreview()
                     }
                 }
             }

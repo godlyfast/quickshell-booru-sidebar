@@ -1,3 +1,4 @@
 module sidebar
 SidebarLeft 1.0 SidebarLeft.qml
 Anime 1.0 Anime.qml
+PreviewPanel 1.0 PreviewPanel.qml

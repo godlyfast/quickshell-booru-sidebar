@@ -15,6 +15,27 @@ Scope {
     id: root
     property bool sidebarOpen: false
 
+    // Preview panel state
+    property var previewImageData: null
+    property bool previewActive: false
+    property string previewCachedSource: ""
+    property bool previewManualDownload: false
+    property string previewProvider: ""
+
+    // Called by BooruImage when hovered
+    function showPreview(imageData, cachedSource, manualDownload, provider) {
+        root.previewImageData = imageData
+        root.previewCachedSource = cachedSource || ""
+        root.previewManualDownload = manualDownload || false
+        root.previewProvider = provider || ""
+        root.previewActive = true
+    }
+
+    // Called when preview should be hidden
+    function hidePreview() {
+        root.previewActive = false
+    }
+
     Loader {
         id: sidebarLoader
         active: true
@@ -120,9 +141,26 @@ Scope {
                 // Content
                 Anime {
                     anchors.fill: parent
+                    onShowPreview: function(imageData, cachedSource, manualDownload, provider) {
+                        root.showPreview(imageData, cachedSource, manualDownload, provider)
+                    }
+                    onHidePreview: root.hidePreview()
                 }
             }
         }
+    }
+
+    // Full-size preview panel (slides out to the right)
+    PreviewPanel {
+        imageData: root.previewImageData
+        active: root.previewActive && root.sidebarOpen
+        cachedSource: root.previewCachedSource
+        manualDownload: root.previewManualDownload
+        provider: root.previewProvider
+        sidebarWidth: 420
+        sidebarX: 8
+
+        onRequestClose: root.hidePreview()
     }
 
     IpcHandler {

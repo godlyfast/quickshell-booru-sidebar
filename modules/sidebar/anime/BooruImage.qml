@@ -23,6 +23,11 @@ Button {
     property string previewDownloadPath
     property string downloadPath
     property string nsfwPath
+
+    // Preview signals - emitted on hover for full-size preview
+    signal showPreview(var imageData, string cachedSource, bool manualDownload, string provider)
+    signal hidePreview()
+
     property string fileName: {
         var url = imageData.file_url ? imageData.file_url : ""
         var path = url.substring(url.lastIndexOf('/') + 1)
@@ -718,6 +723,26 @@ Button {
     implicitWidth: root.rowHeight * (root.effectiveAspectRatio)
     implicitHeight: root.rowHeight
     z: showActions ? 100 : 0
+
+    // Emit preview signals on hover
+    onHoveredChanged: {
+        if (hovered) {
+            // Determine which cached source to use
+            var cachedSrc = ""
+            if (root.isVideo && root.cachedVideoSource) {
+                cachedSrc = root.cachedVideoSource
+            } else if (root.isGif && root.cachedGifSource) {
+                cachedSrc = root.cachedGifSource
+            } else if (root.cachedImageSource) {
+                cachedSrc = root.cachedImageSource
+            } else if (root.localHighResSource) {
+                cachedSrc = root.localHighResSource
+            }
+            root.showPreview(root.imageData, cachedSrc, root.manualDownload, root.provider)
+        } else {
+            root.hidePreview()
+        }
+    }
 
     background: Rectangle {
         implicitWidth: root.rowHeight * (root.effectiveAspectRatio)

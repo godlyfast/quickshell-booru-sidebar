@@ -15,6 +15,10 @@ Item {
     id: root
     property real padding: 8
 
+    // Preview signals - forwarded to SidebarLeft
+    signal showPreview(var imageData, string cachedSource, bool manualDownload, string provider)
+    signal hidePreview()
+
     property var inputField: null
     readonly property var responses: Booru.responses
     property string previewDownloadPath: Directories.cacheDir + "/booru/previews"
@@ -230,6 +234,10 @@ Item {
                 previewDownloadPath: root.previewDownloadPath
                 downloadPath: root.downloadPath
                 nsfwPath: root.nsfwPath
+                onShowPreview: function(imageData, cachedSource, manualDownload, provider) {
+                    root.showPreview(imageData, cachedSource, manualDownload, provider)
+                }
+                onHidePreview: root.hidePreview()
             }
 
             ScrollBar.vertical: ScrollBar {
