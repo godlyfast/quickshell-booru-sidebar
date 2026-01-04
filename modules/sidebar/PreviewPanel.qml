@@ -60,7 +60,16 @@ Scope {
         // Only update if image actually changed
         if (imageData.id !== currentImageId) {
             currentImageId = imageData.id
-            stableMediaType = isVideo ? "video" : (isGif ? "gif" : "image")
+            // Compute media type directly from file_ext to avoid binding timing issues
+            // (isVideo/isGif computed properties may not be updated yet when this handler runs)
+            var ext = imageData.file_ext ? imageData.file_ext.toLowerCase() : ""
+            if (ext === "mp4" || ext === "webm") {
+                stableMediaType = "video"
+            } else if (ext === "gif") {
+                stableMediaType = "gif"
+            } else {
+                stableMediaType = "image"
+            }
             // Reset zoom/pan for new image
             zoomLevel = 1.0
             panX = 0
