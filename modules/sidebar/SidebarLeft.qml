@@ -26,12 +26,15 @@ Scope {
 
     // Called by BooruImage when clicked to show preview
     function showPreview(imageData, cachedSource, manualDownload, provider) {
-        console.log("[showPreview] Opening preview for image:", imageData ? imageData.id : "null", "provider:", provider)
-        root.previewImageData = imageData
+        // Deep copy to avoid reference issues when model changes
+        var imageCopy = imageData ? JSON.parse(JSON.stringify(imageData)) : null
+        root.previewImageData = imageCopy
         root.previewCachedSource = cachedSource || ""
         root.previewManualDownload = manualDownload || false
         root.previewProvider = provider || ""
         root.previewActive = true
+        // Explicitly update PreviewPanel to avoid binding issues
+        previewPanel.setImageData(imageCopy, cachedSource || "")
     }
 
     // Called to hide preview (close button or clicking outside)
@@ -567,6 +570,8 @@ Scope {
                     onUpdatePreviewSource: function(cachedSource) {
                         // Update preview panel's cached source when download completes
                         root.previewCachedSource = cachedSource
+                        // Also notify PreviewPanel directly to update its display
+                        previewPanel.updateCachedSource(cachedSource)
                     }
                 }
             }
@@ -574,11 +579,10 @@ Scope {
     }
 
     // Full-size preview panel (slides out to the right)
+    // Note: imageData and cachedSource are set via setImageData() to avoid binding issues
     PreviewPanel {
         id: previewPanel
-        imageData: root.previewImageData
         active: root.previewActive && root.sidebarOpen
-        cachedSource: root.previewCachedSource
         manualDownload: root.previewManualDownload
         provider: root.previewProvider
         sidebarWidth: 420

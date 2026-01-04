@@ -506,11 +506,16 @@ var zerochan = {
             // - Thumbnail (240px): Provided directly in item.thumbnail
             // - Sample (600px): s1.zerochan.net/<tag.dotted>.600.<id>.jpg
             // - Full: static.zerochan.net/<tag.dotted>.full.<id>.<ext>
+            // NOTE: Full images can be .jpg, .png, .jpeg, or .webp - API doesn't specify which!
             var mainTag = (item.tag || "Image").replace(/ /g, ".")
             var id = item.id || i
             var previewUrl = item.thumbnail || ("https://s3.zerochan.net/240/00/00/" + id + ".jpg")
             var sampleUrl = "https://s1.zerochan.net/" + mainTag + ".600." + id + ".jpg"
-            var fullUrl = "https://static.zerochan.net/" + mainTag + ".full." + id + ".jpg"
+            var baseFullUrl = "https://static.zerochan.net/" + mainTag + ".full." + id
+            // Try jpg first (most common), then fallback to other extensions
+            // Order by frequency: jpg > png > gif > jpeg > webp
+            var fullUrlJpg = baseFullUrl + ".jpg"
+            var fallbackExts = [".png", ".gif", ".jpeg", ".webp"]
 
             // Tags: combine main tag + tags array
             var tags = ""
@@ -518,6 +523,13 @@ var zerochan = {
             if (item.tags && Array.isArray(item.tags)) {
                 tags = tags ? (tags + " " + item.tags.join(" ")) : item.tags.join(" ")
             }
+
+            // Build array of fallback URLs for all extension variants
+            var fallbacks = []
+            for (var j = 0; j < fallbackExts.length; j++) {
+                fallbacks.push(baseFullUrl + fallbackExts[j])
+            }
+
             result.push({
                 id: id,
                 width: item.width || 0,
@@ -529,7 +541,8 @@ var zerochan = {
                 md5: item.md5 || "",
                 preview_url: previewUrl,
                 sample_url: sampleUrl,
-                file_url: fullUrl,
+                file_url: fullUrlJpg,
+                file_url_fallbacks: fallbacks,  // Array: [.png, .jpeg, .webp] for zerochan extension guessing
                 file_ext: "jpg",
                 source: item.source || ("https://www.zerochan.net/" + id)
             })

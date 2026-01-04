@@ -183,6 +183,9 @@ Button {
                  && root.imageData.file_url && root.imageData.file_url.length > 0
         filePath: root.highResFilePath
         sourceUrl: root.imageData.file_url ? root.imageData.file_url : ""
+        // Zerochan provides extension fallbacks (.png, .jpeg, .webp) since API doesn't specify extension
+        fallbackUrls: root.imageData.file_url_fallbacks ? root.imageData.file_url_fallbacks : []
+
         onDone: function(path, width, height) {
             if (path.length > 0) {
                 var cachedPath = "file://" + path
@@ -203,6 +206,7 @@ Button {
         enabled: root.manualDownload && root.provider !== "danbooru" && !root.previewIsFullRes && !root.isGif && !root.isVideo && !root.isArchive && imageDownloader.downloadedPath.length > 0 && root.highResCacheChecked && root.localHighResSource === ""
         filePath: root.highResFilePath
         sourceUrl: root.imageData.file_url ? root.imageData.file_url : ""
+        fallbackUrls: root.imageData.file_url_fallbacks ? root.imageData.file_url_fallbacks : []
         onDone: (path, width, height) => {
             if (path.length > 0) {
                 var cachedPath = "file://" + path
@@ -801,7 +805,10 @@ Button {
                         if (root.manualDownload) {
                             return imageDownloader.downloadedPath ? "file://" + imageDownloader.downloadedPath : ""
                         }
-                        return modelData.preview_url ? modelData.preview_url : ""
+                        // Fallback chain: preview -> sample -> file_url
+                        if (modelData.preview_url) return modelData.preview_url
+                        if (modelData.sample_url) return modelData.sample_url
+                        return modelData.file_url ? modelData.file_url : ""
                     }
                     sourceSize.width: root.rowHeight * (root.effectiveAspectRatio)
                     sourceSize.height: root.rowHeight
@@ -1429,6 +1436,7 @@ Button {
             if (root.isPreviewActive) {
                 root.hidePreview()
             } else {
+                console.log("[BooruImage] Clicked - id:", root.imageData ? root.imageData.id : "null")
                 var cachedSrc = ""
                 if (root.isVideo || root.isArchive) {
                     // For videos/ugoira, prefer the actual playing source if it's local

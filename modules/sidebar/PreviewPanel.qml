@@ -18,7 +18,7 @@ Scope {
     id: root
 
     // Input properties (from SidebarLeft)
-    property var imageData: null
+    property var imageData: null  // May be externally bound - DO NOT rely on this
     property bool active: false
     property string cachedSource: ""
     property bool manualDownload: false
@@ -26,10 +26,57 @@ Scope {
     property real sidebarWidth: 420
     property real sidebarX: 8  // Left margin of sidebar
 
-    // Computed properties
-    property bool panelVisible: active && imageData !== null
-    property bool isVideo: imageData ? (imageData.file_ext === "mp4" || imageData.file_ext === "webm") : false
-    property bool isGif: imageData ? (imageData.file_ext === "gif") : false
+    // STABLE image data - only updated via setImageData(), immune to external binding issues
+    property var stableImageData: null
+
+    // Explicit update function to avoid binding-related issues
+    function setImageData(newImageData, newCachedSource) {
+        // Store in STABLE property, not the externally-bound one
+        stableImageData = newImageData
+        // Force update of stable values
+        if (newImageData) {
+            currentImageId = newImageData.id
+            var ext = newImageData.file_ext ? newImageData.file_ext.toLowerCase() : ""
+            if (ext === "mp4" || ext === "webm") {
+                stableMediaType = "video"
+            } else if (ext === "gif") {
+                stableMediaType = "gif"
+            } else {
+                stableMediaType = "image"
+            }
+            zoomLevel = 1.0
+            panX = 0
+            panY = 0
+            imageCacheTriedAndFailed = false
+            gifCacheTriedAndFailed = false
+            if (newCachedSource && newCachedSource.length > 0) {
+                stableImageUrl = newCachedSource
+            } else if (newImageData.file_url) {
+                stableImageUrl = newImageData.file_url
+            } else if (newImageData.sample_url) {
+                stableImageUrl = newImageData.sample_url
+            } else {
+                stableImageUrl = ""
+            }
+        } else {
+            stableImageUrl = ""
+            stableMediaType = "image"
+        }
+    }
+
+    // Update cached source when download completes (e.g., zerochan fallback found correct extension)
+    function updateCachedSource(newSource) {
+        if (newSource && newSource.length > 0) {
+            stableImageUrl = newSource
+            imageCacheTriedAndFailed = false
+            gifCacheTriedAndFailed = false
+        }
+    }
+
+    // Computed properties - use stableImageData instead of imageData
+    property bool panelVisible: active && stableImageData !== null
+    property bool isVideo: stableImageData ? (stableImageData.file_ext === "mp4" || stableImageData.file_ext === "webm") : false
+    property bool isGif: stableImageData ? (stableImageData.file_ext === "gif") : false
 
     // Cached image ID to detect actual changes (var comparison is unreliable)
     property var currentImageId: null
@@ -49,50 +96,13 @@ Scope {
     property bool imageCacheTriedAndFailed: false
     property bool gifCacheTriedAndFailed: false
 
-    // Update stable cache only when image ID changes
-    onImageDataChanged: {
-        if (!imageData) {
-            currentImageId = null
-            stableImageUrl = ""
-            stableMediaType = "image"
-            return
-        }
-        // Only update if image actually changed
-        if (imageData.id !== currentImageId) {
-            currentImageId = imageData.id
-            // Compute media type directly from file_ext to avoid binding timing issues
-            // (isVideo/isGif computed properties may not be updated yet when this handler runs)
-            var ext = imageData.file_ext ? imageData.file_ext.toLowerCase() : ""
-            if (ext === "mp4" || ext === "webm") {
-                stableMediaType = "video"
-            } else if (ext === "gif") {
-                stableMediaType = "gif"
-            } else {
-                stableMediaType = "image"
-            }
-            // Reset zoom/pan for new image
-            zoomLevel = 1.0
-            panX = 0
-            panY = 0
-            // Reset cache fallback flags
-            imageCacheTriedAndFailed = false
-            gifCacheTriedAndFailed = false
-            // Determine URL
-            if (cachedSource && cachedSource.length > 0) {
-                stableImageUrl = cachedSource
-            } else if (imageData.file_url) {
-                stableImageUrl = imageData.file_url
-            } else if (imageData.sample_url) {
-                stableImageUrl = imageData.sample_url
-            } else {
-                stableImageUrl = ""
-            }
-        }
-    }
+    // DISABLED: onImageDataChanged causes issues with stale binding updates
+    // All updates now go through setImageData() function
+    // onImageDataChanged: { ... }
 
     onCachedSourceChanged: {
         // Update URL if cached source becomes available for current image
-        if (cachedSource && cachedSource.length > 0 && imageData && imageData.id === currentImageId) {
+        if (cachedSource && cachedSource.length > 0 && stableImageData && stableImageData.id === currentImageId) {
             stableImageUrl = cachedSource
         }
     }
@@ -251,7 +261,7 @@ Scope {
                         // Download button
                         RippleButton {
                             id: downloadButton
-                            visible: root.imageData && root.imageData.file_url
+                            visible: root.stableImageData && root.stableImageData.file_url
                             implicitWidth: 32
                             implicitHeight: 32
                             buttonRadius: Appearance.rounding.full
@@ -263,14 +273,14 @@ Scope {
                                 color: "#ffffff"
                                 text: "download"
                             }
-                            onClicked: root.requestDownload(root.imageData)
+                            onClicked: root.requestDownload(root.stableImageData)
                             StyledToolTip { content: "Download" }
                         }
 
                         // Save as wallpaper button
                         RippleButton {
                             id: wallpaperButton
-                            visible: root.imageData && root.imageData.file_url
+                            visible: root.stableImageData && root.stableImageData.file_url
                             implicitWidth: 32
                             implicitHeight: 32
                             buttonRadius: Appearance.rounding.full
@@ -282,14 +292,14 @@ Scope {
                                 color: "#ffffff"
                                 text: "wallpaper"
                             }
-                            onClicked: root.requestSaveWallpaper(root.imageData)
+                            onClicked: root.requestSaveWallpaper(root.stableImageData)
                             StyledToolTip { content: "Save as wallpaper" }
                         }
 
                         // Go to booru post button
                         RippleButton {
                             id: goToPostButton
-                            property string postUrl: Booru.getPostUrl(root.provider, root.imageData ? root.imageData.id : "")
+                            property string postUrl: Booru.getPostUrl(root.provider, root.stableImageData ? root.stableImageData.id : "")
                             property string providerName: {
                                 var p = Booru.providers[root.provider]
                                 return p && p.name ? p.name : root.provider
@@ -313,7 +323,7 @@ Scope {
                         // Open original source button (Pixiv, Twitter, etc.)
                         RippleButton {
                             id: openSourceButton
-                            visible: root.imageData && root.imageData.source && root.imageData.source.length > 0
+                            visible: root.stableImageData && root.stableImageData.source && root.stableImageData.source.length > 0
                             implicitWidth: 32
                             implicitHeight: 32
                             buttonRadius: Appearance.rounding.full
@@ -325,7 +335,7 @@ Scope {
                                 color: "#ffffff"
                                 text: "open_in_new"
                             }
-                            onClicked: Qt.openUrlExternally(root.imageData.source)
+                            onClicked: Qt.openUrlExternally(root.stableImageData.source)
                             StyledToolTip { content: "Open source" }
                         }
 
@@ -384,8 +394,8 @@ Scope {
                 cache: true
                 source: {
                     // If cache failed, use network URL directly
-                    if (root.imageCacheTriedAndFailed && root.imageData) {
-                        return root.imageData.file_url || root.imageData.sample_url || ""
+                    if (root.imageCacheTriedAndFailed && root.stableImageData) {
+                        return root.stableImageData.file_url || root.stableImageData.sample_url || ""
                     }
                     return root.stableImageUrl
                 }
@@ -529,8 +539,8 @@ Scope {
                 cache: true
                 source: {
                     // If cache failed, use network URL directly
-                    if (root.gifCacheTriedAndFailed && root.imageData) {
-                        return root.imageData.file_url || root.imageData.sample_url || ""
+                    if (root.gifCacheTriedAndFailed && root.stableImageData) {
+                        return root.stableImageData.file_url || root.stableImageData.sample_url || ""
                     }
                     return root.stableImageUrl
                 }

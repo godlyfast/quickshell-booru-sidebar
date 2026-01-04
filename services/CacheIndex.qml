@@ -29,9 +29,13 @@ Singleton {
     // Signal emitted when batch check completes
     signal batchCheckComplete(var results)
 
+    // Common image extensions to check when original extension not found
+    readonly property var imageExtensions: [".jpg", ".png", ".gif", ".jpeg", ".webp"]
+
     /**
      * Instant lookup - returns file:// path or empty string.
-     * Checks multiple filename variants (hires_, gif_, video_ prefixes).
+     * Checks multiple filename variants (hires_, gif_, video_ prefixes)
+     * and extension variants for zerochan fallback downloads.
      */
     function lookup(filename) {
         if (!filename || !root.initialized) return ""
@@ -50,6 +54,21 @@ Singleton {
         // Check video_ prefix variant
         var videoName = "video_" + filename
         if (root.index[videoName]) return "file://" + root.index[videoName]
+
+        // Check extension variants (for zerochan fallback downloads where extension may differ)
+        var dotIdx = filename.lastIndexOf(".")
+        if (dotIdx > 0) {
+            var baseName = filename.substring(0, dotIdx)
+            for (var i = 0; i < imageExtensions.length; i++) {
+                var ext = imageExtensions[i]
+                // Try different extension
+                var altName = baseName + ext
+                if (root.index[altName]) return "file://" + root.index[altName]
+                // Try with hires_ prefix
+                var hiresAlt = "hires_" + altName
+                if (root.index[hiresAlt]) return "file://" + root.index[hiresAlt]
+            }
+        }
 
         return ""
     }
