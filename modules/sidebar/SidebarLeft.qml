@@ -198,9 +198,16 @@ Scope {
                 radius: Appearance.rounding.large
 
                 Keys.onPressed: (event) => {
+                    // Close preview with Q or Escape when preview is active
+                    if (root.previewActive && (event.key === Qt.Key_Q || event.key === Qt.Key_Escape)) {
+                        root.hidePreview()
+                        event.accepted = true
+                        return
+                    }
+                    // Close sidebar with Escape
                     if (event.key === Qt.Key_Escape) {
-                        sidebarRoot.hide();
-                        event.accepted = true;
+                        sidebarRoot.hide()
+                        event.accepted = true
                     }
                 }
 
