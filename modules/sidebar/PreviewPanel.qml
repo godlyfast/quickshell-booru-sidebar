@@ -186,15 +186,14 @@ Scope {
                             buttonRadius: Appearance.rounding.full
                             colBackground: Qt.rgba(0, 0, 0, 0.4)
                             colBackgroundHover: Qt.rgba(0, 0, 0, 0.6)
-
                             contentItem: MaterialSymbol {
                                 horizontalAlignment: Text.AlignHCenter
                                 iconSize: 18
                                 color: "#ffffff"
                                 text: "download"
                             }
-
                             onClicked: root.requestDownload(root.imageData)
+                            StyledToolTip { content: "Download" }
                         }
 
                         // Save as wallpaper button
@@ -206,36 +205,38 @@ Scope {
                             buttonRadius: Appearance.rounding.full
                             colBackground: Qt.rgba(0, 0, 0, 0.4)
                             colBackgroundHover: Qt.rgba(0, 0, 0, 0.6)
-
                             contentItem: MaterialSymbol {
                                 horizontalAlignment: Text.AlignHCenter
                                 iconSize: 18
                                 color: "#ffffff"
                                 text: "wallpaper"
                             }
-
                             onClicked: root.requestSaveWallpaper(root.imageData)
+                            StyledToolTip { content: "Save as wallpaper" }
                         }
 
                         // Go to booru post button
                         RippleButton {
                             id: goToPostButton
                             property string postUrl: Booru.getPostUrl(root.provider, root.imageData ? root.imageData.id : "")
+                            property string providerName: {
+                                var p = Booru.providers[root.provider]
+                                return p && p.name ? p.name : root.provider
+                            }
                             visible: postUrl.length > 0
                             implicitWidth: 32
                             implicitHeight: 32
                             buttonRadius: Appearance.rounding.full
                             colBackground: Qt.rgba(0, 0, 0, 0.4)
                             colBackgroundHover: Qt.rgba(0, 0, 0, 0.6)
-
                             contentItem: MaterialSymbol {
                                 horizontalAlignment: Text.AlignHCenter
                                 iconSize: 18
                                 color: "#ffffff"
                                 text: "language"
                             }
-
                             onClicked: Qt.openUrlExternally(postUrl)
+                            StyledToolTip { content: "View on " + goToPostButton.providerName }
                         }
 
                         // Open original source button (Pixiv, Twitter, etc.)
@@ -247,15 +248,14 @@ Scope {
                             buttonRadius: Appearance.rounding.full
                             colBackground: Qt.rgba(0, 0, 0, 0.4)
                             colBackgroundHover: Qt.rgba(0, 0, 0, 0.6)
-
                             contentItem: MaterialSymbol {
                                 horizontalAlignment: Text.AlignHCenter
                                 iconSize: 18
                                 color: "#ffffff"
                                 text: "open_in_new"
                             }
-
                             onClicked: Qt.openUrlExternally(root.imageData.source)
+                            StyledToolTip { content: "Open source" }
                         }
 
                         // Close button
@@ -266,17 +266,14 @@ Scope {
                             buttonRadius: Appearance.rounding.full
                             colBackground: Qt.rgba(0, 0, 0, 0.4)
                             colBackgroundHover: Qt.rgba(0, 0, 0, 0.6)
-
                             contentItem: MaterialSymbol {
                                 horizontalAlignment: Text.AlignHCenter
                                 iconSize: 18
                                 color: "#ffffff"
                                 text: "close"
                             }
-
-                            onClicked: {
-                                root.requestClose()
-                            }
+                            onClicked: root.requestClose()
+                            StyledToolTip { content: "Close" }
                         }
                     }
 
