@@ -440,6 +440,14 @@ Button {
     property string localVideoPreview: ""
     property bool videoPreviewCacheChecked: false
 
+    // Combined loading state for videos (cache check, download, preview download)
+    property bool videoIsLoading: root.isVideo && (
+        !root.videoCacheChecked ||                                    // Video cache check in progress
+        universalVideoDownloader.downloading ||                       // Video downloading
+        (root.manualDownload && !root.videoPreviewCacheChecked) ||    // Preview cache check
+        (root.manualDownload && videoPreviewDownloader.downloading)   // Preview downloading
+    )
+
     // Check if video preview is already cached
     Process {
         id: videoPreviewCacheCheck
@@ -1005,11 +1013,13 @@ Button {
                 fillMode: Image.PreserveAspectCrop
                 // Show preview while video not playing (downloading or buffering)
                 visible: mediaPlayer.playbackState !== MediaPlayer.PlayingState
-                // For manualDownload providers, use downloaded preview (CDN blocks direct requests)
-                // For others, try preview_url directly
+                // For manualDownload providers, use downloaded preview if available
+                // Fallback to direct URL (may fail for some CDNs but worth trying)
                 source: {
                     if (root.manualDownload) {
-                        return root.localVideoPreview
+                        if (root.localVideoPreview.length > 0) return root.localVideoPreview
+                        // Fallback to direct URL while downloading
+                        return modelData.preview_url ? modelData.preview_url : ""
                     }
                     return modelData.preview_url ? modelData.preview_url : ""
                 }
@@ -1065,16 +1075,16 @@ Button {
                 }
             }
 
-            // Play icon overlay (shown when paused, but not while downloading)
+            // Play icon overlay (shown when ready, not while loading)
             Rectangle {
                 anchors.centerIn: parent
                 width: 40
                 height: 40
                 radius: 20
                 color: Qt.rgba(0, 0, 0, 0.6)
-                // Hide during download (manualDownload providers) - show download indicator instead
+                // Hide during all loading states - show loading indicator instead
                 visible: mediaPlayer.playbackState !== MediaPlayer.PlayingState
-                         && !universalVideoDownloader.downloading
+                         && !root.videoIsLoading
                          && videoContainer.videoSource.length > 0
 
                 MaterialSymbol {
@@ -1104,15 +1114,15 @@ Button {
                 }
             }
 
-            // Video download indicator with progress (shown while downloading, not when cached)
+            // Video loading indicator (cache check, download, preview download)
             Rectangle {
                 id: videoDownloadIndicator
                 anchors.centerIn: parent
-                width: root.videoFileSize > 0 ? 70 : 40
+                width: root.videoFileSize > 0 && universalVideoDownloader.downloading ? 70 : 40
                 height: 40
                 radius: 20
                 color: Qt.rgba(0, 0, 0, 0.7)
-                visible: root.isVideo && universalVideoDownloader.downloading && root.cachedVideoSource === ""
+                visible: root.videoIsLoading && root.cachedVideoSource === ""
 
                 Row {
                     anchors.centerIn: parent
@@ -1121,12 +1131,12 @@ Button {
                     MaterialSymbol {
                         iconSize: 20
                         color: "#ffffff"
-                        text: "downloading"
+                        text: universalVideoDownloader.downloading ? "downloading" : "hourglass_empty"
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
                     Text {
-                        visible: root.videoFileSize > 0
+                        visible: root.videoFileSize > 0 && universalVideoDownloader.downloading
                         text: root.videoDownloadProgress + "%"
                         color: "#ffffff"
                         font.pixelSize: 12
