@@ -484,6 +484,17 @@ Scope {
                                 event.accepted = true
                                 return
                             }
+                            // Up/Down: volume control
+                            if (event.key === Qt.Key_Up) {
+                                previewPanel.changeVolume(0.1)
+                                event.accepted = true
+                                return
+                            }
+                            if (event.key === Qt.Key_Down) {
+                                previewPanel.changeVolume(-0.1)
+                                event.accepted = true
+                                return
+                            }
                             // comma (<): decrease speed
                             if (event.key === Qt.Key_Comma || event.key === Qt.Key_Less) {
                                 previewPanel.changeSpeed(-1)
@@ -509,13 +520,38 @@ Scope {
                             }
                         }
 
+                        // Image panning (non-video only)
+                        if (!isVideo) {
+                            var panStep = 50
+                            if (event.key === Qt.Key_Up) {
+                                previewPanel.panY += panStep
+                                event.accepted = true
+                                return
+                            }
+                            if (event.key === Qt.Key_Down) {
+                                previewPanel.panY -= panStep
+                                event.accepted = true
+                                return
+                            }
+                            if (event.key === Qt.Key_Left) {
+                                previewPanel.panX += panStep
+                                event.accepted = true
+                                return
+                            }
+                            if (event.key === Qt.Key_Right) {
+                                previewPanel.panX -= panStep
+                                event.accepted = true
+                                return
+                            }
+                        }
+
                         // h/l: prev/next image in preview
-                        if (event.key === Qt.Key_H || (!isVideo && event.key === Qt.Key_Left)) {
+                        if (event.key === Qt.Key_H) {
                             root.navigatePreview(-1)
                             event.accepted = true
                             return
                         }
-                        if (event.key === Qt.Key_L || (!isVideo && event.key === Qt.Key_Right)) {
+                        if (event.key === Qt.Key_L) {
                             root.navigatePreview(1)
                             event.accepted = true
                             return

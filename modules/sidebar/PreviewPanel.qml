@@ -197,6 +197,16 @@ Scope {
         root.currentAudioOutput.muted = !root.currentAudioOutput.muted
     }
 
+    function changeVolume(delta) {
+        if (!root.isVideo || !root.currentAudioOutput) return
+        var newVolume = Math.max(0, Math.min(1, root.currentAudioOutput.volume + delta))
+        root.currentAudioOutput.volume = newVolume
+        // Unmute if adjusting volume while muted
+        if (root.currentAudioOutput.muted && delta > 0) {
+            root.currentAudioOutput.muted = false
+        }
+    }
+
     function seekRelative(ms) {
         if (!root.isVideo || !root.currentMediaPlayer) return
         var newPos = Math.max(0, Math.min(root.currentMediaPlayer.duration, root.currentMediaPlayer.position + ms))
