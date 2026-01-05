@@ -65,6 +65,8 @@ Scope {
     function hidePreview() {
         // Stop any playing video in preview before closing
         previewPanel.stopVideo()
+        // Set flag BEFORE closing preview to prevent focus grab from closing sidebar
+        root.closingPreviewIntentionally = true
         root.previewActive = false
     }
 
@@ -72,6 +74,7 @@ Scope {
     property string pendingKey: ""  // For multi-key sequences like 'gg'
     property bool showKeybindingsHelp: false
     property bool showPickerDialog: false
+    property bool closingPreviewIntentionally: false  // Flag to prevent focus grab clear from closing sidebar
 
     // Reactive computed properties for position indicator
     // These re-evaluate when Booru.responses or previewImageData changes
@@ -324,6 +327,13 @@ Scope {
                     }
                 }
                 onCleared: {
+                    // Check if we're intentionally closing the preview (not actually losing focus)
+                    if (root.closingPreviewIntentionally) {
+                        root.closingPreviewIntentionally = false
+                        // Re-grab focus for sidebar since preview is now closed
+                        sidebarBackground.forceActiveFocus()
+                        return
+                    }
                     if (!sidebarRoot.pinned) sidebarRoot.hide()
                 }
             }
