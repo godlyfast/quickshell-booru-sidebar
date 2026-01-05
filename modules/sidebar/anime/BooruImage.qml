@@ -33,23 +33,32 @@ Button {
     Connections {
         target: Services.Booru
         function onStopAllVideos() {
-            if (root.isVideo && videoContainer.mediaPlayer) {
-                videoContainer.mediaPlayer.stop()
+            if (root.isVideo && mediaPlayer) {
+                mediaPlayer.stop()
             }
         }
     }
 
-    // Track hovered video for keyboard controls (seek/mute)
-    // Use Binding to watch Button's built-in hovered property
-    property bool isHoveredVideo: root.hovered && root.isVideo
-    onIsHoveredVideoChanged: {
-        if (isHoveredVideo && videoContainer.mediaPlayer) {
-            Services.Booru.hoveredVideoPlayer = videoContainer.mediaPlayer
-            Services.Booru.hoveredAudioOutput = videoContainer.mediaPlayer.audioOutput
-        } else if (Services.Booru.hoveredVideoPlayer === videoContainer.mediaPlayer) {
+    // Track hover via explicit MouseArea since Button.hovered doesn't work in layer shell
+    property bool isHovered: hoverArea.containsMouse
+    onIsHoveredChanged: {
+        if (isHovered && root.isVideo) {
+            Services.Booru.hoveredVideoPlayer = mediaPlayer
+            Services.Booru.hoveredAudioOutput = videoAudio
+        } else if (!isHovered && Services.Booru.hoveredVideoPlayer === mediaPlayer) {
             Services.Booru.hoveredVideoPlayer = null
             Services.Booru.hoveredAudioOutput = null
         }
+    }
+
+    // Hover detection area (z: 999 ensures it receives hover events on top)
+    MouseArea {
+        id: hoverArea
+        anchors.fill: parent
+        z: 999
+        hoverEnabled: true
+        acceptedButtons: Qt.NoButton  // Don't intercept clicks, just track hover
+        propagateComposedEvents: true
     }
 
     property string fileName: {
@@ -1033,7 +1042,7 @@ Button {
                 audioOutput: AudioOutput {
                     id: videoAudio
                     // Unmute on hover - allows hearing videos with sound
-                    muted: !root.hovered
+                    muted: !root.isHovered
                 }
                 videoOutput: videoOutput
 
@@ -1087,7 +1096,7 @@ Button {
                 height: 28
                 radius: 14
                 color: Qt.rgba(0, 0, 0, 0.6)
-                visible: root.hovered && mediaPlayer.playbackState === MediaPlayer.PlayingState
+                visible: root.isHovered && mediaPlayer.playbackState === MediaPlayer.PlayingState
 
                 MaterialSymbol {
                     anchors.centerIn: parent

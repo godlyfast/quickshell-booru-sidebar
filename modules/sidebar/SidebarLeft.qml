@@ -311,7 +311,6 @@ Scope {
                 radius: Appearance.rounding.large
 
                 Keys.onPressed: (event) => {
-                    console.log("[Keys] Key pressed:", event.key, "previewActive:", root.previewActive, "hasFocus:", sidebarBackground.activeFocus)
                     // Skip if input field is focused (let it handle keys normally)
                     if (animeContent.inputField && animeContent.inputField.activeFocus) {
                         // Escape blurs input
@@ -560,15 +559,12 @@ Scope {
                     }
 
                     // === TOGGLES ===
-                    console.log("[Keys] Reached toggles section, key:", event.key, "Key_P:", Qt.Key_P, "equal?:", event.key === Qt.Key_P, "==?:", event.key == Qt.Key_P)
                     // p: Provider picker (Shift+P: pin sidebar)
                     if (event.key == Qt.Key_P) {
-                        console.log("[Keys] P key matched!")
                         if (event.modifiers & Qt.ShiftModifier) {
                             sidebarRoot.pinned = !sidebarRoot.pinned
                         } else {
                             root.showPickerDialog = true
-                            console.log("[Keys] showPickerDialog set to true")
                         }
                         event.accepted = true
                         return
