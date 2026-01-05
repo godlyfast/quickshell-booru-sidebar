@@ -27,6 +27,8 @@ Scope {
     property real sidebarX: 8  // Left margin of sidebar
     property var tagInputField: null  // Reference to search input for clickable tags
     property bool showInfoPanel: false  // Toggle for info panel visibility
+    property int currentIndex: 0  // Current image index (0-based)
+    property int totalCount: 0    // Total number of images
 
     // Stop video when global stop signal is emitted (sidebar close, page change, etc.)
     Connections {
@@ -302,6 +304,27 @@ Scope {
                     border.color: Appearance.m3colors.m3borderSecondary
                     radius: Appearance.rounding.large
                     clip: true
+
+                    // Position indicator (top-center)
+                    Rectangle {
+                        anchors.top: parent.top
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.topMargin: 8
+                        height: 28
+                        width: positionText.width + 20
+                        radius: Appearance.rounding.full
+                        color: Qt.rgba(0, 0, 0, 0.6)
+                        visible: root.totalCount > 0
+                        z: 100
+
+                        StyledText {
+                            id: positionText
+                            anchors.centerIn: parent
+                            text: (root.currentIndex + 1) + " / " + root.totalCount
+                            font.pixelSize: Appearance.font.pixelSize.textSmall
+                            color: "#ffffff"
+                        }
+                    }
 
                     // Top-right button row
                     Row {

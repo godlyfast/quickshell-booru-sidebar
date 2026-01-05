@@ -620,6 +620,7 @@ Item {
                                 if (!(event.modifiers & Qt.ShiftModifier)) {
                                     root.handleInput(text)
                                     text = ""
+                                    tagInputField.focus = false  // Release focus for vim keybindings
                                     event.accepted = true
                                 }
                             }
@@ -628,6 +629,7 @@ Item {
                         onAccepted: {
                             root.handleInput(text);
                             text = "";
+                            tagInputField.focus = false;  // Release focus for vim keybindings
                         }
 
                         Component.onCompleted: root.inputField = tagInputField

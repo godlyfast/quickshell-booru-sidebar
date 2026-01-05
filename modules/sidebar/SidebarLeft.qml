@@ -73,6 +73,36 @@ Scope {
     property bool showKeybindingsHelp: false
     property bool showPickerDialog: false
 
+    // Reactive computed properties for position indicator
+    // These re-evaluate when Booru.responses or previewImageData changes
+    property int imageCount: {
+        var count = 0
+        var responses = Booru.responses  // Creates reactive dependency
+        for (var i = 0; i < responses.length; i++) {
+            var resp = responses[i]
+            if (resp && resp.images) {
+                count += resp.images.length
+            }
+        }
+        return count
+    }
+
+    property int currentImageIndex: {
+        if (!previewImageData) return -1
+        var responses = Booru.responses  // Creates reactive dependency
+        var index = 0
+        for (var i = 0; i < responses.length; i++) {
+            var resp = responses[i]
+            if (resp && resp.images) {
+                for (var j = 0; j < resp.images.length; j++) {
+                    if (String(resp.images[j].id) === String(previewImageData.id)) return index
+                    index++
+                }
+            }
+        }
+        return -1
+    }
+
     // Get flat list of all images from all responses
     function getAllImages() {
         var images = []
@@ -696,6 +726,8 @@ Scope {
         sidebarWidth: 420
         sidebarX: 8
         tagInputField: root.tagInputFieldRef  // For clickable tags
+        currentIndex: root.currentImageIndex
+        totalCount: root.imageCount
 
         onRequestClose: root.hidePreview()
         onRequestDownload: function(imageData) { root.downloadImage(imageData, false) }
