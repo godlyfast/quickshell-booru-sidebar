@@ -660,12 +660,14 @@ Button {
         function buildCommand() {
             var url = shellEscape(root.imageData.file_url || "")
             var path = shellEscape(root.videoFilePath)
+            // Danbooru blocks custom User-Agent, Sankaku requires it
+            var userAgent = root.provider === "danbooru" ? "" : "-A 'Mozilla/5.0 BooruSidebar/1.0' "
             // Validate downloaded file is actually a video, not an HTML error page
             // Sankaku CDN returns 403 HTML with HTTP 200 status on expired tokens
             return ["bash", "-c",
                 "mkdir -p \"$(dirname '" + path + "')\" && " +
                 "curl -fSL --connect-timeout 10 --max-time 300 " +
-                "-A 'Mozilla/5.0 BooruSidebar/1.0' '" + url + "' -o '" + path + "' && " +
+                userAgent + "'" + url + "' -o '" + path + "' && " +
                 "[ -s '" + path + "' ] && " +  // File exists and non-empty
                 "file -b '" + path + "' | grep -qiE 'video|MP4|WebM|ISO Media' || " +  // Must be video
                 "{ rm -f '" + path + "'; exit 1; }"  // Delete HTML error page, fail
