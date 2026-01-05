@@ -17,6 +17,13 @@ Scope {
     id: root
     property bool sidebarOpen: false
 
+    // Stop all videos when sidebar closes
+    onSidebarOpenChanged: {
+        if (!sidebarOpen) {
+            Booru.stopAllVideos()
+        }
+    }
+
     // Preview panel state
     property var previewImageData: null
     property bool previewActive: false

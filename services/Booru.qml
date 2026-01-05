@@ -45,6 +45,7 @@ Singleton {
     signal tagSuggestion(string query, var suggestions)
     signal responseFinished()
     signal providerUsageUpdated()
+    signal stopAllVideos()
 
     property string failMessage: "That didn't work. Tips:\n- Check your tags and NSFW settings\n- If you don't have a tag in mind, type a page number"
     property var responses: []

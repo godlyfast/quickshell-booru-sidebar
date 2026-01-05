@@ -29,6 +29,16 @@ Button {
     signal hidePreview()
     signal updatePreviewSource(string cachedSource)  // Emitted when download completes while preview is active
 
+    // Stop video playback when sidebar closes
+    Connections {
+        target: Services.Booru
+        function onStopAllVideos() {
+            if (root.isVideo && videoContainer.mediaPlayer) {
+                videoContainer.mediaPlayer.stop()
+            }
+        }
+    }
+
     property string fileName: {
         var url = imageData.file_url ? imageData.file_url : ""
         var path = url.substring(url.lastIndexOf('/') + 1)
