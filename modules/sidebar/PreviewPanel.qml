@@ -30,7 +30,7 @@ Scope {
     Connections {
         target: Booru
         function onStopAllVideos() {
-            if (contentLoader.item && contentLoader.item.mediaPlayer) {
+            if (contentLoader && contentLoader.item && contentLoader.item.mediaPlayer) {
                 contentLoader.item.mediaPlayer.stop()
             }
         }
@@ -57,7 +57,7 @@ Scope {
     // Explicit update function to avoid binding-related issues
     function setImageData(newImageData, newCachedSource) {
         // Stop any playing video before switching to new content
-        if (contentLoader.item && contentLoader.item.mediaPlayer) {
+        if (contentLoader && contentLoader.item && contentLoader.item.mediaPlayer) {
             contentLoader.item.mediaPlayer.stop()
         }
         // Store in STABLE property, not the externally-bound one
@@ -105,7 +105,7 @@ Scope {
     property bool panelVisible: active && stableImageData !== null
     onPanelVisibleChanged: {
         // Stop video playback when preview is closed
-        if (!panelVisible && contentLoader.item && contentLoader.item.mediaPlayer) {
+        if (!panelVisible && contentLoader && contentLoader.item && contentLoader.item.mediaPlayer) {
             contentLoader.item.mediaPlayer.stop()
         }
     }
@@ -169,13 +169,13 @@ Scope {
     // Video control functions (for keyboard shortcuts)
     // These safely no-op if current preview isn't a video
     function stopVideo() {
-        if (contentLoader.item && contentLoader.item.mediaPlayer) {
+        if (contentLoader && contentLoader.item && contentLoader.item.mediaPlayer) {
             contentLoader.item.mediaPlayer.stop()
         }
     }
 
     function togglePlayPause() {
-        if (!root.isVideo || !contentLoader.item) return
+        if (!root.isVideo || !contentLoader || !contentLoader.item) return
         var player = contentLoader.item.mediaPlayer
         if (!player) return
         if (player.playbackState === MediaPlayer.PlayingState) {
@@ -186,13 +186,13 @@ Scope {
     }
 
     function toggleMute() {
-        if (!root.isVideo || !contentLoader.item) return
+        if (!root.isVideo || !contentLoader || !contentLoader.item) return
         var audio = contentLoader.item.audioOutput
         if (audio) audio.muted = !audio.muted
     }
 
     function seekRelative(ms) {
-        if (!root.isVideo || !contentLoader.item) return
+        if (!root.isVideo || !contentLoader || !contentLoader.item) return
         var player = contentLoader.item.mediaPlayer
         if (!player) return
         var newPos = Math.max(0, Math.min(player.duration, player.position + ms))
@@ -200,7 +200,7 @@ Scope {
     }
 
     function changeSpeed(delta) {
-        if (!root.isVideo || !contentLoader.item) return
+        if (!root.isVideo || !contentLoader || !contentLoader.item) return
         var player = contentLoader.item.mediaPlayer
         if (!player) return
         var speeds = [0.5, 1.0, 1.5, 2.0]

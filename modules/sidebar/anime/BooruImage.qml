@@ -1452,7 +1452,6 @@ Button {
             if (root.isPreviewActive) {
                 root.hidePreview()
             } else {
-                console.log("[BooruImage] Clicked - id:", root.imageData ? root.imageData.id : "null")
                 var cachedSrc = ""
                 if (root.isVideo || root.isArchive) {
                     // For videos/ugoira, prefer the actual playing source if it's local
