@@ -75,6 +75,7 @@ Singleton {
     property string currentProvider: "wallhaven"
     property bool allowNsfw: false
     property int limit: 20
+    property int cacheBust: 0  // Increment to force Qt network cache bypass
 
     // Wallhaven sorting options (legacy, kept for backwards compatibility)
     property string wallhavenSorting: "toplist"  // date_added, relevance, random, views, favorites, toplist

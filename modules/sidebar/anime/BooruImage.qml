@@ -45,6 +45,34 @@ Button {
         }
     }
 
+    // Listen for cache file registrations to update sources reactively
+    Connections {
+        target: Services.CacheIndex
+        function onFileRegistered(filename, filepath) {
+            // Video cache update
+            if (root.isVideo) {
+                var videoName = "video_" + (root.imageData.md5 ? root.imageData.md5 : root.imageData.id) + "." + root.fileExt
+                if (filename === videoName) {
+                    root.cachedVideoSource = "file://" + filepath
+                }
+            }
+            // GIF cache update
+            if (root.isGif) {
+                var gifName = "gif_" + (root.imageData.md5 ? root.imageData.md5 : root.imageData.id) + ".gif"
+                if (filename === gifName || filename === root.fileName) {
+                    root.cachedGifSource = "file://" + filepath
+                }
+            }
+            // Static image cache update (check various prefixes)
+            if (!root.isVideo && !root.isGif) {
+                var hiresName = "hires_" + root.fileName
+                if (filename === root.fileName || filename === hiresName) {
+                    root.cachedImageSource = "file://" + filepath
+                }
+            }
+        }
+    }
+
     // Track hover via explicit MouseArea since Button.hovered doesn't work in layer shell
     property bool isHovered: hoverArea.containsMouse
     onIsHoveredChanged: {
@@ -76,14 +104,14 @@ Button {
         } else {
             var cachedSrc = ""
             if (root.isVideo || root.isArchive) {
-                var videoSrc = videoContainer.videoSource
+                var videoSrc = videoContainer ? videoContainer.videoSource : ""
                 if (videoSrc && videoSrc.indexOf("file://") === 0) {
                     cachedSrc = videoSrc
                 } else if (root.cachedVideoSource) {
                     cachedSrc = root.cachedVideoSource
                 }
             } else if (root.isGif) {
-                var gifSrc = gifObject.source.toString()
+                var gifSrc = gifObject ? gifObject.source.toString() : ""
                 if (gifSrc && gifSrc.indexOf("file://") === 0) {
                     cachedSrc = gifSrc
                 } else if (root.cachedGifSource) {
@@ -97,6 +125,23 @@ Button {
                 cachedSrc = root.localHighResSource
             }
             root.showPreview(root.imageData, cachedSrc, root.manualDownload, root.provider)
+        }
+    }
+
+    // W key - save as wallpaper (called from parent when W pressed and this image is hovered)
+    function saveAsWallpaper() {
+        root.isSavedAsWallpaper = true
+        var wallpaperPath = root.downloadPath.replace(/\/booru$/, '/wallpapers')
+        if (root.useGrabber) {
+            wallpaperDownloader.outputPath = wallpaperPath
+            wallpaperDownloader.startDownload()
+        } else {
+            var escapedWpPath = shellEscape(wallpaperPath)
+            var escapedUrl = shellEscape(root.imageData.file_url)
+            var escapedFile = shellEscape(root.fileName)
+            Quickshell.execDetached(["bash", "-c",
+                "mkdir -p '" + escapedWpPath + "' && curl -sL -A 'Mozilla/5.0 BooruSidebar/1.0' '" + escapedUrl + "' -o '" + escapedWpPath + "/" + escapedFile + "' && notify-send 'Wallpaper saved' '" + escapedWpPath + "/" + escapedFile + "' -a 'Booru'"
+            ])
         }
     }
 
@@ -908,9 +953,16 @@ Button {
                             return imageDownloader.downloadedPath ? "file://" + imageDownloader.downloadedPath : ""
                         }
                         // Fallback chain: preview -> sample -> file_url
-                        if (modelData.preview_url) return modelData.preview_url
-                        if (modelData.sample_url) return modelData.sample_url
-                        return modelData.file_url ? modelData.file_url : ""
+                        var url = ""
+                        if (modelData.preview_url) url = modelData.preview_url
+                        else if (modelData.sample_url) url = modelData.sample_url
+                        else if (modelData.file_url) url = modelData.file_url
+                        if (!url) return ""
+                        // Append cacheBust param to bypass Qt network cache when refreshing
+                        if (Services.Booru.cacheBust > 0) {
+                            url += (url.indexOf("?") >= 0 ? "&_cb=" : "?_cb=") + Services.Booru.cacheBust
+                        }
+                        return url
                     }
                     sourceSize.width: root.rowHeight * (root.effectiveAspectRatio)
                     sourceSize.height: root.rowHeight

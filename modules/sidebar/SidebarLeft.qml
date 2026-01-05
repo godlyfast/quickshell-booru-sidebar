@@ -28,14 +28,14 @@ Scope {
         }
     }
 
-    // Delayed focus to ensure sidebarBackground is ready
+    // Delayed focus to ensure sidebar is ready
     Timer {
         id: focusTimer
         interval: 50
         onTriggered: {
-            // sidebarBackground is defined inside sidebarRoot (PanelWindow), check it exists
-            if (typeof sidebarBackground !== "undefined" && sidebarBackground) {
-                sidebarBackground.forceActiveFocus()
+            // Access focusTarget through Loader's item (PanelWindow inside sourceComponent)
+            if (sidebarLoader.item && sidebarLoader.item.focusTarget) {
+                sidebarLoader.item.focusTarget.forceActiveFocus()
             }
         }
     }
@@ -288,6 +288,7 @@ Scope {
             visible: root.sidebarOpen
 
             property real sidebarWidth: 420
+            property alias focusTarget: sidebarBackground  // Expose for focus management
 
             function hide() {
                 root.sidebarOpen = false
@@ -402,8 +403,18 @@ Scope {
                         return
                     }
 
+                    // === W: Save hovered image as wallpaper (when not in preview mode) ===
+                    if (event.key === Qt.Key_W && !root.previewActive && Booru.hoveredBooruImage) {
+                        Booru.hoveredBooruImage.saveAsWallpaper()
+                        event.accepted = true
+                        return
+                    }
+
                     // === HOVERED VIDEO CONTROLS (takes priority over preview when hovering grid video) ===
-                    if (Booru.hoveredVideoPlayer) {
+                    // Only handle if player has a valid source (pool slot is active)
+                    var hoverPlayer = Booru.hoveredVideoPlayer
+                    var hasValidSource = hoverPlayer && hoverPlayer.source && hoverPlayer.source.toString().length > 0
+                    if (hasValidSource) {
                         // M: toggle mute
                         if (event.key === Qt.Key_M) {
                             if (Booru.hoveredAudioOutput) {
@@ -414,31 +425,35 @@ Scope {
                         }
                         // Right arrow: seek forward 5s
                         if (event.key === Qt.Key_Right) {
-                            var hPlayer = Booru.hoveredVideoPlayer
-                            var hNewPos = Math.min(hPlayer.duration, hPlayer.position + 5000)
-                            hPlayer.position = hNewPos
+                            var newPos = Math.min(hoverPlayer.duration, hoverPlayer.position + 5000)
+                            hoverPlayer.position = newPos
                             event.accepted = true
                             return
                         }
                         // Left arrow: seek backward 5s
                         if (event.key === Qt.Key_Left) {
-                            var hPlayer = Booru.hoveredVideoPlayer
-                            var hNewPos = Math.max(0, hPlayer.position - 5000)
-                            hPlayer.position = hNewPos
+                            var newPos = Math.max(0, hoverPlayer.position - 5000)
+                            hoverPlayer.position = newPos
                             event.accepted = true
                             return
                         }
                         // Space: play/pause
                         if (event.key === Qt.Key_Space) {
-                            var hPlayer = Booru.hoveredVideoPlayer
-                            if (hPlayer.playbackState === MediaPlayer.PlayingState) {
-                                hPlayer.pause()
+                            if (hoverPlayer.playbackState === MediaPlayer.PlayingState) {
+                                hoverPlayer.pause()
                             } else {
-                                hPlayer.play()
+                                hoverPlayer.play()
                             }
                             event.accepted = true
                             return
                         }
+                    }
+
+                    // === BLOCK SPACE ON HOVERED NON-VIDEO IMAGES ===
+                    // Prevent Space from triggering Button click (which opens preview)
+                    if (event.key === Qt.Key_Space && Booru.hoveredBooruImage && !root.previewActive) {
+                        event.accepted = true
+                        return
                     }
 
                     // === PREVIEW NAVIGATION & VIDEO CONTROLS ===
@@ -636,6 +651,18 @@ Scope {
                         return
                     }
 
+                    // === RELOAD ===
+                    // r: reload current page, R (Shift+r): clean cache and reload
+                    if (event.key === Qt.Key_R && !root.previewActive) {
+                        if (event.modifiers & Qt.ShiftModifier) {
+                            animeContent.cleanCacheAndReload()
+                        } else {
+                            animeContent.reloadCurrentPage()
+                        }
+                        event.accepted = true
+                        return
+                    }
+
                     // === QUICK PROVIDER SWITCH (1-9 via favorites) ===
                     var numKey = -1
                     if (event.key >= Qt.Key_1 && event.key <= Qt.Key_9) {
@@ -692,6 +719,7 @@ Scope {
                         // Also notify PreviewPanel directly to update its display
                         previewPanel.updateCachedSource(cachedSource)
                     }
+                    onFocusReleased: sidebarBackground.forceActiveFocus()  // Restore keyboard focus after search
                     // Use onInputFieldChanged to catch when Anime sets its inputField property
                     onInputFieldChanged: root.tagInputFieldRef = inputField
                 }
@@ -789,6 +817,7 @@ Scope {
                             StyledText { text: "n / N  Next/prev page"; color: "#ffffff" }
                             StyledText { text: "h / l  Prev/next image"; color: "#ffffff" }
                             StyledText { text: "Tab    Preview hovered"; color: "#ffffff" }
+                            StyledText { text: "w      Wallpaper hovered"; color: "#ffffff" }
                         }
 
                         // Preview column
@@ -827,6 +856,8 @@ Scope {
                             StyledText { text: "i      Focus input"; color: "#ffffff" }
                             StyledText { text: "p      Provider picker"; color: "#ffffff" }
                             StyledText { text: "1-9    Favorite providers"; color: "#ffffff" }
+                            StyledText { text: "r      Reload page"; color: "#ffffff" }
+                            StyledText { text: "R      Refresh cache"; color: "#ffffff" }
                             StyledText { text: ""; color: "transparent" }
                             StyledText { text: "General"; font.bold: true; color: Appearance.m3colors.m3primary }
                             StyledText { text: "q/Esc  Close"; color: "#ffffff" }

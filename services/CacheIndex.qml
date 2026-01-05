@@ -29,6 +29,9 @@ Singleton {
     // Signal emitted when batch check completes
     signal batchCheckComplete(var results)
 
+    // Signal emitted when a file is registered (for reactive cache updates)
+    signal fileRegistered(string filename, string filepath)
+
     // Common image extensions to check when original extension not found
     readonly property var imageExtensions: [".jpg", ".png", ".gif", ".jpeg", ".webp"]
 
@@ -83,11 +86,52 @@ Singleton {
      */
     function register(filename, fullPath) {
         if (!filename || !fullPath) return
+        var isNew = !root.index[filename]
         var newIndex = {}
         for (var key in root.index) {
             newIndex[key] = root.index[key]
         }
         newIndex[filename] = fullPath
+        root.index = newIndex
+        // Notify components of new cache entry
+        if (isNew) {
+            root.fileRegistered(filename, fullPath)
+        }
+    }
+
+    /**
+     * Remove a file from the cache index.
+     * Called when cache files are deleted.
+     */
+    function unregister(filename) {
+        if (!filename || !root.index[filename]) return
+        var newIndex = {}
+        for (var key in root.index) {
+            if (key !== filename) {
+                newIndex[key] = root.index[key]
+            }
+        }
+        root.index = newIndex
+    }
+
+    /**
+     * Batch unregister - removes multiple files from cache index.
+     */
+    function batchUnregister(filenames) {
+        if (!filenames || filenames.length === 0) return
+        var toRemove = {}
+        for (var i = 0; i < filenames.length; i++) {
+            // Extract just the filename from full path
+            var path = filenames[i]
+            var name = path.substring(path.lastIndexOf('/') + 1)
+            toRemove[name] = true
+        }
+        var newIndex = {}
+        for (var key in root.index) {
+            if (!toRemove[key]) {
+                newIndex[key] = root.index[key]
+            }
+        }
         root.index = newIndex
     }
 

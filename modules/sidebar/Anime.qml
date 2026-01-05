@@ -19,6 +19,7 @@ Item {
     signal showPreview(var imageData, string cachedSource, bool manualDownload, string provider)
     signal hidePreview()
     signal updatePreviewSource(string cachedSource)
+    signal focusReleased()  // Emitted when input focus should return to sidebar
 
     // Currently previewed image ID (passed from SidebarLeft)
     property var previewImageId: null
@@ -79,6 +80,103 @@ Item {
     // Focus the input field
     function focusInput() {
         if (root.inputField) root.inputField.forceActiveFocus()
+    }
+
+    // Clean cache for current page items and reload
+    function cleanCacheAndReload() {
+        // Helper to extract clean filename from URL (strips query params)
+        function getFileName(url) {
+            if (!url) return ""
+            var path = url.substring(url.lastIndexOf('/') + 1)
+            var queryIdx = path.indexOf('?')
+            if (queryIdx > 0) path = path.substring(0, queryIdx)
+            return decodeURIComponent(path)
+        }
+
+        // Collect all filenames from current responses
+        var filesToDelete = []
+        var cacheDir = Directories.cacheDir + "/booru/previews"
+
+        for (var i = 0; i < Booru.responses.length; i++) {
+            var resp = Booru.responses[i]
+            if (!resp || !resp.images) continue
+
+            for (var j = 0; j < resp.images.length; j++) {
+                var img = resp.images[j]
+                if (!img) continue
+
+                var id = img.md5 || img.id
+                var ext = img.file_ext || "jpg"
+
+                // File URL filename (full-res)
+                var fileName = getFileName(img.file_url)
+                if (fileName) {
+                    filesToDelete.push(cacheDir + "/" + fileName)
+                    filesToDelete.push(cacheDir + "/hires_" + fileName)
+                }
+
+                // Preview URL filename (can differ from file_url)
+                var previewName = getFileName(img.preview_url)
+                if (previewName && previewName !== fileName) {
+                    filesToDelete.push(cacheDir + "/" + previewName)
+                    filesToDelete.push(cacheDir + "/hires_" + previewName)
+                }
+
+                // Sample URL filename (used for sidebar display, can differ from both)
+                var sampleName = getFileName(img.sample_url)
+                if (sampleName && sampleName !== fileName && sampleName !== previewName) {
+                    filesToDelete.push(cacheDir + "/" + sampleName)
+                    filesToDelete.push(cacheDir + "/hires_" + sampleName)
+                }
+
+                // Grabber hi-res pattern: hires_<md5/id>.<ext>
+                filesToDelete.push(cacheDir + "/hires_" + id + "." + ext)
+
+                // Video cache: video_<md5/id>.<ext>
+                filesToDelete.push(cacheDir + "/video_" + id + "." + ext)
+                filesToDelete.push(cacheDir + "/video_" + id + ".mp4")
+                filesToDelete.push(cacheDir + "/video_" + id + ".webm")
+
+                // Video preview thumbnail: vidpreview_<md5/id>.jpg
+                filesToDelete.push(cacheDir + "/vidpreview_" + id + ".jpg")
+
+                // GIF cache: gif_<md5/id>.gif
+                filesToDelete.push(cacheDir + "/gif_" + id + ".gif")
+
+                // Ugoira (Pixiv animation): ugoira_<md5/id>.webm
+                filesToDelete.push(cacheDir + "/ugoira_" + id + ".webm")
+            }
+        }
+
+        // Delete cache files via bash and reload
+        if (filesToDelete.length > 0) {
+            // Clear CacheIndex entries first (so components don't think files exist)
+            CacheIndex.batchUnregister(filesToDelete)
+            // Increment cacheBust to force Qt network cache bypass
+            Booru.cacheBust++
+            // Build rm command for all files (ignoring errors for non-existent files)
+            var rmCmd = "rm -f " + filesToDelete.map(function(f) {
+                return "'" + f.replace(/'/g, "'\\''") + "'"
+            }).join(" ")
+            Quickshell.execDetached(["bash", "-c", rmCmd])
+        }
+        // Reload after a brief delay to let rm complete
+        reloadTimer.start()
+    }
+
+    function reloadCurrentPage() {
+        var tags = Booru.currentTags
+        var page = Booru.currentPage
+        Booru.clearResponses()
+        Booru.makeRequest(tags, Booru.allowNsfw, Booru.limit, page)
+    }
+
+    // Timer to delay reload after cache clean
+    Timer {
+        id: reloadTimer
+        interval: 100
+        repeat: false
+        onTriggered: root.reloadCurrentPage()
     }
 
     Connections {
@@ -620,7 +718,8 @@ Item {
                                 if (!(event.modifiers & Qt.ShiftModifier)) {
                                     root.handleInput(text)
                                     text = ""
-                                    tagInputField.focus = false  // Release focus for vim keybindings
+                                    tagInputField.focus = false
+                                    root.focusReleased()  // Signal sidebar to grab focus
                                     event.accepted = true
                                 }
                             }
@@ -629,7 +728,8 @@ Item {
                         onAccepted: {
                             root.handleInput(text);
                             text = "";
-                            tagInputField.focus = false;  // Release focus for vim keybindings
+                            tagInputField.focus = false;
+                            root.focusReleased();  // Signal sidebar to grab focus
                         }
 
                         Component.onCompleted: root.inputField = tagInputField
@@ -653,6 +753,8 @@ Item {
                         onClicked: {
                             root.handleInput(tagInputField.text);
                             tagInputField.text = "";
+                            tagInputField.focus = false;
+                            root.focusReleased();
                         }
                     }
                 }
@@ -947,6 +1049,39 @@ Item {
                             root.showControlsMenu = false;
                         }
                     }
+
+                    // Clean Cache & Reload chip
+                    RippleButton {
+                        implicitHeight: 26
+                        implicitWidth: cleanCacheChipContent.implicitWidth + 14
+                        buttonRadius: Appearance.rounding.full
+                        colBackground: Appearance.colors.colLayer1
+
+                        contentItem: Row {
+                            id: cleanCacheChipContent
+                            anchors.centerIn: parent
+                            spacing: 4
+
+                            MaterialSymbol {
+                                anchors.verticalCenter: parent.verticalCenter
+                                iconSize: 13
+                                color: Appearance.m3colors.m3secondaryText
+                                text: "refresh"
+                            }
+
+                            StyledText {
+                                anchors.verticalCenter: parent.verticalCenter
+                                font.pixelSize: 11
+                                color: Appearance.m3colors.m3surfaceText
+                                text: "Refresh Cache"
+                            }
+                        }
+
+                        onClicked: {
+                            root.cleanCacheAndReload();
+                            root.showControlsMenu = false;
+                        }
+                    }
                 }
 
                 // Controls row - provider indicator + settings button
@@ -956,19 +1091,44 @@ Item {
 
                     // Provider indicator (always visible)
                     Rectangle {
-                        implicitWidth: providerText.implicitWidth + 16
+                        implicitWidth: providerRow.implicitWidth + 16
                         implicitHeight: 24
                         radius: 4
                         color: Appearance.colors.colLayer1
 
-                        StyledText {
-                            id: providerText
+                        Row {
+                            id: providerRow
                             anchors.centerIn: parent
-                            font.pixelSize: 11
-                            color: Appearance.m3colors.m3secondaryText
-                            text: {
-                                var p = Booru.providers[Booru.currentProvider]
-                                return p && p.name ? p.name : "yande.re"
+                            spacing: 6
+
+                            StyledText {
+                                id: providerText
+                                anchors.verticalCenter: parent.verticalCenter
+                                font.pixelSize: 11
+                                color: Appearance.m3colors.m3secondaryText
+                                text: {
+                                    var p = Booru.providers[Booru.currentProvider]
+                                    return p && p.name ? p.name : "yande.re"
+                                }
+                            }
+
+                            // NSFW indicator (only show for providers that support it)
+                            Rectangle {
+                                visible: Booru.providerSupportsNsfw
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: nsfwLabel.implicitWidth + 6
+                                height: 14
+                                radius: 2
+                                color: Booru.allowNsfw ? "#e64553" : Appearance.colors.colLayer2
+
+                                StyledText {
+                                    id: nsfwLabel
+                                    anchors.centerIn: parent
+                                    font.pixelSize: 9
+                                    font.bold: true
+                                    color: Booru.allowNsfw ? "#ffffff" : Appearance.m3colors.m3secondaryText
+                                    text: Booru.allowNsfw ? "18+" : "SFW"
+                                }
                             }
                         }
                     }
