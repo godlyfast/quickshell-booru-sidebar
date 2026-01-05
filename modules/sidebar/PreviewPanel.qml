@@ -25,6 +25,8 @@ Scope {
     property string provider: ""
     property real sidebarWidth: 420
     property real sidebarX: 8  // Left margin of sidebar
+    property var tagInputField: null  // Reference to search input for clickable tags
+    property bool showInfoPanel: false  // Toggle for info panel visibility
 
     // Stop video when global stop signal is emitted (sidebar close, page change, etc.)
     Connections {
@@ -390,6 +392,24 @@ Scope {
                             StyledToolTip { content: "Open source" }
                         }
 
+                        // Info panel toggle button
+                        RippleButton {
+                            id: infoToggleButton
+                            implicitWidth: 32
+                            implicitHeight: 32
+                            buttonRadius: Appearance.rounding.full
+                            colBackground: root.showInfoPanel ? Qt.rgba(255, 255, 255, 0.2) : Qt.rgba(0, 0, 0, 0.4)
+                            colBackgroundHover: Qt.rgba(0, 0, 0, 0.6)
+                            contentItem: MaterialSymbol {
+                                horizontalAlignment: Text.AlignHCenter
+                                iconSize: 18
+                                color: "#ffffff"
+                                text: "info"
+                            }
+                            onClicked: root.showInfoPanel = !root.showInfoPanel
+                            StyledToolTip { content: root.showInfoPanel ? "Hide info" : "Show info" }
+                        }
+
                         // Close button
                         RippleButton {
                             id: closeButton
@@ -421,6 +441,161 @@ Scope {
                             if (root.stableMediaType === "gif") return gifPreviewComponent
                             if (root.stableImageUrl.length > 0) return imagePreviewComponent
                             return null
+                        }
+                    }
+
+                    // Info panel - resolution and clickable tags (toggleable)
+                    Rectangle {
+                        id: infoPanel
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        anchors.margins: 8
+                        height: Math.min(infoPanelContent.height + 16, parent.height * 0.6)
+                        radius: Appearance.rounding.normal
+                        color: Qt.rgba(0, 0, 0, 0.85)
+                        visible: root.showInfoPanel && root.stableImageData !== null
+                        z: 10
+
+                        // Header with title and close button
+                        Rectangle {
+                            id: infoPanelHeader
+                            anchors.top: parent.top
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            height: 32
+                            color: "transparent"
+
+                            StyledText {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "Image Info"
+                                font.pixelSize: Appearance.font.pixelSize.textSmall
+                                font.bold: true
+                                color: Appearance.m3colors.m3surfaceText
+                            }
+
+                            RippleButton {
+                                anchors.right: parent.right
+                                anchors.rightMargin: 4
+                                anchors.verticalCenter: parent.verticalCenter
+                                implicitWidth: 24
+                                implicitHeight: 24
+                                buttonRadius: Appearance.rounding.full
+                                colBackground: "transparent"
+                                colBackgroundHover: Qt.rgba(255, 255, 255, 0.1)
+                                contentItem: MaterialSymbol {
+                                    horizontalAlignment: Text.AlignHCenter
+                                    iconSize: 16
+                                    color: Appearance.m3colors.m3secondaryText
+                                    text: "close"
+                                }
+                                onClicked: root.showInfoPanel = false
+                            }
+                        }
+
+                        // Scrollable content
+                        Flickable {
+                            id: infoPanelFlickable
+                            anchors.top: infoPanelHeader.bottom
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.bottom: parent.bottom
+                            anchors.margins: 8
+                            anchors.topMargin: 0
+                            contentHeight: infoPanelContent.height
+                            clip: true
+
+                            Column {
+                                id: infoPanelContent
+                                width: parent.width
+                                spacing: 8
+
+                                // Resolution and format row
+                                Row {
+                                    spacing: 8
+
+                                    // Resolution badge
+                                    Rectangle {
+                                        height: 24
+                                        width: resText.width + 16
+                                        radius: 4
+                                        color: Appearance.colors.colLayer2
+
+                                        StyledText {
+                                            id: resText
+                                            anchors.centerIn: parent
+                                            text: (root.stableImageData ? root.stableImageData.width : 0) + " × " +
+                                                  (root.stableImageData ? root.stableImageData.height : 0)
+                                            font.pixelSize: Appearance.font.pixelSize.textSmall
+                                        }
+                                    }
+
+                                    // File extension badge
+                                    Rectangle {
+                                        height: 24
+                                        width: extText.width + 16
+                                        radius: 4
+                                        color: Appearance.colors.colLayer2
+
+                                        StyledText {
+                                            id: extText
+                                            anchors.centerIn: parent
+                                            text: root.detectedExt ? root.detectedExt.toUpperCase() : ""
+                                            font.pixelSize: Appearance.font.pixelSize.textSmall
+                                        }
+                                    }
+                                }
+
+                                // Tags section
+                                StyledText {
+                                    text: "Tags"
+                                    font.pixelSize: Appearance.font.pixelSize.textSmall
+                                    font.bold: true
+                                    color: Appearance.m3colors.m3secondaryText
+                                }
+
+                                // Tags flow
+                                Flow {
+                                    id: tagsFlow
+                                    width: parent.width
+                                    spacing: 4
+
+                                    Repeater {
+                                        model: root.stableImageData && root.stableImageData.tags
+                                               ? root.stableImageData.tags.split(" ").filter(function(t) { return t.length > 0 })
+                                               : []
+
+                                        RippleButton {
+                                            implicitHeight: 26
+                                            implicitWidth: tagText.implicitWidth + 12
+                                            buttonRadius: 4
+                                            colBackground: Appearance.colors.colLayer1
+                                            colBackgroundHover: Appearance.colors.colLayer2
+
+                                            contentItem: StyledText {
+                                                id: tagText
+                                                anchors.centerIn: parent
+                                                text: modelData
+                                                font.pixelSize: Appearance.font.pixelSize.textSmall
+                                                color: Appearance.m3colors.m3secondaryText
+                                            }
+
+                                            onClicked: {
+                                                // Append tag to search input with trailing space for chaining
+                                                if (root.tagInputField) {
+                                                    var text = root.tagInputField.text
+                                                    if (text.length > 0 && text.charAt(text.length - 1) !== " ")
+                                                        root.tagInputField.text += " "
+                                                    root.tagInputField.text += modelData + " "
+                                                    root.tagInputField.forceActiveFocus()
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

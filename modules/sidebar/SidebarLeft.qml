@@ -21,10 +21,22 @@ Scope {
     // Handle sidebar open/close
     onSidebarOpenChanged: {
         if (sidebarOpen) {
-            // Ensure keyboard focus when sidebar opens
-            sidebarBackground.forceActiveFocus()
+            // Ensure keyboard focus when sidebar opens (delayed to ensure component is ready)
+            focusTimer.start()
         } else {
             Booru.stopAllVideos()
+        }
+    }
+
+    // Delayed focus to ensure sidebarBackground is ready
+    Timer {
+        id: focusTimer
+        interval: 50
+        onTriggered: {
+            // sidebarBackground is defined inside sidebarRoot (PanelWindow), check it exists
+            if (typeof sidebarBackground !== "undefined" && sidebarBackground) {
+                sidebarBackground.forceActiveFocus()
+            }
         }
     }
 
@@ -34,6 +46,7 @@ Scope {
     property string previewCachedSource: ""
     property bool previewManualDownload: false
     property string previewProvider: ""
+    property var tagInputFieldRef: null  // Reference to search input for clickable tags
 
     // Called by BooruImage when clicked to show preview
     function showPreview(imageData, cachedSource, manualDownload, provider) {
@@ -352,6 +365,13 @@ Scope {
                         return
                     }
 
+                    // === TAB: Toggle preview for hovered image ===
+                    if (event.key === Qt.Key_Tab && Booru.hoveredBooruImage) {
+                        Booru.hoveredBooruImage.togglePreview()
+                        event.accepted = true
+                        return
+                    }
+
                     // === HOVERED VIDEO CONTROLS (takes priority over preview when hovering grid video) ===
                     if (Booru.hoveredVideoPlayer) {
                         // M: toggle mute
@@ -496,6 +516,12 @@ Scope {
                             event.accepted = true
                             return
                         }
+                        // I: Toggle info panel
+                        if (event.key === Qt.Key_I) {
+                            previewPanel.showInfoPanel = !previewPanel.showInfoPanel
+                            event.accepted = true
+                            return
+                        }
                     }
 
                     // === h/l: Navigate images (works with preview open or closed) ===
@@ -613,7 +639,7 @@ Scope {
                     contentItem: MaterialSymbol {
                         horizontalAlignment: Text.AlignHCenter
                         iconSize: 16
-                        color: sidebarRoot.pinned ? Appearance.m3colors.m3onSurface : Appearance.m3colors.m3secondaryText
+                        color: sidebarRoot.pinned ? Appearance.m3colors.m3surfaceText : Appearance.m3colors.m3secondaryText
                         text: sidebarRoot.pinned ? "push_pin" : "push_pin"
                     }
 
@@ -636,6 +662,8 @@ Scope {
                         // Also notify PreviewPanel directly to update its display
                         previewPanel.updateCachedSource(cachedSource)
                     }
+                    // Use onInputFieldChanged to catch when Anime sets its inputField property
+                    onInputFieldChanged: root.tagInputFieldRef = inputField
                 }
 
                 // Provider picker overlay (inside sidebarBackground for proper z-order)
@@ -667,6 +695,7 @@ Scope {
         provider: root.previewProvider
         sidebarWidth: 420
         sidebarX: 8
+        tagInputField: root.tagInputFieldRef  // For clickable tags
 
         onRequestClose: root.hidePreview()
         onRequestDownload: function(imageData) { root.downloadImage(imageData, false) }
@@ -727,6 +756,7 @@ Scope {
                             StyledText { text: "Ctrl+u Page up"; color: "#ffffff" }
                             StyledText { text: "n / N  Next/prev page"; color: "#ffffff" }
                             StyledText { text: "h / l  Prev/next image"; color: "#ffffff" }
+                            StyledText { text: "Tab    Preview hovered"; color: "#ffffff" }
                         }
 
                         // Preview column
@@ -738,6 +768,7 @@ Scope {
                             StyledText { text: "g      Go to booru post"; color: "#ffffff" }
                             StyledText { text: "s      Open source"; color: "#ffffff" }
                             StyledText { text: "y      Yank URL"; color: "#ffffff" }
+                            StyledText { text: "i      Toggle info"; color: "#ffffff" }
                             StyledText { text: "+ / =  Zoom in"; color: "#ffffff" }
                             StyledText { text: "-      Zoom out"; color: "#ffffff" }
                             StyledText { text: "0 / r  Reset zoom"; color: "#ffffff" }

@@ -50,6 +50,8 @@ Singleton {
     // Hovered video player tracking - for keyboard controls on grid videos
     property var hoveredVideoPlayer: null
     property var hoveredAudioOutput: null
+    // Hovered image tracking - for TAB key preview toggle
+    property var hoveredBooruImage: null
 
     property string failMessage: "That didn't work. Tips:\n- Check your tags and NSFW settings\n- If you don't have a tag in mind, type a page number"
     property var responses: []

@@ -48,12 +48,55 @@ Button {
     // Track hover via explicit MouseArea since Button.hovered doesn't work in layer shell
     property bool isHovered: hoverArea.containsMouse
     onIsHoveredChanged: {
-        if (isHovered && root.isVideo) {
-            Services.Booru.hoveredVideoPlayer = root.mediaPlayer
-            Services.Booru.hoveredAudioOutput = root.videoAudio
-        } else if (!isHovered && Services.Booru.hoveredVideoPlayer === root.mediaPlayer) {
-            Services.Booru.hoveredVideoPlayer = null
-            Services.Booru.hoveredAudioOutput = null
+        if (isHovered) {
+            // Track video player for keyboard controls
+            if (root.isVideo) {
+                Services.Booru.hoveredVideoPlayer = root.mediaPlayer
+                Services.Booru.hoveredAudioOutput = root.videoAudio
+            }
+            // Track hovered image for TAB key preview toggle
+            Services.Booru.hoveredBooruImage = root
+        } else {
+            // Clear video player reference
+            if (Services.Booru.hoveredVideoPlayer === root.mediaPlayer) {
+                Services.Booru.hoveredVideoPlayer = null
+                Services.Booru.hoveredAudioOutput = null
+            }
+            // Clear hovered image reference
+            if (Services.Booru.hoveredBooruImage === root) {
+                Services.Booru.hoveredBooruImage = null
+            }
+        }
+    }
+
+    // TAB key toggle - called from parent when TAB pressed and this image is hovered
+    function togglePreview() {
+        if (root.isPreviewActive) {
+            root.hidePreview()
+        } else {
+            var cachedSrc = ""
+            if (root.isVideo || root.isArchive) {
+                var videoSrc = videoContainer.videoSource
+                if (videoSrc && videoSrc.indexOf("file://") === 0) {
+                    cachedSrc = videoSrc
+                } else if (root.cachedVideoSource) {
+                    cachedSrc = root.cachedVideoSource
+                }
+            } else if (root.isGif) {
+                var gifSrc = gifObject.source.toString()
+                if (gifSrc && gifSrc.indexOf("file://") === 0) {
+                    cachedSrc = gifSrc
+                } else if (root.cachedGifSource) {
+                    cachedSrc = root.cachedGifSource
+                } else if (root.cachedImageSource && root.cachedImageSource.toLowerCase().endsWith(".gif")) {
+                    cachedSrc = root.cachedImageSource
+                }
+            } else if (root.cachedImageSource) {
+                cachedSrc = root.cachedImageSource
+            } else if (root.localHighResSource) {
+                cachedSrc = root.localHighResSource
+            }
+            root.showPreview(root.imageData, cachedSrc, root.manualDownload, root.provider)
         }
     }
 
@@ -1254,7 +1297,7 @@ Button {
                 MaterialSymbol {
                     anchors.horizontalCenter: parent.horizontalCenter
                     iconSize: 24
-                    color: Appearance.m3colors.m3onSurface
+                    color: Appearance.m3colors.m3surfaceText
                     text: "sync"
 
                     RotationAnimation on rotation {

@@ -394,14 +394,15 @@ Item {
                     }
 
                     onClicked: {
-                        var words = tagInputField.text.trim().split(/\s+/)
+                        if (!root.inputField) return
+                        var words = root.inputField.text.trim().split(/\s+/)
                         if (words.length > 0) {
                             words[words.length - 1] = modelData.name;
                         } else {
                             words.push(modelData.name);
                         }
-                        tagInputField.text = words.join(" ") + " ";
-                        tagInputField.forceActiveFocus();
+                        root.inputField.text = words.join(" ") + " ";
+                        root.inputField.forceActiveFocus();
                     }
                 }
             }
@@ -629,9 +630,7 @@ Item {
                             text = "";
                         }
 
-                        Component.onCompleted: {
-                            root.inputField = tagInputField;
-                        }
+                        Component.onCompleted: root.inputField = tagInputField
                     }
 
                     RippleButton {
