@@ -1046,10 +1046,8 @@ Button {
                 }
                 videoOutput: videoOutput
 
-                onSourceChanged: {
-                    // source is a QUrl, not string - must convert to check length
-                    if (source.toString().length > 0) play()
-                }
+                // Videos only play in preview panel, not in sidebar grid
+                // User can click to open preview which handles playback
             }
 
             VideoOutput {
