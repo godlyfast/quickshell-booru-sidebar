@@ -46,6 +46,8 @@ Scope {
 
     // Called to hide preview (close button or clicking outside)
     function hidePreview() {
+        // Stop any playing video in preview before closing
+        previewPanel.stopVideo()
         root.previewActive = false
     }
 

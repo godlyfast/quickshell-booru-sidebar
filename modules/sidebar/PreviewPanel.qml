@@ -53,6 +53,10 @@ Scope {
 
     // Explicit update function to avoid binding-related issues
     function setImageData(newImageData, newCachedSource) {
+        // Stop any playing video before switching to new content
+        if (videoContainer.mediaPlayer) {
+            videoContainer.mediaPlayer.stop()
+        }
         // Store in STABLE property, not the externally-bound one
         stableImageData = newImageData
         // Force update of stable values
@@ -149,6 +153,12 @@ Scope {
 
     // Video control functions (for keyboard shortcuts)
     // These safely no-op if current preview isn't a video
+    function stopVideo() {
+        if (videoContainer.mediaPlayer) {
+            videoContainer.mediaPlayer.stop()
+        }
+    }
+
     function togglePlayPause() {
         if (!root.isVideo || !contentLoader.item) return
         var player = contentLoader.item.mediaPlayer
