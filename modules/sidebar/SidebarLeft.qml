@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtMultimedia
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -17,9 +18,12 @@ Scope {
     id: root
     property bool sidebarOpen: false
 
-    // Stop all videos when sidebar closes
+    // Handle sidebar open/close
     onSidebarOpenChanged: {
-        if (!sidebarOpen) {
+        if (sidebarOpen) {
+            // Ensure keyboard focus when sidebar opens
+            sidebarBackground.forceActiveFocus()
+        } else {
             Booru.stopAllVideos()
         }
     }
@@ -349,6 +353,45 @@ Scope {
                         return
                     }
 
+                    // === HOVERED VIDEO CONTROLS (takes priority over preview when hovering grid video) ===
+                    if (Booru.hoveredVideoPlayer) {
+                        // M: toggle mute
+                        if (event.key === Qt.Key_M) {
+                            if (Booru.hoveredAudioOutput) {
+                                Booru.hoveredAudioOutput.muted = !Booru.hoveredAudioOutput.muted
+                            }
+                            event.accepted = true
+                            return
+                        }
+                        // Right arrow: seek forward 5s
+                        if (event.key === Qt.Key_Right) {
+                            var hPlayer = Booru.hoveredVideoPlayer
+                            var hNewPos = Math.min(hPlayer.duration, hPlayer.position + 5000)
+                            hPlayer.position = hNewPos
+                            event.accepted = true
+                            return
+                        }
+                        // Left arrow: seek backward 5s
+                        if (event.key === Qt.Key_Left) {
+                            var hPlayer = Booru.hoveredVideoPlayer
+                            var hNewPos = Math.max(0, hPlayer.position - 5000)
+                            hPlayer.position = hNewPos
+                            event.accepted = true
+                            return
+                        }
+                        // Space: play/pause
+                        if (event.key === Qt.Key_Space) {
+                            var hPlayer = Booru.hoveredVideoPlayer
+                            if (hPlayer.playbackState === MediaPlayer.PlayingState) {
+                                hPlayer.pause()
+                            } else {
+                                hPlayer.play()
+                            }
+                            event.accepted = true
+                            return
+                        }
+                    }
+
                     // === PREVIEW NAVIGATION & VIDEO CONTROLS ===
                     if (root.previewActive) {
                         var isVideo = previewPanel.isVideo
@@ -588,6 +631,7 @@ Scope {
                     previewImageId: root.previewActive && root.previewImageData ? root.previewImageData.id : null
                     onShowPreview: function(imageData, cachedSource, manualDownload, provider) {
                         root.showPreview(imageData, cachedSource, manualDownload, provider)
+                        sidebarBackground.forceActiveFocus()  // Restore keyboard focus after click
                     }
                     onHidePreview: root.hidePreview()
                     onUpdatePreviewSource: function(cachedSource) {

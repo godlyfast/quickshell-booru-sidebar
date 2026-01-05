@@ -39,6 +39,19 @@ Button {
         }
     }
 
+    // Track hovered video for keyboard controls (seek/mute)
+    // Use Binding to watch Button's built-in hovered property
+    property bool isHoveredVideo: root.hovered && root.isVideo
+    onIsHoveredVideoChanged: {
+        if (isHoveredVideo && videoContainer.mediaPlayer) {
+            Services.Booru.hoveredVideoPlayer = videoContainer.mediaPlayer
+            Services.Booru.hoveredAudioOutput = videoContainer.mediaPlayer.audioOutput
+        } else if (Services.Booru.hoveredVideoPlayer === videoContainer.mediaPlayer) {
+            Services.Booru.hoveredVideoPlayer = null
+            Services.Booru.hoveredAudioOutput = null
+        }
+    }
+
     property string fileName: {
         var url = imageData.file_url ? imageData.file_url : ""
         var path = url.substring(url.lastIndexOf('/') + 1)
