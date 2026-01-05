@@ -30,8 +30,8 @@ Scope {
     Connections {
         target: Booru
         function onStopAllVideos() {
-            if (videoContainer.mediaPlayer) {
-                videoContainer.mediaPlayer.stop()
+            if (contentLoader.item && contentLoader.item.mediaPlayer) {
+                contentLoader.item.mediaPlayer.stop()
             }
         }
     }
@@ -42,7 +42,10 @@ Scope {
     // Helper to detect media type from extension or URL
     function detectMediaType(ext, url) {
         ext = ext ? ext.toLowerCase() : ""
+        // Strip query parameters from URL before checking extension
         var urlLower = url ? url.toLowerCase() : ""
+        var queryIdx = urlLower.indexOf('?')
+        if (queryIdx > 0) urlLower = urlLower.substring(0, queryIdx)
         if (ext === "mp4" || ext === "webm" || urlLower.endsWith(".mp4") || urlLower.endsWith(".webm")) {
             return "video"
         } else if (ext === "gif" || urlLower.endsWith(".gif")) {
@@ -54,8 +57,8 @@ Scope {
     // Explicit update function to avoid binding-related issues
     function setImageData(newImageData, newCachedSource) {
         // Stop any playing video before switching to new content
-        if (videoContainer.mediaPlayer) {
-            videoContainer.mediaPlayer.stop()
+        if (contentLoader.item && contentLoader.item.mediaPlayer) {
+            contentLoader.item.mediaPlayer.stop()
         }
         // Store in STABLE property, not the externally-bound one
         stableImageData = newImageData
@@ -102,13 +105,25 @@ Scope {
     property bool panelVisible: active && stableImageData !== null
     onPanelVisibleChanged: {
         // Stop video playback when preview is closed
-        if (!panelVisible && videoContainer.mediaPlayer) {
-            videoContainer.mediaPlayer.stop()
+        if (!panelVisible && contentLoader.item && contentLoader.item.mediaPlayer) {
+            contentLoader.item.mediaPlayer.stop()
         }
     }
-    property bool isVideo: stableImageData ? (stableImageData.file_ext === "mp4" || stableImageData.file_ext === "webm") : false
-    // Check both API extension AND cached file extension (zerochan GIFs may be served from .jpg URLs)
-    property bool isGif: (stableImageData && stableImageData.file_ext === "gif") || stableImageUrl.toLowerCase().endsWith(".gif")
+    // Video detection - check file_ext or extract from URL
+    property string detectedExt: {
+        if (!stableImageData) return ""
+        var ext = stableImageData.file_ext ? stableImageData.file_ext.toLowerCase() : ""
+        if (!ext && stableImageData.file_url) {
+            var url = stableImageData.file_url
+            var queryIdx = url.indexOf('?')
+            if (queryIdx > 0) url = url.substring(0, queryIdx)
+            ext = url.split('.').pop().toLowerCase()
+        }
+        return ext
+    }
+    property bool isVideo: detectedExt === "mp4" || detectedExt === "webm"
+    // Check detected extension AND cached file extension (zerochan GIFs may be served from .jpg URLs)
+    property bool isGif: detectedExt === "gif" || stableImageUrl.toLowerCase().endsWith(".gif")
 
     // Cached image ID to detect actual changes (var comparison is unreliable)
     property var currentImageId: null
@@ -154,8 +169,8 @@ Scope {
     // Video control functions (for keyboard shortcuts)
     // These safely no-op if current preview isn't a video
     function stopVideo() {
-        if (videoContainer.mediaPlayer) {
-            videoContainer.mediaPlayer.stop()
+        if (contentLoader.item && contentLoader.item.mediaPlayer) {
+            contentLoader.item.mediaPlayer.stop()
         }
     }
 
