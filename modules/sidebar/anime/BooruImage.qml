@@ -1074,7 +1074,7 @@ Button {
                 }
             }
 
-            // Video download indicator with progress (shown while downloading)
+            // Video download indicator with progress (shown while downloading, not when cached)
             Rectangle {
                 id: videoDownloadIndicator
                 anchors.centerIn: parent
@@ -1082,7 +1082,7 @@ Button {
                 height: 40
                 radius: 20
                 color: Qt.rgba(0, 0, 0, 0.7)
-                visible: root.isVideo && universalVideoDownloader.downloading
+                visible: root.isVideo && universalVideoDownloader.downloading && root.cachedVideoSource === ""
 
                 Row {
                     anchors.centerIn: parent

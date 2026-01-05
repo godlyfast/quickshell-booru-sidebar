@@ -48,6 +48,7 @@ var moebooru = {
                 sample_url: item.sample_url || item.file_url,
                 file_url: item.file_url,
                 file_ext: item.file_ext || getFileExtFromUrl(item.file_url),
+                file_size: item.file_size || 0,
                 source: getWorkingImageSource(item.source) || item.file_url
             })
         }
@@ -90,6 +91,7 @@ var danbooru = {
                 sample_url: item.large_file_url ? item.large_file_url : item.file_url,
                 file_url: item.file_url,
                 file_ext: item.file_ext,
+                file_size: item.file_size || 0,
                 source: getWorkingImageSource(item.source) || item.file_url
             })
         }
@@ -137,6 +139,7 @@ var gelbooru = {
                 sample_url: item.sample_url || item.file_url,
                 file_url: item.file_url,
                 file_ext: getFileExtFromUrl(item.file_url),
+                file_size: item.file_size || 0,
                 source: getWorkingImageSource(item.source) || item.file_url
             })
         }
@@ -196,6 +199,7 @@ var gelbooruNsfw = {
                 sample_url: item.sample_url || item.file_url,
                 file_url: item.file_url,
                 file_ext: getFileExtFromUrl(item.file_url),
+                file_size: item.file_size || 0,
                 source: getWorkingImageSource(item.source) || item.file_url
             })
         }
@@ -247,6 +251,7 @@ var e621 = {
                 sample_url: (item.sample && item.sample.url) ? item.sample.url : item.file.url,
                 file_url: item.file.url,
                 file_ext: item.file.ext || "jpg",
+                file_size: item.file.size || 0,
                 source: getWorkingImageSource(sourceUrl) || item.file.url
             })
         }
