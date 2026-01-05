@@ -759,6 +759,9 @@ Singleton {
     }
 
     function clearResponses() {
+        // Stop all playing videos before clearing
+        root.stopAllVideos()
+
         // Abort all pending XHR requests to prevent stale updates
         for (var i = 0; i < pendingXhrRequests.length; i++) {
             try {
