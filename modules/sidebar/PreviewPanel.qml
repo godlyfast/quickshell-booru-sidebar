@@ -30,14 +30,19 @@ Scope {
     Connections {
         target: Booru
         function onStopAllVideos() {
-            if (contentLoader && contentLoader.item && contentLoader.item.mediaPlayer) {
-                contentLoader.item.mediaPlayer.stop()
+            if (root.currentMediaPlayer) {
+                root.currentMediaPlayer.stop()
             }
         }
     }
 
     // STABLE image data - only updated via setImageData(), immune to external binding issues
     property var stableImageData: null
+
+    // Current media player reference (set by video component when loaded)
+    // This avoids the scope issue where contentLoader is inside PanelWindow's sourceComponent
+    property var currentMediaPlayer: null
+    property var currentAudioOutput: null
 
     // Helper to detect media type from extension or URL
     function detectMediaType(ext, url) {
@@ -57,8 +62,8 @@ Scope {
     // Explicit update function to avoid binding-related issues
     function setImageData(newImageData, newCachedSource) {
         // Stop any playing video before switching to new content
-        if (contentLoader && contentLoader.item && contentLoader.item.mediaPlayer) {
-            contentLoader.item.mediaPlayer.stop()
+        if (root.currentMediaPlayer) {
+            root.currentMediaPlayer.stop()
         }
         // Store in STABLE property, not the externally-bound one
         stableImageData = newImageData
@@ -105,8 +110,8 @@ Scope {
     property bool panelVisible: active && stableImageData !== null
     onPanelVisibleChanged: {
         // Stop video playback when preview is closed
-        if (!panelVisible && contentLoader && contentLoader.item && contentLoader.item.mediaPlayer) {
-            contentLoader.item.mediaPlayer.stop()
+        if (!panelVisible && root.currentMediaPlayer) {
+            root.currentMediaPlayer.stop()
         }
     }
     // Video detection - check file_ext or extract from URL
@@ -169,51 +174,44 @@ Scope {
     // Video control functions (for keyboard shortcuts)
     // These safely no-op if current preview isn't a video
     function stopVideo() {
-        if (contentLoader && contentLoader.item && contentLoader.item.mediaPlayer) {
-            contentLoader.item.mediaPlayer.stop()
+        if (root.currentMediaPlayer) {
+            root.currentMediaPlayer.stop()
         }
     }
 
     function togglePlayPause() {
-        if (!root.isVideo || !contentLoader || !contentLoader.item) return
-        var player = contentLoader.item.mediaPlayer
-        if (!player) return
-        if (player.playbackState === MediaPlayer.PlayingState) {
-            player.pause()
+        if (!root.isVideo || !root.currentMediaPlayer) return
+        if (root.currentMediaPlayer.playbackState === MediaPlayer.PlayingState) {
+            root.currentMediaPlayer.pause()
         } else {
-            player.play()
+            root.currentMediaPlayer.play()
         }
     }
 
     function toggleMute() {
-        if (!root.isVideo || !contentLoader || !contentLoader.item) return
-        var audio = contentLoader.item.audioOutput
-        if (audio) audio.muted = !audio.muted
+        if (!root.isVideo || !root.currentAudioOutput) return
+        root.currentAudioOutput.muted = !root.currentAudioOutput.muted
     }
 
     function seekRelative(ms) {
-        if (!root.isVideo || !contentLoader || !contentLoader.item) return
-        var player = contentLoader.item.mediaPlayer
-        if (!player) return
-        var newPos = Math.max(0, Math.min(player.duration, player.position + ms))
-        player.position = newPos
+        if (!root.isVideo || !root.currentMediaPlayer) return
+        var newPos = Math.max(0, Math.min(root.currentMediaPlayer.duration, root.currentMediaPlayer.position + ms))
+        root.currentMediaPlayer.position = newPos
     }
 
     function changeSpeed(delta) {
-        if (!root.isVideo || !contentLoader || !contentLoader.item) return
-        var player = contentLoader.item.mediaPlayer
-        if (!player) return
+        if (!root.isVideo || !root.currentMediaPlayer) return
         var speeds = [0.5, 1.0, 1.5, 2.0]
         var currentIdx = -1
         for (var i = 0; i < speeds.length; i++) {
-            if (Math.abs(player.playbackRate - speeds[i]) < 0.01) {
+            if (Math.abs(root.currentMediaPlayer.playbackRate - speeds[i]) < 0.01) {
                 currentIdx = i
                 break
             }
         }
         if (currentIdx < 0) currentIdx = 1  // Default to 1.0x
         var newIdx = Math.max(0, Math.min(speeds.length - 1, currentIdx + delta))
-        player.playbackRate = speeds[newIdx]
+        root.currentMediaPlayer.playbackRate = speeds[newIdx]
     }
 
     Loader {
@@ -724,6 +722,16 @@ Scope {
             // Expose player and audio for external control
             property alias mediaPlayer: mediaPlayer
             property alias audioOutput: audioOutput
+
+            // Set root-level references when loaded
+            Component.onCompleted: {
+                root.currentMediaPlayer = mediaPlayer
+                root.currentAudioOutput = audioOutput
+            }
+            Component.onDestruction: {
+                root.currentMediaPlayer = null
+                root.currentAudioOutput = null
+            }
 
             MediaPlayer {
                 id: mediaPlayer
