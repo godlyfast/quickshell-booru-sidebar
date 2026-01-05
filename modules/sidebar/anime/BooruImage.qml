@@ -29,10 +29,11 @@ Button {
     signal hidePreview()
     signal updatePreviewSource(string cachedSource)  // Emitted when download completes while preview is active
 
-    // Pool-managed video player (from VideoPlayerPool service)
+    // Pool activation entry (controls whether local MediaPlayer has source)
     property var poolEntry: null
-    property var mediaPlayer: poolEntry ? poolEntry.player : null
-    property var videoAudio: poolEntry ? poolEntry.audioOutput : null
+    // Local player references (MediaPlayer is local, pool just controls activation)
+    property var mediaPlayer: localMediaPlayer
+    property var videoAudio: localAudioOutput
 
     // Stop video playback when sidebar closes
     Connections {
@@ -47,16 +48,12 @@ Button {
     // Track hover via explicit MouseArea since Button.hovered doesn't work in layer shell
     property bool isHovered: hoverArea.containsMouse
     onIsHoveredChanged: {
-        if (isHovered && root.isVideo && root.mediaPlayer) {
+        if (isHovered && root.isVideo) {
             Services.Booru.hoveredVideoPlayer = root.mediaPlayer
             Services.Booru.hoveredAudioOutput = root.videoAudio
         } else if (!isHovered && Services.Booru.hoveredVideoPlayer === root.mediaPlayer) {
             Services.Booru.hoveredVideoPlayer = null
             Services.Booru.hoveredAudioOutput = null
-        }
-        // Update pool audio mute state based on hover
-        if (root.videoAudio) {
-            root.videoAudio.muted = !isHovered
         }
     }
 
@@ -609,6 +606,10 @@ Button {
                 // Register in CacheIndex for instant future lookups
                 var videoName = "video_" + (root.imageData.md5 ? root.imageData.md5 : root.imageData.id) + "." + root.fileExt
                 Services.CacheIndex.register(videoName, root.videoFilePath)
+                // Re-request pool slot if evicted while downloading (ensures source binding updates)
+                if (videoContainer.visible && (!root.poolEntry || root.poolEntry.imageId !== root.imageData.id)) {
+                    root.poolEntry = Services.VideoPlayerPool.requestPlayer(root.imageData.id)
+                }
                 // Update preview if it's showing this video
                 if (root.isPreviewActive) {
                     root.updatePreviewSource(cachedPath)
@@ -1022,19 +1023,26 @@ Button {
                 return ""
             }
 
-            // Helper for null-safe playback state check
-            property bool isPlaying: root.mediaPlayer ? root.mediaPlayer.playbackState === MediaPlayer.PlayingState : false
+            // Helper for playback state check
+            property bool isPlaying: localMediaPlayer.playbackState === MediaPlayer.PlayingState
 
-            // Request/release pool player based on visibility and video source availability
+            // Debug: Log when video container conditions change
+            Component.onCompleted: {
+                if (root.isVideo) {
+                    console.log("[BooruImage] Video item created:", root.imageData.id,
+                        "visible:", visible,
+                        "videoSource:", videoSource.substring(0, 50),
+                        "videoCacheChecked:", root.videoCacheChecked)
+                }
+            }
+
+            // Request/release pool slot based on visibility
+            // Pool entry controls whether local MediaPlayer has source (via binding)
             onVisibleChanged: {
                 if (visible && root.isVideo && videoContainer.videoSource.length > 0) {
                     root.poolEntry = Services.VideoPlayerPool.requestPlayer(root.imageData.id)
-                    if (root.poolEntry && root.mediaPlayer) {
-                        root.mediaPlayer.videoOutput = videoOutput
-                        root.mediaPlayer.source = videoContainer.videoSource
-                        if (Services.VideoPlayerPool.autoplay) {
-                            root.mediaPlayer.play()
-                        }
+                    if (root.poolEntry && Services.VideoPlayerPool.autoplay) {
+                        localMediaPlayer.play()
                     }
                 } else if (!visible && root.poolEntry) {
                     Services.VideoPlayerPool.releasePlayer(root.imageData.id)
@@ -1042,20 +1050,13 @@ Button {
                 }
             }
 
-            // Also request player when video source becomes available
+            // Also request pool slot when video source becomes available
             onVideoSourceChanged: {
                 if (visible && root.isVideo && videoSource.length > 0 && !root.poolEntry) {
                     root.poolEntry = Services.VideoPlayerPool.requestPlayer(root.imageData.id)
-                    if (root.poolEntry && root.mediaPlayer) {
-                        root.mediaPlayer.videoOutput = videoOutput
-                        root.mediaPlayer.source = videoSource
-                        if (Services.VideoPlayerPool.autoplay) {
-                            root.mediaPlayer.play()
-                        }
+                    if (root.poolEntry && Services.VideoPlayerPool.autoplay) {
+                        localMediaPlayer.play()
                     }
-                } else if (root.mediaPlayer && videoSource.length > 0) {
-                    // Update source if already have a player
-                    root.mediaPlayer.source = videoSource
                 }
             }
 
@@ -1098,8 +1099,18 @@ Button {
                 z: -1
             }
 
-            // MediaPlayer is now managed by VideoPlayerPool service
-            // Pool assigns player via root.poolEntry when this item is visible
+            // Local MediaPlayer - source controlled by pool activation
+            // Check poolEntry.imageId matches to handle eviction (slot object is mutated, not replaced)
+            MediaPlayer {
+                id: localMediaPlayer
+                source: (root.poolEntry && root.poolEntry.imageId === root.imageData.id) ? videoContainer.videoSource : ""
+                loops: MediaPlayer.Infinite
+                audioOutput: AudioOutput {
+                    id: localAudioOutput
+                    muted: !root.isHovered
+                }
+                videoOutput: videoOutput
+            }
 
             VideoOutput {
                 id: videoOutput
