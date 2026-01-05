@@ -29,12 +29,17 @@ Button {
     signal hidePreview()
     signal updatePreviewSource(string cachedSource)  // Emitted when download completes while preview is active
 
+    // Pool-managed video player (from VideoPlayerPool service)
+    property var poolEntry: null
+    property var mediaPlayer: poolEntry ? poolEntry.player : null
+    property var videoAudio: poolEntry ? poolEntry.audioOutput : null
+
     // Stop video playback when sidebar closes
     Connections {
         target: Services.Booru
         function onStopAllVideos() {
-            if (root.isVideo && mediaPlayer) {
-                mediaPlayer.stop()
+            if (root.isVideo && root.mediaPlayer) {
+                root.mediaPlayer.stop()
             }
         }
     }
@@ -42,12 +47,23 @@ Button {
     // Track hover via explicit MouseArea since Button.hovered doesn't work in layer shell
     property bool isHovered: hoverArea.containsMouse
     onIsHoveredChanged: {
-        if (isHovered && root.isVideo) {
-            Services.Booru.hoveredVideoPlayer = mediaPlayer
-            Services.Booru.hoveredAudioOutput = videoAudio
-        } else if (!isHovered && Services.Booru.hoveredVideoPlayer === mediaPlayer) {
+        if (isHovered && root.isVideo && root.mediaPlayer) {
+            Services.Booru.hoveredVideoPlayer = root.mediaPlayer
+            Services.Booru.hoveredAudioOutput = root.videoAudio
+        } else if (!isHovered && Services.Booru.hoveredVideoPlayer === root.mediaPlayer) {
             Services.Booru.hoveredVideoPlayer = null
             Services.Booru.hoveredAudioOutput = null
+        }
+        // Update pool audio mute state based on hover
+        if (root.videoAudio) {
+            root.videoAudio.muted = !isHovered
+        }
+    }
+
+    // Release pool player when component is destroyed
+    Component.onDestruction: {
+        if (root.poolEntry) {
+            Services.VideoPlayerPool.releasePlayer(root.imageData.id)
         }
     }
 
@@ -1006,13 +1022,50 @@ Button {
                 return ""
             }
 
+            // Helper for null-safe playback state check
+            property bool isPlaying: root.mediaPlayer ? root.mediaPlayer.playbackState === MediaPlayer.PlayingState : false
+
+            // Request/release pool player based on visibility and video source availability
+            onVisibleChanged: {
+                if (visible && root.isVideo && videoContainer.videoSource.length > 0) {
+                    root.poolEntry = Services.VideoPlayerPool.requestPlayer(root.imageData.id)
+                    if (root.poolEntry && root.mediaPlayer) {
+                        root.mediaPlayer.videoOutput = videoOutput
+                        root.mediaPlayer.source = videoContainer.videoSource
+                        if (Services.VideoPlayerPool.autoplay) {
+                            root.mediaPlayer.play()
+                        }
+                    }
+                } else if (!visible && root.poolEntry) {
+                    Services.VideoPlayerPool.releasePlayer(root.imageData.id)
+                    root.poolEntry = null
+                }
+            }
+
+            // Also request player when video source becomes available
+            onVideoSourceChanged: {
+                if (visible && root.isVideo && videoSource.length > 0 && !root.poolEntry) {
+                    root.poolEntry = Services.VideoPlayerPool.requestPlayer(root.imageData.id)
+                    if (root.poolEntry && root.mediaPlayer) {
+                        root.mediaPlayer.videoOutput = videoOutput
+                        root.mediaPlayer.source = videoSource
+                        if (Services.VideoPlayerPool.autoplay) {
+                            root.mediaPlayer.play()
+                        }
+                    }
+                } else if (root.mediaPlayer && videoSource.length > 0) {
+                    // Update source if already have a player
+                    root.mediaPlayer.source = videoSource
+                }
+            }
+
             // Preview thumbnail while video is loading/downloading
             Image {
                 id: videoPreviewImage
                 anchors.fill: parent
                 fillMode: Image.PreserveAspectCrop
                 // Show preview while video not playing (downloading or buffering)
-                visible: mediaPlayer.playbackState !== MediaPlayer.PlayingState
+                visible: !videoContainer.isPlaying
                 // For manualDownload providers, use downloaded preview if available
                 // Fallback to direct URL (may fail for some CDNs but worth trying)
                 source: {
@@ -1041,24 +1094,12 @@ Button {
                 radius: imageRadius
                 color: Appearance.colors.colLayer2
                 visible: videoPreviewImage.status !== Image.Ready
-                         && mediaPlayer.playbackState !== MediaPlayer.PlayingState
+                         && !videoContainer.isPlaying
                 z: -1
             }
 
-            MediaPlayer {
-                id: mediaPlayer
-                source: videoContainer.videoSource
-                loops: MediaPlayer.Infinite
-                audioOutput: AudioOutput {
-                    id: videoAudio
-                    // Unmute on hover - allows hearing videos with sound
-                    muted: !root.isHovered
-                }
-                videoOutput: videoOutput
-
-                // Videos only play in preview panel, not in sidebar grid
-                // User can click to open preview which handles playback
-            }
+            // MediaPlayer is now managed by VideoPlayerPool service
+            // Pool assigns player via root.poolEntry when this item is visible
 
             VideoOutput {
                 id: videoOutput
@@ -1083,7 +1124,7 @@ Button {
                 radius: 20
                 color: Qt.rgba(0, 0, 0, 0.6)
                 // Hide during all loading states - show loading indicator instead
-                visible: mediaPlayer.playbackState !== MediaPlayer.PlayingState
+                visible: !videoContainer.isPlaying
                          && !root.videoIsLoading
                          && videoContainer.videoSource.length > 0
 
@@ -1104,7 +1145,7 @@ Button {
                 height: 28
                 radius: 14
                 color: Qt.rgba(0, 0, 0, 0.6)
-                visible: root.isHovered && mediaPlayer.playbackState === MediaPlayer.PlayingState
+                visible: root.isHovered && videoContainer.isPlaying
 
                 MaterialSymbol {
                     anchors.centerIn: parent

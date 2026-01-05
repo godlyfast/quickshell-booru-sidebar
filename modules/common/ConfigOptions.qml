@@ -59,5 +59,8 @@ Singleton {
         property var providerUsage: ({})
         // Per-provider settings: { "provider": { sorting: "", ageFilter: "", nsfw: false } }
         property var providerSettings: ({})
+        // Video player pool settings
+        property int maxSidebarPlayers: 10  // Max MediaPlayer instances in sidebar (0 = disabled)
+        property bool videoAutoplay: false  // Auto-play videos when visible
     }
 }

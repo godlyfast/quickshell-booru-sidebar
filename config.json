@@ -9,7 +9,9 @@
     "gelbooruUserId": "",
     "wallhavenApiKey": "",
     "danbooruLogin": "",
-    "danbooruApiKey": ""
+    "danbooruApiKey": "",
+    "maxSidebarPlayers": 10,
+    "videoAutoplay": false
   },
   "appearance": {
     "transparency": 0.5,
