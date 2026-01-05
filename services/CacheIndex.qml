@@ -43,12 +43,17 @@ Singleton {
     function lookup(filename) {
         if (!filename || !root.initialized) return ""
 
-        // Check exact filename
-        if (root.index[filename]) return "file://" + root.index[filename]
+        // If filename already has a prefix, check it directly first
+        if (filename.indexOf("video_") === 0 || filename.indexOf("gif_") === 0 || filename.indexOf("hires_") === 0) {
+            if (root.index[filename]) return "file://" + root.index[filename]
+        }
 
-        // Check hires_ prefix variant (most common for cached hi-res images)
+        // Check hires_ prefix FIRST - prioritize high-resolution images
         var hiresName = "hires_" + filename
         if (root.index[hiresName]) return "file://" + root.index[hiresName]
+
+        // Fall back to exact filename (preview/sample)
+        if (root.index[filename]) return "file://" + root.index[filename]
 
         // Check gif_ prefix variant
         var gifName = "gif_" + filename
@@ -62,17 +67,19 @@ Singleton {
         var dotIdx = filename.lastIndexOf(".")
         if (dotIdx > 0) {
             var baseName = filename.substring(0, dotIdx)
+            // First pass: check hires_ variants (prioritize high-res)
             for (var i = 0; i < imageExtensions.length; i++) {
                 var ext = imageExtensions[i]
-                // Try different extension
-                var altName = baseName + ext
-                if (root.index[altName]) {
-                    return "file://" + root.index[altName]
-                }
-                // Try with hires_ prefix
-                var hiresAlt = "hires_" + altName
+                var hiresAlt = "hires_" + baseName + ext
                 if (root.index[hiresAlt]) {
                     return "file://" + root.index[hiresAlt]
+                }
+            }
+            // Second pass: check exact matches (preview/sample)
+            for (var j = 0; j < imageExtensions.length; j++) {
+                var altName = baseName + imageExtensions[j]
+                if (root.index[altName]) {
+                    return "file://" + root.index[altName]
                 }
             }
         }
