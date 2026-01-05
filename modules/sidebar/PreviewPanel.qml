@@ -26,6 +26,16 @@ Scope {
     property real sidebarWidth: 420
     property real sidebarX: 8  // Left margin of sidebar
 
+    // Stop video when global stop signal is emitted (sidebar close, page change, etc.)
+    Connections {
+        target: Booru
+        function onStopAllVideos() {
+            if (videoContainer.mediaPlayer) {
+                videoContainer.mediaPlayer.stop()
+            }
+        }
+    }
+
     // STABLE image data - only updated via setImageData(), immune to external binding issues
     property var stableImageData: null
 
