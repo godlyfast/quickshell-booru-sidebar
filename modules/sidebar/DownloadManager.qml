@@ -126,8 +126,12 @@ Singleton {
     Process {
         id: clipboardProcess
         onExited: function(code, status) {
+            Logger.debug("DownloadManager", `Clipboard process exited: code=${code} status=${status}`)
             if (code === 0) {
+                Logger.info("DownloadManager", "URL copied to clipboard successfully")
                 Quickshell.execDetached(["notify-send", "URL copied", "Image URL copied to clipboard", "-a", "Booru"])
+            } else {
+                Logger.error("DownloadManager", `Clipboard copy failed: code=${code}`)
             }
         }
     }

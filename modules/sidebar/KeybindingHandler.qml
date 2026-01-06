@@ -92,6 +92,16 @@ QtObject {
             return true
         }
 
+        // === Y: Copy hovered image URL to clipboard (when not in preview) ===
+        if (event.key === Qt.Key_Y && !sidebarState.previewActive && Booru.hoveredBooruImage) {
+            var hoveredData = Booru.hoveredBooruImage.imageData
+            if (hoveredData && hoveredData.file_url) {
+                Logger.debug("Keybindings", "Y: copy hovered image URL to clipboard")
+                DownloadManager.copyToClipboard(hoveredData.file_url)
+            }
+            return true
+        }
+
         // === HOVERED VIDEO CONTROLS ===
         if (handleHoveredVideoControls(event)) return true
 
