@@ -181,6 +181,12 @@ QtObject {
     }
 
     function handlePreviewControls(event) {
+        // Guard against undefined previewPanel (timing issue during initialization)
+        if (!previewPanel) {
+            Logger.warn("Keybindings", "handlePreviewControls: previewPanel not yet available")
+            return false
+        }
+
         const isVideo = previewPanel.isVideo
 
         // Video controls
@@ -240,12 +246,14 @@ QtObject {
             }
         }
 
-        // h/l: prev/next image
-        if (event.key === Qt.Key_H) {
+        // h/l/j/k: prev/next image (vim-style navigation)
+        if (event.key === Qt.Key_H || event.key === Qt.Key_K) {
+            Logger.debug("Keybindings", `${event.key === Qt.Key_H ? "H" : "K"}: previous image`)
             sidebarState.navigatePreview(-1)
             return true
         }
-        if (event.key === Qt.Key_L) {
+        if (event.key === Qt.Key_L || event.key === Qt.Key_J) {
+            Logger.debug("Keybindings", `${event.key === Qt.Key_L ? "L" : "J"}: next image`)
             sidebarState.navigatePreview(1)
             return true
         }
