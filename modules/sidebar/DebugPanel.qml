@@ -6,96 +6,83 @@ import "../common/widgets"
 import "../../services" as Services
 
 /**
- * Debug Panel - Live debugging interface for development.
- * Features:
- * - Live log viewer with level/category filtering
- * - Application state inspector
- * - Cache browser with file counts
- * - Performance metrics dashboard
- *
- * Open with F12 or Ctrl+Shift+D
+ * Debug Panel - Debugging interface for development.
+ * Shows inside the sidebar area.
+ * Open with F12
  */
 Popup {
     id: root
 
-    // Size and positioning
-    width: Math.min(700, parent.width - 40)
-    height: Math.min(500, parent.height - 40)
-    x: (parent.width - width) / 2
-    y: (parent.height - height) / 2
+    // Fill parent (sidebar)
+    width: parent ? parent.width : 400
+    height: parent ? parent.height : 600
+    x: 0
+    y: 0
     modal: true
-    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+    closePolicy: Popup.CloseOnEscape
 
     // Filter state
-    property int selectedLogLevel: 0  // 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR
-    property string selectedCategory: ""  // Empty = all categories
+    property int selectedLogLevel: 0
+    property string selectedCategory: ""
 
     background: Rectangle {
         color: Appearance.m3colors.m3layerBackground2
-        radius: Appearance.rounding.medium
-        border.color: Appearance.m3colors.outline
-        border.width: 1
+    }
+
+    function countByPrefix(prefix) {
+        var count = 0
+        var keys = Object.keys(Services.CacheIndex.index)
+        for (var i = 0; i < keys.length; i++) {
+            if (prefix === "" ? !keys[i].startsWith("hires_") && !keys[i].startsWith("video_") && !keys[i].startsWith("gif_") : keys[i].startsWith(prefix)) {
+                count++
+            }
+        }
+        return count
     }
 
     contentItem: ColumnLayout {
         spacing: 0
 
-        // Header with title and close button
+        // Header
         Rectangle {
             Layout.fillWidth: true
             height: 44
             color: Appearance.m3colors.m3layerBackground3
-            radius: Appearance.rounding.medium
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 8
-                spacing: 12
+                anchors.leftMargin: 12
+                anchors.rightMargin: 8
+                spacing: 8
 
                 StyledText {
                     text: "Debug Panel"
-                    font.pixelSize: Appearance.font.pixelSize.textMedium
+                    font.pixelSize: 16
                     font.bold: true
                 }
 
                 Item { Layout.fillWidth: true }
 
-                // Quick actions
                 RippleButton {
-                    implicitWidth: 80
-                    implicitHeight: 28
+                    implicitWidth: 70
+                    implicitHeight: 26
                     buttonRadius: 4
                     contentItem: StyledText {
                         anchors.centerIn: parent
-                        text: "Clear Logs"
+                        text: "Clear"
                         font.pixelSize: 11
                     }
                     onClicked: Services.Logger.clearBuffer()
                 }
 
                 RippleButton {
-                    implicitWidth: 80
-                    implicitHeight: 28
-                    buttonRadius: 4
-                    contentItem: StyledText {
-                        anchors.centerIn: parent
-                        text: "Dump State"
-                        font.pixelSize: 11
-                    }
-                    onClicked: {
-                        var state = Services.Logger.dumpState()
-                        Services.Logger.info("Debug", "State dump:\n" + JSON.stringify(state, null, 2))
-                    }
-                }
-
-                RippleButton {
-                    implicitWidth: 28
-                    implicitHeight: 28
-                    buttonRadius: 14
+                    implicitWidth: 26
+                    implicitHeight: 26
+                    buttonRadius: 13
                     contentItem: MaterialSymbol {
                         anchors.centerIn: parent
                         text: "close"
-                        iconSize: 18
+                        iconSize: 16
                     }
                     onClicked: root.close()
                 }
@@ -106,21 +93,19 @@ Popup {
         TabBar {
             id: tabBar
             Layout.fillWidth: true
-            background: Rectangle {
-                color: Appearance.m3colors.m3layerBackground2
-            }
+            background: Rectangle { color: Appearance.m3colors.m3layerBackground2 }
 
             TabButton {
                 text: "Logs"
                 width: implicitWidth
                 contentItem: StyledText {
                     text: parent.text
-                    font.pixelSize: 13
+                    font.pixelSize: 12
                     horizontalAlignment: Text.AlignHCenter
                     opacity: parent.checked ? 1.0 : 0.6
                 }
                 background: Rectangle {
-                    color: parent.checked ? Appearance.m3colors.primary : "transparent"
+                    color: parent.checked ? Appearance.m3colors.m3accentPrimary : "transparent"
                     opacity: parent.checked ? 0.2 : 1
                     radius: 4
                 }
@@ -131,12 +116,12 @@ Popup {
                 width: implicitWidth
                 contentItem: StyledText {
                     text: parent.text
-                    font.pixelSize: 13
+                    font.pixelSize: 12
                     horizontalAlignment: Text.AlignHCenter
                     opacity: parent.checked ? 1.0 : 0.6
                 }
                 background: Rectangle {
-                    color: parent.checked ? Appearance.m3colors.primary : "transparent"
+                    color: parent.checked ? Appearance.m3colors.m3accentPrimary : "transparent"
                     opacity: parent.checked ? 0.2 : 1
                     radius: 4
                 }
@@ -147,28 +132,12 @@ Popup {
                 width: implicitWidth
                 contentItem: StyledText {
                     text: parent.text
-                    font.pixelSize: 13
+                    font.pixelSize: 12
                     horizontalAlignment: Text.AlignHCenter
                     opacity: parent.checked ? 1.0 : 0.6
                 }
                 background: Rectangle {
-                    color: parent.checked ? Appearance.m3colors.primary : "transparent"
-                    opacity: parent.checked ? 0.2 : 1
-                    radius: 4
-                }
-            }
-
-            TabButton {
-                text: "Metrics"
-                width: implicitWidth
-                contentItem: StyledText {
-                    text: parent.text
-                    font.pixelSize: 13
-                    horizontalAlignment: Text.AlignHCenter
-                    opacity: parent.checked ? 1.0 : 0.6
-                }
-                background: Rectangle {
-                    color: parent.checked ? Appearance.m3colors.primary : "transparent"
+                    color: parent.checked ? Appearance.m3colors.m3accentPrimary : "transparent"
                     opacity: parent.checked ? 0.2 : 1
                     radius: 4
                 }
@@ -186,53 +155,31 @@ Popup {
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 8
-                    spacing: 8
+                    spacing: 6
 
-                    // Log filters
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 8
+                        spacing: 6
 
-                        StyledText {
-                            text: "Level:"
-                            font.pixelSize: 12
-                        }
+                        StyledText { text: "Level:"; font.pixelSize: 11 }
 
                         ComboBox {
-                            id: levelFilter
                             model: ["DEBUG", "INFO", "WARN", "ERROR"]
                             currentIndex: root.selectedLogLevel
                             onCurrentIndexChanged: root.selectedLogLevel = currentIndex
-                            implicitWidth: 100
-                            implicitHeight: 28
-                        }
-
-                        StyledText {
-                            text: "Category:"
-                            font.pixelSize: 12
-                        }
-
-                        ComboBox {
-                            id: categoryFilter
-                            model: ["All"].concat(Services.Logger.getCategories())
-                            currentIndex: 0
-                            onCurrentIndexChanged: {
-                                root.selectedCategory = currentIndex === 0 ? "" : currentTextInput.text
-                            }
-                            implicitWidth: 120
-                            implicitHeight: 28
+                            implicitWidth: 90
+                            implicitHeight: 26
                         }
 
                         Item { Layout.fillWidth: true }
 
                         StyledText {
                             text: Services.Logger.logBuffer.length + " entries"
-                            font.pixelSize: 11
-                            opacity: 0.7
+                            font.pixelSize: 10
+                            opacity: 0.6
                         }
                     }
 
-                    // Log list
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
@@ -244,27 +191,22 @@ Popup {
                             anchors.fill: parent
                             anchors.margins: 4
                             clip: true
-                            model: Services.Logger.logBuffer.filter(entry => {
-                                if (entry.levelNum < root.selectedLogLevel) return false
-                                if (root.selectedCategory && entry.category !== root.selectedCategory) return false
-                                return true
-                            })
+                            model: Services.Logger.logBuffer.filter(entry => entry.levelNum >= root.selectedLogLevel)
 
                             delegate: Rectangle {
                                 width: logList.width
-                                height: logText.implicitHeight + 6
-                                color: index % 2 === 0 ? "transparent" : Qt.rgba(1, 1, 1, 0.03)
+                                height: logText.implicitHeight + 4
+                                color: index % 2 === 0 ? "transparent" : Qt.rgba(1, 1, 1, 0.02)
 
                                 RowLayout {
                                     anchors.fill: parent
                                     anchors.leftMargin: 4
-                                    spacing: 6
+                                    spacing: 4
 
-                                    // Level badge
                                     Rectangle {
-                                        width: 50
-                                        height: 16
-                                        radius: 3
+                                        width: 44
+                                        height: 14
+                                        radius: 2
                                         color: {
                                             switch(modelData.level) {
                                                 case "DEBUG": return "#6c757d"
@@ -278,45 +220,33 @@ Popup {
                                         StyledText {
                                             anchors.centerIn: parent
                                             text: modelData.level
-                                            font.pixelSize: 9
+                                            font.pixelSize: 8
                                             font.bold: true
                                             color: modelData.level === "WARN" ? "#000" : "#fff"
                                         }
                                     }
 
-                                    // Category
                                     StyledText {
                                         text: "[" + modelData.category + "]"
-                                        font.pixelSize: 11
+                                        font.pixelSize: 10
                                         font.family: Appearance.font.family.codeFont
-                                        opacity: 0.7
-                                        Layout.preferredWidth: 80
+                                        opacity: 0.6
+                                        Layout.preferredWidth: 70
                                     }
 
-                                    // Message
                                     StyledText {
                                         id: logText
                                         text: modelData.message
-                                        font.pixelSize: 11
+                                        font.pixelSize: 10
                                         font.family: Appearance.font.family.codeFont
                                         wrapMode: Text.Wrap
                                         Layout.fillWidth: true
                                     }
-
-                                    // Timestamp
-                                    StyledText {
-                                        text: modelData.timestamp.split("T")[1].split(".")[0]
-                                        font.pixelSize: 10
-                                        opacity: 0.5
-                                    }
                                 }
                             }
 
-                            // Auto-scroll to bottom on new entries
                             onCountChanged: {
-                                if (atYEnd) {
-                                    Qt.callLater(() => positionViewAtEnd())
-                                }
+                                if (atYEnd) Qt.callLater(() => positionViewAtEnd())
                             }
                         }
                     }
@@ -331,42 +261,34 @@ Popup {
 
                     ColumnLayout {
                         width: parent.width
-                        spacing: 12
+                        spacing: 10
 
-                        // Booru State
                         StateSection {
                             title: "Booru Service"
                             Layout.fillWidth: true
                             properties: [
                                 { key: "Provider", value: Services.Booru.currentProvider },
-                                { key: "NSFW Mode", value: Services.Booru.allowNsfw ? "Enabled" : "Disabled" },
+                                { key: "NSFW", value: Services.Booru.allowNsfw ? "On" : "Off" },
                                 { key: "Sorting", value: Services.Booru.currentSorting || "(default)" },
-                                { key: "Age Filter", value: Services.Booru.ageFilter },
                                 { key: "Responses", value: Services.Booru.responses.length },
-                                { key: "Running Requests", value: Services.Booru.runningRequests },
                                 { key: "Pending XHR", value: Services.Booru.pendingXhrRequests.length }
                             ]
                         }
 
-                        // Cache State
                         StateSection {
                             title: "Cache Index"
                             Layout.fillWidth: true
                             properties: [
                                 { key: "Initialized", value: Services.CacheIndex.initialized ? "Yes" : "No" },
-                                { key: "Scanning", value: Services.CacheIndex.scanning ? "Yes" : "No" },
-                                { key: "Indexed Files", value: Object.keys(Services.CacheIndex.index).length }
+                                { key: "Files", value: Object.keys(Services.CacheIndex.index).length }
                             ]
                         }
 
-                        // Video Pool State
                         StateSection {
-                            title: "Video Player Pool"
+                            title: "Video Pool"
                             Layout.fillWidth: true
                             properties: [
-                                { key: "Active Slots", value: Services.VideoPlayerPool.activeSlots.length },
-                                { key: "Max Slots", value: Services.VideoPlayerPool.maxSlots },
-                                { key: "Slot IDs", value: Services.VideoPlayerPool.activeSlots.map(s => s.imageId).join(", ") || "(none)" }
+                                { key: "Active", value: Services.VideoPlayerPool.activeSlots.length + "/" + Services.VideoPlayerPool.maxSlots }
                             ]
                         }
                     }
@@ -380,40 +302,17 @@ Popup {
                     anchors.margins: 8
                     spacing: 8
 
-                    // Cache stats
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 16
+                        spacing: 12
 
-                        CacheStat {
-                            label: "Total Files"
-                            value: Object.keys(Services.CacheIndex.index).length
-                        }
-
-                        CacheStat {
-                            label: "Preview Dir"
-                            value: countByPrefix("")
-                        }
-
-                        CacheStat {
-                            label: "Hi-Res"
-                            value: countByPrefix("hires_")
-                        }
-
-                        CacheStat {
-                            label: "Videos"
-                            value: countByPrefix("video_")
-                        }
-
-                        CacheStat {
-                            label: "GIFs"
-                            value: countByPrefix("gif_")
-                        }
-
+                        CacheStat { label: "Total"; value: Object.keys(Services.CacheIndex.index).length }
+                        CacheStat { label: "Hi-Res"; value: root.countByPrefix("hires_") }
+                        CacheStat { label: "Videos"; value: root.countByPrefix("video_") }
+                        CacheStat { label: "GIFs"; value: root.countByPrefix("gif_") }
                         Item { Layout.fillWidth: true }
                     }
 
-                    // Cache file list (sample)
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
@@ -424,94 +323,20 @@ Popup {
                             anchors.fill: parent
                             anchors.margins: 4
                             clip: true
-                            model: Object.keys(Services.CacheIndex.index).slice(0, 100)
+                            model: Object.keys(Services.CacheIndex.index).slice(0, 50)
 
                             delegate: StyledText {
                                 width: parent.width
                                 text: modelData
-                                font.pixelSize: 10
+                                font.pixelSize: 9
                                 font.family: Appearance.font.family.codeFont
                                 elide: Text.ElideMiddle
                             }
                         }
-
-                        StyledText {
-                            anchors.bottom: parent.bottom
-                            anchors.right: parent.right
-                            anchors.margins: 8
-                            text: "Showing first 100 of " + Object.keys(Services.CacheIndex.index).length
-                            font.pixelSize: 10
-                            opacity: 0.6
-                        }
-                    }
-                }
-            }
-
-            // === Metrics Tab ===
-            Item {
-                GridLayout {
-                    anchors.fill: parent
-                    anchors.margins: 16
-                    columns: 2
-                    rowSpacing: 16
-                    columnSpacing: 24
-
-                    MetricCard {
-                        title: "Total Requests"
-                        value: Services.Logger.metrics.totalRequests
-                        Layout.fillWidth: true
-                    }
-
-                    MetricCard {
-                        title: "Failed Requests"
-                        value: Services.Logger.metrics.failedRequests
-                        valueColor: Services.Logger.metrics.failedRequests > 0 ? "#dc3545" : Appearance.m3colors.onBackground
-                        Layout.fillWidth: true
-                    }
-
-                    MetricCard {
-                        title: "Avg Response Time"
-                        value: Services.Logger.metrics.avgResponseTime + "ms"
-                        Layout.fillWidth: true
-                    }
-
-                    MetricCard {
-                        title: "Cache Hits"
-                        value: Services.Logger.metrics.cacheHits
-                        valueColor: "#28a745"
-                        Layout.fillWidth: true
-                    }
-
-                    MetricCard {
-                        title: "Cache Misses"
-                        value: Services.Logger.metrics.cacheMisses
-                        Layout.fillWidth: true
-                    }
-
-                    MetricCard {
-                        title: "Hit Rate"
-                        value: {
-                            var total = Services.Logger.metrics.cacheHits + Services.Logger.metrics.cacheMisses
-                            if (total === 0) return "N/A"
-                            return Math.round(Services.Logger.metrics.cacheHits / total * 100) + "%"
-                        }
-                        Layout.fillWidth: true
                     }
                 }
             }
         }
-    }
-
-    // Helper function to count cache files by prefix
-    function countByPrefix(prefix) {
-        var count = 0
-        var keys = Object.keys(Services.CacheIndex.index)
-        for (var i = 0; i < keys.length; i++) {
-            if (prefix === "" ? !keys[i].startsWith("hires_") && !keys[i].startsWith("video_") && !keys[i].startsWith("gif_") : keys[i].startsWith(prefix)) {
-                count++
-            }
-        }
-        return count
     }
 
     // === Inline Components ===
@@ -520,35 +345,35 @@ Popup {
         property string title: ""
         property var properties: []
 
-        implicitHeight: sectionContent.implicitHeight + 8
+        implicitHeight: col.implicitHeight + 12
         color: Appearance.m3colors.m3layerBackground1
         radius: 6
 
         ColumnLayout {
-            id: sectionContent
+            id: col
             anchors.fill: parent
             anchors.margins: 8
-            spacing: 4
+            spacing: 2
 
             StyledText {
                 text: title
-                font.pixelSize: 13
+                font.pixelSize: 12
                 font.bold: true
             }
 
             Repeater {
                 model: properties
                 RowLayout {
-                    spacing: 8
+                    spacing: 6
                     StyledText {
                         text: modelData.key + ":"
-                        font.pixelSize: 11
-                        opacity: 0.7
-                        Layout.preferredWidth: 120
+                        font.pixelSize: 10
+                        opacity: 0.6
+                        Layout.preferredWidth: 80
                     }
                     StyledText {
                         text: String(modelData.value)
-                        font.pixelSize: 11
+                        font.pixelSize: 10
                         font.family: Appearance.font.family.codeFont
                     }
                 }
@@ -562,42 +387,13 @@ Popup {
 
         StyledText {
             text: String(value)
-            font.pixelSize: 18
+            font.pixelSize: 16
             font.bold: true
         }
         StyledText {
             text: label
-            font.pixelSize: 11
-            opacity: 0.7
-        }
-    }
-
-    component MetricCard: Rectangle {
-        property string title: ""
-        property var value: 0
-        property color valueColor: Appearance.m3colors.onBackground
-
-        implicitHeight: 80
-        color: Appearance.m3colors.m3layerBackground1
-        radius: 8
-
-        ColumnLayout {
-            anchors.centerIn: parent
-            spacing: 4
-
-            StyledText {
-                text: String(value)
-                font.pixelSize: 24
-                font.bold: true
-                color: valueColor
-                Layout.alignment: Qt.AlignHCenter
-            }
-            StyledText {
-                text: title
-                font.pixelSize: 12
-                opacity: 0.7
-                Layout.alignment: Qt.AlignHCenter
-            }
+            font.pixelSize: 10
+            opacity: 0.6
         }
     }
 }
