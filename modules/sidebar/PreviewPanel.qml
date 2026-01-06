@@ -35,6 +35,7 @@ Scope {
         target: Booru
         function onStopAllVideos() {
             if (root.currentMediaPlayer) {
+                Logger.debug("PreviewPanel", "Stopping video (global stop signal)")
                 root.currentMediaPlayer.stop()
             }
         }
@@ -119,8 +120,10 @@ Scope {
     // Computed properties - use stableImageData instead of imageData
     property bool panelVisible: active && stableImageData !== null
     onPanelVisibleChanged: {
+        Logger.debug("PreviewPanel", `panelVisible changed: ${panelVisible}`)
         // Stop video playback when preview is closed
         if (!panelVisible && root.currentMediaPlayer) {
+            Logger.debug("PreviewPanel", "Stopping video (panel closed)")
             root.currentMediaPlayer.stop()
         }
     }
@@ -192,8 +195,10 @@ Scope {
     function togglePlayPause() {
         if (!root.isVideo || !root.currentMediaPlayer) return
         if (root.currentMediaPlayer.playbackState === MediaPlayer.PlayingState) {
+            Logger.debug("PreviewPanel", "Video paused")
             root.currentMediaPlayer.pause()
         } else {
+            Logger.debug("PreviewPanel", "Video playing")
             root.currentMediaPlayer.play()
         }
     }
@@ -201,12 +206,14 @@ Scope {
     function toggleMute() {
         if (!root.isVideo || !root.currentAudioOutput) return
         root.currentAudioOutput.muted = !root.currentAudioOutput.muted
+        Logger.debug("PreviewPanel", `Video muted: ${root.currentAudioOutput.muted}`)
     }
 
     function changeVolume(delta) {
         if (!root.isVideo || !root.currentAudioOutput) return
         var newVolume = Math.max(0, Math.min(1, root.currentAudioOutput.volume + delta))
         root.currentAudioOutput.volume = newVolume
+        Logger.debug("PreviewPanel", `Volume: ${Math.round(newVolume * 100)}%`)
         // Unmute if adjusting volume while muted
         if (root.currentAudioOutput.muted && delta > 0) {
             root.currentAudioOutput.muted = false
@@ -217,6 +224,7 @@ Scope {
         if (!root.isVideo || !root.currentMediaPlayer) return
         var newPos = Math.max(0, Math.min(root.currentMediaPlayer.duration, root.currentMediaPlayer.position + ms))
         root.currentMediaPlayer.position = newPos
+        Logger.debug("PreviewPanel", `Seek: ${ms > 0 ? '+' : ''}${ms}ms → ${Math.round(newPos/1000)}s`)
     }
 
     function changeSpeed(delta) {
@@ -232,6 +240,7 @@ Scope {
         if (currentIdx < 0) currentIdx = 1  // Default to 1.0x
         var newIdx = Math.max(0, Math.min(speeds.length - 1, currentIdx + delta))
         root.currentMediaPlayer.playbackRate = speeds[newIdx]
+        Logger.debug("PreviewPanel", `Playback speed: ${speeds[newIdx]}x`)
     }
 
     Loader {

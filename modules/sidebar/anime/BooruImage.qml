@@ -431,17 +431,54 @@ Button {
 
     ImageDownloaderProcess {
         id: gifDownloader
-        enabled: root.manualDownload && root.isGif
+        // Skip Danbooru - CDN blocks curl, use Grabber instead
+        enabled: root.manualDownload && root.isGif && root.provider !== "danbooru"
         filePath: root.gifFilePath
         sourceUrl: modelData.file_url ? modelData.file_url : ""
         onDone: function(path, width, height) {
             if (path.length > 0) {
                 root.localGifSource = "file://" + path
             } else {
-                // GIF blocked (Danbooru Cloudflare) - use preview as static fallback
+                // GIF blocked - use preview as static fallback
                 root.localGifSource = modelData.preview_url ? modelData.preview_url : ""
             }
         }
+    }
+
+    // Grabber-based GIF downloader for Danbooru (bypasses Cloudflare)
+    property string grabberGifPath: root.previewDownloadPath + "/gif_%md5%.gif".replace("%md5%", root.imageData.md5 || "")
+    GrabberDownloader {
+        id: grabberGifDownloader
+        source: "danbooru.donmai.us"
+        imageId: root.imageData.id ? String(root.imageData.id) : ""
+        outputPath: root.previewDownloadPath
+        filenameTemplate: "gif_%md5%.%ext%"
+        user: Services.Booru.danbooruLogin
+        password: Services.Booru.danbooruApiKey
+        onDone: (success, message) => {
+            if (success) {
+                var cachedPath = "file://" + root.grabberGifPath
+                root.localGifSource = cachedPath
+                Services.Logger.info("BooruImage", `Grabber GIF downloaded: ${root.imageData.id}`)
+                // Update preview if it's showing this GIF
+                if (root.isPreviewActive) {
+                    root.updatePreviewSource(cachedPath)
+                }
+            } else {
+                Services.Logger.warn("BooruImage", `Grabber GIF failed: ${message}`)
+                // Fallback to static preview
+                root.localGifSource = modelData.preview_url ? modelData.preview_url : ""
+            }
+        }
+    }
+
+    // Trigger Grabber GIF download for Danbooru
+    Timer {
+        id: grabberGifTrigger
+        interval: root.triggerDelay
+        running: root.manualDownload && root.provider === "danbooru" && root.isGif
+                 && root.localGifSource === "" && !grabberGifDownloader.downloading
+        onTriggered: grabberGifDownloader.startDownload()
     }
 
     // Download GIF to cache for non-manual providers

@@ -119,6 +119,42 @@ Signals:
 
 **ConfigLoader.qml** - Loads `config.json`, watches for changes, applies settings
 
+**Logger.qml** - Singleton logging service with:
+
+Log Levels:
+- `DEBUG` (0) - Internal operations (keybindings, render events, cache lookups)
+- `INFO` (1) - User-facing actions (image loads, preview showing, downloads)
+- `WARN` (2) - Recoverable issues (fallback used, retry)
+- `ERROR` (3) - Failures (download failed, parse error)
+
+Key Methods:
+- `debug(category, message)` / `info()` / `warn()` / `error()` - Log at level
+- `startTiming(id)` / `endTiming(id, success, category)` - Performance tracking
+- `cacheHit(category)` / `cacheMiss(category)` - Cache metrics
+
+Output:
+- Console (with colors)
+- File: `~/.cache/quickshell/booru/debug.log`
+- In-memory ring buffer (1000 entries) for debug UI (F12)
+
+Log Categories:
+| Category | Component | What's Logged |
+|----------|-----------|---------------|
+| `Booru` | Booru.qml | API requests, provider switches, responses |
+| `BooruImage` | BooruImage.qml | Image loads, cache hits/misses, downloads |
+| `PreviewPanel` | PreviewPanel.qml | Preview showing, video controls |
+| `Keybindings` | KeybindingHandler.qml | Keyboard shortcuts triggered |
+| `PickerDialog` | PickerDialog.qml | Provider selection |
+| `BooruResponse` | BooruResponse.qml | Response render events |
+| `CacheIndex` | CacheIndex.qml | Cache lookups, file registration |
+| `Downloader` | ImageDownloaderProcess.qml | Download start/completion |
+
+Configuration:
+```javascript
+// services/Logger.qml line 25
+property int logLevel: Logger.Level.INFO  // Change to DEBUG for verbose output
+```
+
 ### UI Components (`modules/`)
 
 **sidebar/SidebarLeft.qml** - PanelWindow with layer shell integration:

@@ -37,6 +37,9 @@ Rectangle {
 
     Component.onCompleted: {
         availableWidth = parent ? parent.width : 400
+        var imageCount = root.responseData && root.responseData.images ? root.responseData.images.length : 0
+        var tagCount = root.responseData && root.responseData.tags ? root.responseData.tags.length : 0
+        Logger.debug("BooruResponse", `Rendered: ${root.responseData.provider} page=${root.responseData.page} images=${imageCount} tags=${tagCount}`)
     }
 
     Connections {

@@ -48,12 +48,14 @@ QtObject {
 
         // === HELP ===
         if (event.key === Qt.Key_Question || (event.key === Qt.Key_Slash && event.modifiers & Qt.ShiftModifier)) {
+            Logger.debug("Keybindings", `?: toggle help (${!sidebarState.showKeybindingsHelp})`)
             sidebarState.showKeybindingsHelp = !sidebarState.showKeybindingsHelp
             return true
         }
 
         // === DEBUG PANEL (F12) ===
         if (event.key === Qt.Key_F12) {
+            Logger.debug("Keybindings", `F12: toggle debug panel (${!sidebarState.showDebugPanel})`)
             sidebarState.showDebugPanel = !sidebarState.showDebugPanel
             return true
         }
@@ -61,12 +63,16 @@ QtObject {
         // === CLOSE/QUIT ===
         if (event.key === Qt.Key_Q || event.key === Qt.Key_Escape) {
             if (sidebarState.showDebugPanel) {
+                Logger.debug("Keybindings", "q/Esc: close debug panel")
                 sidebarState.showDebugPanel = false
             } else if (sidebarState.showKeybindingsHelp) {
+                Logger.debug("Keybindings", "q/Esc: close help")
                 sidebarState.showKeybindingsHelp = false
             } else if (sidebarState.previewActive) {
+                Logger.debug("Keybindings", "q/Esc: close preview")
                 sidebarState.hidePreview()
             } else {
+                Logger.debug("Keybindings", "q/Esc: hide sidebar")
                 sidebarRoot.hide()
             }
             return true
@@ -320,17 +326,21 @@ QtObject {
     function handleToggles(event) {
         if (event.key === Qt.Key_P) {
             if (event.modifiers & Qt.ShiftModifier) {
+                Logger.debug("Keybindings", `Shift+P: toggle pin (${!sidebarRoot.pinned})`)
                 sidebarRoot.pinned = !sidebarRoot.pinned
             } else {
+                Logger.debug("Keybindings", "P: open provider picker")
                 sidebarState.showPickerDialog = true
             }
             return true
         }
         if (event.key === Qt.Key_X) {
+            Logger.debug("Keybindings", `X: toggle NSFW (${!Booru.allowNsfw})`)
             Booru.allowNsfw = !Booru.allowNsfw
             return true
         }
         if (event.key === Qt.Key_I) {
+            Logger.debug("Keybindings", "I: focus input")
             animeContent.focusInput()
             return true
         }
@@ -359,6 +369,7 @@ QtObject {
                 ? ConfigOptions.booru.favorites
                 : Booru.providerList.slice(0, 9)
             if (numKey < favorites.length) {
+                Logger.debug("Keybindings", `${numKey + 1}: switch to ${favorites[numKey]}`)
                 Booru.setProvider(favorites[numKey])
             }
             return true

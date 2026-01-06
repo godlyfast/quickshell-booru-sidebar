@@ -101,6 +101,7 @@ Rectangle {
         // Enter to select
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
             if (filteredProviders.length > 0 && selectedIndex < filteredProviders.length) {
+                Services.Logger.info("PickerDialog", `Selected provider: ${filteredProviders[selectedIndex].key}`)
                 root.providerSelected(filteredProviders[selectedIndex].key)
                 root.closed()
             }
@@ -218,6 +219,7 @@ Rectangle {
                 ? ConfigOptions.booru.favorites
                 : Services.Booru.providerList.slice(0, 9)
             if (idx < favs.length && Services.Booru.providerList.indexOf(favs[idx]) !== -1) {
+                Services.Logger.info("PickerDialog", `Quick select: ${favs[idx]} (slot ${idx + 1})`)
                 root.providerSelected(favs[idx])
                 root.closed()
             }
@@ -380,6 +382,7 @@ Rectangle {
                         anchors.fill: parent
                         hoverEnabled: true
                         onClicked: {
+                            Services.Logger.info("PickerDialog", `Clicked provider: ${modelData.key}`)
                             root.providerSelected(modelData.key)
                             root.closed()
                         }
