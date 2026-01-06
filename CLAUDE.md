@@ -208,25 +208,36 @@ pragma ComponentBehavior: Bound  // Enable automatic property binding
 //@ pragma Env QT_QUICK_CONTROLS_STYLE=Basic  // Environment injection
 ```
 
-### ES5 JavaScript Constraint
+### Modern JavaScript (ES7) Support
 
-QML uses V4 engine which **does not support ES6+**. All JavaScript must be ES5:
+Qt 6 QML runtime implements **ECMAScript 2016 (ES7)** with full ES6 support. Use modern JavaScript:
 
 ```javascript
-// WRONG - ES6+ syntax will fail
-const x = item?.property ?? "default"
-const arr = [...items]
-const str = `template ${value}`
-items.map(i => i.name)
+// Modern ES6+ syntax - PREFERRED
+const x = item?.property ?? "default"  // Optional chaining + nullish coalescing (Qt 6.2+)
+const arr = [...items]                  // Spread operator
+const str = `template ${value}`         // Template literals
+items.map(i => i.name)                  // Arrow functions
+let count = 0                           // Block-scoped variables
 
-// CORRECT - ES5 syntax
+// Legacy ES5 syntax - AVOID
 var x = (item && item.property) ? item.property : "default"
 var arr = items.slice()
 var str = "template " + value
 items.map(function(i) { return i.name })
 ```
 
-**Files requiring ES5**: All `.js` files in `modules/common/functions/` and inline JavaScript in QML files.
+**Modern features available:**
+- `const` / `let` (block-scoped variables)
+- Arrow functions `() => {}`
+- Template literals `` `${var}` ``
+- Optional chaining `?.` (Qt 6.2+)
+- Nullish coalescing `??` (Qt 5.15+)
+- Spread operator `...`
+- Destructuring assignment
+- Default parameters
+
+**Note:** Quickshell uses Qt 6, which provides the modern V4 JavaScript engine with ES7 support.
 
 ### Security: Shell Command Escaping
 

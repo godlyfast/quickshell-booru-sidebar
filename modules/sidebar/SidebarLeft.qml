@@ -70,10 +70,10 @@ Scope {
         root.previewActive = false
     }
 
-    // Vim keybinding state
-    property string pendingKey: ""  // For multi-key sequences like 'gg'
+    // UI state
     property bool showKeybindingsHelp: false
     property bool showPickerDialog: false
+    property bool showDebugPanel: false
     property bool closingPreviewIntentionally: false  // Flag to prevent focus grab clear from closing sidebar
 
     // Reactive computed properties for position indicator
@@ -186,102 +186,6 @@ Scope {
         showPreview(img.data, cachedPath, false, img.provider)
     }
 
-    // Download paths
-    property string downloadPath: FileUtils.trimFileProtocol(Directories.homeDir) + "/Pictures/booru"
-    property string nsfwPath: FileUtils.trimFileProtocol(Directories.homeDir) + "/Pictures/booru/nsfw"
-    property string wallpaperPath: FileUtils.trimFileProtocol(Directories.homeDir) + "/Pictures/wallpapers"
-
-    // Shell escape helper
-    function shellEscape(str) {
-        if (!str) return ""
-        return str.replace(/'/g, "'\\''")
-    }
-
-    // Download image using Grabber or curl fallback
-    function downloadImage(imageData, isWallpaper) {
-        if (!imageData || !imageData.file_url) return
-
-        var targetPath = isWallpaper ? root.wallpaperPath : (imageData.is_nsfw ? root.nsfwPath : root.downloadPath)
-        var notifyTitle = isWallpaper ? "Wallpaper saved" : "Download complete"
-        var grabberSource = Booru.getGrabberSource(root.previewProvider)
-
-        if (grabberSource && grabberSource.length > 0) {
-            // Use Grabber for supported providers
-            var downloader = isWallpaper ? wallpaperDownloader : previewDownloader
-            downloader.source = grabberSource
-            downloader.imageId = String(imageData.id)
-            downloader.outputPath = targetPath
-            downloader.startDownload()
-        } else {
-            // Fallback to curl
-            var fileName = imageData.file_url.substring(imageData.file_url.lastIndexOf('/') + 1)
-            var queryIdx = fileName.indexOf('?')
-            if (queryIdx > 0) fileName = fileName.substring(0, queryIdx)
-            fileName = decodeURIComponent(fileName)
-
-            Quickshell.execDetached(["bash", "-c",
-                "mkdir -p '" + shellEscape(targetPath) + "' && " +
-                "curl -sL -A 'Mozilla/5.0 BooruSidebar/1.0' '" + shellEscape(imageData.file_url) + "' " +
-                "-o '" + shellEscape(targetPath) + "/" + shellEscape(fileName) + "' && " +
-                "notify-send '" + notifyTitle + "' '" + shellEscape(targetPath + "/" + fileName) + "' -a 'Booru'"
-            ])
-        }
-    }
-
-    // Curl fallback helper for Grabber failures
-    function curlFallback(imageData, targetPath, notifyTitle) {
-        var fileName = imageData.file_url.substring(imageData.file_url.lastIndexOf('/') + 1)
-        var queryIdx = fileName.indexOf('?')
-        if (queryIdx > 0) fileName = fileName.substring(0, queryIdx)
-        fileName = decodeURIComponent(fileName)
-
-        Quickshell.execDetached(["bash", "-c",
-            "mkdir -p '" + shellEscape(targetPath) + "' && " +
-            "curl -sL -A 'Mozilla/5.0 BooruSidebar/1.0' '" + shellEscape(imageData.file_url) + "' " +
-            "-o '" + shellEscape(targetPath) + "/" + shellEscape(fileName) + "' && " +
-            "notify-send '" + notifyTitle + "' '" + shellEscape(targetPath + "/" + fileName) + "' -a 'Booru'"
-        ])
-    }
-
-    // Grabber downloader for preview panel downloads
-    GrabberDownloader {
-        id: previewDownloader
-        filenameTemplate: Booru.filenameTemplate
-
-        onDone: function(success, message) {
-            if (success) {
-                Quickshell.execDetached(["notify-send", "Download complete", message, "-a", "Booru"])
-            } else if (root.previewImageData && root.previewImageData.file_url) {
-                var targetPath = root.previewImageData.is_nsfw ? root.nsfwPath : root.downloadPath
-                root.curlFallback(root.previewImageData, targetPath, "Download complete")
-            }
-        }
-    }
-
-    // Grabber downloader for wallpaper saves
-    GrabberDownloader {
-        id: wallpaperDownloader
-        filenameTemplate: Booru.filenameTemplate
-
-        onDone: function(success, message) {
-            if (success) {
-                Quickshell.execDetached(["notify-send", "Wallpaper saved", message, "-a", "Booru"])
-            } else if (root.previewImageData && root.previewImageData.file_url) {
-                root.curlFallback(root.previewImageData, root.wallpaperPath, "Wallpaper saved")
-            }
-        }
-    }
-
-    // Clipboard process for yank (y) command
-    Process {
-        id: clipboardProcess
-        onExited: function(code, status) {
-            if (code === 0) {
-                Quickshell.execDetached(["notify-send", "URL copied", "Image URL copied to clipboard", "-a", "Booru"])
-            }
-        }
-    }
-
     Loader {
         id: sidebarLoader
         active: true
@@ -364,366 +268,18 @@ Scope {
                 border.color: Appearance.m3colors.m3borderSecondary
                 radius: Appearance.rounding.large
 
+                // Keyboard handler (delegates all key events)
+                KeybindingHandler {
+                    id: keyHandler
+                    sidebarState: root
+                    animeContent: animeContent
+                    previewPanel: previewPanel
+                    sidebarRoot: sidebarRoot
+                    sidebarBackground: sidebarBackground
+                }
+
                 Keys.onPressed: (event) => {
-                    // Skip if input field is focused (let it handle keys normally)
-                    if (animeContent.inputField && animeContent.inputField.activeFocus) {
-                        // Escape blurs input
-                        if (event.key === Qt.Key_Escape) {
-                            animeContent.inputField.focus = false
-                            sidebarBackground.forceActiveFocus()
-                            event.accepted = true
-                        }
-                        return
-                    }
-
-                    // Handle multi-key sequences (gg)
-                    if (root.pendingKey === "g") {
-                        root.pendingKey = ""
-                        if (event.key === Qt.Key_G) {
-                            animeContent.scrollToTop()
-                            event.accepted = true
-                            return
-                        }
-                    }
-
-                    // === HELP ===
-                    if (event.key === Qt.Key_Question || (event.key === Qt.Key_Slash && event.modifiers & Qt.ShiftModifier)) {
-                        root.showKeybindingsHelp = !root.showKeybindingsHelp
-                        event.accepted = true
-                        return
-                    }
-
-                    // === CLOSE/QUIT ===
-                    if (event.key === Qt.Key_Q || event.key === Qt.Key_Escape) {
-                        if (root.showKeybindingsHelp) {
-                            root.showKeybindingsHelp = false
-                        } else if (root.previewActive) {
-                            root.hidePreview()
-                        } else {
-                            sidebarRoot.hide()
-                        }
-                        event.accepted = true
-                        return
-                    }
-
-                    // === TAB: Toggle preview for hovered image ===
-                    if (event.key === Qt.Key_Tab && Booru.hoveredBooruImage) {
-                        Booru.hoveredBooruImage.togglePreview()
-                        event.accepted = true
-                        return
-                    }
-
-                    // === W: Save hovered image as wallpaper (when not in preview mode) ===
-                    if (event.key === Qt.Key_W && !root.previewActive && Booru.hoveredBooruImage) {
-                        Booru.hoveredBooruImage.saveAsWallpaper()
-                        event.accepted = true
-                        return
-                    }
-
-                    // === HOVERED VIDEO CONTROLS (takes priority over preview when hovering grid video) ===
-                    // Only handle if player has a valid source (pool slot is active)
-                    var hoverPlayer = Booru.hoveredVideoPlayer
-                    var hasValidSource = hoverPlayer && hoverPlayer.source && hoverPlayer.source.toString().length > 0
-                    if (hasValidSource) {
-                        // M: toggle mute
-                        if (event.key === Qt.Key_M) {
-                            if (Booru.hoveredAudioOutput) {
-                                Booru.hoveredAudioOutput.muted = !Booru.hoveredAudioOutput.muted
-                            }
-                            event.accepted = true
-                            return
-                        }
-                        // Right arrow: seek forward 5s
-                        if (event.key === Qt.Key_Right) {
-                            var newPos = Math.min(hoverPlayer.duration, hoverPlayer.position + 5000)
-                            hoverPlayer.position = newPos
-                            event.accepted = true
-                            return
-                        }
-                        // Left arrow: seek backward 5s
-                        if (event.key === Qt.Key_Left) {
-                            var newPos = Math.max(0, hoverPlayer.position - 5000)
-                            hoverPlayer.position = newPos
-                            event.accepted = true
-                            return
-                        }
-                        // Space: play/pause
-                        if (event.key === Qt.Key_Space) {
-                            if (hoverPlayer.playbackState === MediaPlayer.PlayingState) {
-                                hoverPlayer.pause()
-                            } else {
-                                hoverPlayer.play()
-                            }
-                            event.accepted = true
-                            return
-                        }
-                    }
-
-                    // === BLOCK SPACE ON HOVERED NON-VIDEO IMAGES ===
-                    // Prevent Space from triggering Button click (which opens preview)
-                    if (event.key === Qt.Key_Space && Booru.hoveredBooruImage && !root.previewActive) {
-                        event.accepted = true
-                        return
-                    }
-
-                    // === PREVIEW NAVIGATION & VIDEO CONTROLS ===
-                    if (root.previewActive) {
-                        var isVideo = previewPanel.isVideo
-
-                        // Video controls (only when viewing video)
-                        if (isVideo) {
-                            // Space: play/pause
-                            if (event.key === Qt.Key_Space) {
-                                previewPanel.togglePlayPause()
-                                event.accepted = true
-                                return
-                            }
-                            // m: mute toggle
-                            if (event.key === Qt.Key_M) {
-                                previewPanel.toggleMute()
-                                event.accepted = true
-                                return
-                            }
-                            // Up/Down: volume control
-                            if (event.key === Qt.Key_Up) {
-                                previewPanel.changeVolume(0.1)
-                                event.accepted = true
-                                return
-                            }
-                            if (event.key === Qt.Key_Down) {
-                                previewPanel.changeVolume(-0.1)
-                                event.accepted = true
-                                return
-                            }
-                            // comma (<): decrease speed
-                            if (event.key === Qt.Key_Comma || event.key === Qt.Key_Less) {
-                                previewPanel.changeSpeed(-1)
-                                event.accepted = true
-                                return
-                            }
-                            // period (>): increase speed
-                            if (event.key === Qt.Key_Period || event.key === Qt.Key_Greater) {
-                                previewPanel.changeSpeed(1)
-                                event.accepted = true
-                                return
-                            }
-                            // Left/Right: seek (for videos only, images use these for prev/next)
-                            if (event.key === Qt.Key_Left) {
-                                previewPanel.seekRelative(-5000)  // 5s back
-                                event.accepted = true
-                                return
-                            }
-                            if (event.key === Qt.Key_Right) {
-                                previewPanel.seekRelative(5000)   // 5s forward
-                                event.accepted = true
-                                return
-                            }
-                        }
-
-                        // Image panning (non-video only)
-                        if (!isVideo) {
-                            var panStep = 50
-                            if (event.key === Qt.Key_Up) {
-                                previewPanel.panY += panStep
-                                event.accepted = true
-                                return
-                            }
-                            if (event.key === Qt.Key_Down) {
-                                previewPanel.panY -= panStep
-                                event.accepted = true
-                                return
-                            }
-                            if (event.key === Qt.Key_Left) {
-                                previewPanel.panX += panStep
-                                event.accepted = true
-                                return
-                            }
-                            if (event.key === Qt.Key_Right) {
-                                previewPanel.panX -= panStep
-                                event.accepted = true
-                                return
-                            }
-                        }
-
-                        // h/l: prev/next image in preview
-                        if (event.key === Qt.Key_H) {
-                            root.navigatePreview(-1)
-                            event.accepted = true
-                            return
-                        }
-                        if (event.key === Qt.Key_L) {
-                            root.navigatePreview(1)
-                            event.accepted = true
-                            return
-                        }
-                        // Preview zoom controls
-                        if (event.key === Qt.Key_Plus || event.key === Qt.Key_Equal) {
-                            previewPanel.zoomLevel = Math.min(previewPanel.maxZoom, previewPanel.zoomLevel * 1.15)
-                            event.accepted = true
-                            return
-                        }
-                        if (event.key === Qt.Key_Minus) {
-                            previewPanel.zoomLevel = Math.max(previewPanel.minZoom, previewPanel.zoomLevel * 0.87)
-                            event.accepted = true
-                            return
-                        }
-                        if (event.key === Qt.Key_0 || event.key === Qt.Key_R) {
-                            previewPanel.zoomLevel = 1.0
-                            previewPanel.panX = 0
-                            previewPanel.panY = 0
-                            event.accepted = true
-                            return
-                        }
-                        // Preview actions
-                        if (event.key === Qt.Key_D) {
-                            root.downloadImage(root.previewImageData, false)
-                            event.accepted = true
-                            return
-                        }
-                        if (event.key === Qt.Key_W) {
-                            root.downloadImage(root.previewImageData, true)
-                            event.accepted = true
-                            return
-                        }
-                        if (event.key === Qt.Key_G) {
-                            var postUrl = Booru.getPostUrl(root.previewProvider, root.previewImageData ? root.previewImageData.id : "")
-                            if (postUrl) Qt.openUrlExternally(postUrl)
-                            event.accepted = true
-                            return
-                        }
-                        if (event.key === Qt.Key_S) {
-                            if (root.previewImageData && root.previewImageData.source) {
-                                Qt.openUrlExternally(root.previewImageData.source)
-                            }
-                            event.accepted = true
-                            return
-                        }
-                        if (event.key === Qt.Key_Y) {
-                            if (root.previewImageData && root.previewImageData.file_url) {
-                                // Copy URL to clipboard using Process
-                                clipboardProcess.command = ["wl-copy", root.previewImageData.file_url]
-                                clipboardProcess.running = true
-                            }
-                            event.accepted = true
-                            return
-                        }
-                        // I: Toggle info panel
-                        if (event.key === Qt.Key_I) {
-                            previewPanel.showInfoPanel = !previewPanel.showInfoPanel
-                            event.accepted = true
-                            return
-                        }
-                    }
-
-                    // === h/l: Navigate images (works with preview open or closed) ===
-                    if (!root.previewActive) {
-                        if (event.key === Qt.Key_H) {
-                            root.navigatePreview(-1)
-                            event.accepted = true
-                            return
-                        }
-                        if (event.key === Qt.Key_L) {
-                            root.navigatePreview(1)
-                            event.accepted = true
-                            return
-                        }
-                    }
-
-                    // === VIEWPORT SCROLLING (j/k) ===
-                    if (event.key === Qt.Key_J) {
-                        animeContent.scrollDown(100)
-                        event.accepted = true
-                        return
-                    }
-                    if (event.key === Qt.Key_K) {
-                        animeContent.scrollUp(100)
-                        event.accepted = true
-                        return
-                    }
-
-                    // === VIEWPORT SCROLLING (Ctrl+u/d, gg, G) ===
-                    if (event.key === Qt.Key_G && !(event.modifiers & Qt.ShiftModifier)) {
-                        root.pendingKey = "g"
-                        event.accepted = true
-                        return
-                    }
-                    if (event.key === Qt.Key_G && (event.modifiers & Qt.ShiftModifier)) {
-                        animeContent.scrollToBottom()
-                        event.accepted = true
-                        return
-                    }
-                    if (event.key === Qt.Key_D && (event.modifiers & Qt.ControlModifier)) {
-                        animeContent.scrollPageDown()
-                        event.accepted = true
-                        return
-                    }
-                    if (event.key === Qt.Key_U && (event.modifiers & Qt.ControlModifier)) {
-                        animeContent.scrollPageUp()
-                        event.accepted = true
-                        return
-                    }
-
-                    // === PAGINATION ===
-                    if (event.key === Qt.Key_N && !(event.modifiers & Qt.ShiftModifier)) {
-                        animeContent.loadNextPage()
-                        event.accepted = true
-                        return
-                    }
-                    if (event.key === Qt.Key_N && (event.modifiers & Qt.ShiftModifier)) {
-                        animeContent.loadPrevPage()
-                        event.accepted = true
-                        return
-                    }
-
-                    // === TOGGLES ===
-                    // p: Provider picker (Shift+P: pin sidebar)
-                    if (event.key == Qt.Key_P) {
-                        if (event.modifiers & Qt.ShiftModifier) {
-                            sidebarRoot.pinned = !sidebarRoot.pinned
-                        } else {
-                            root.showPickerDialog = true
-                        }
-                        event.accepted = true
-                        return
-                    }
-                    if (event.key === Qt.Key_X) {
-                        Booru.allowNsfw = !Booru.allowNsfw
-                        event.accepted = true
-                        return
-                    }
-                    if (event.key === Qt.Key_I) {
-                        animeContent.focusInput()
-                        event.accepted = true
-                        return
-                    }
-
-                    // === RELOAD ===
-                    // r: reload current page, R (Shift+r): clean cache and reload
-                    if (event.key === Qt.Key_R && !root.previewActive) {
-                        if (event.modifiers & Qt.ShiftModifier) {
-                            animeContent.cleanCacheAndReload()
-                        } else {
-                            animeContent.reloadCurrentPage()
-                        }
-                        event.accepted = true
-                        return
-                    }
-
-                    // === QUICK PROVIDER SWITCH (1-9 via favorites) ===
-                    var numKey = -1
-                    if (event.key >= Qt.Key_1 && event.key <= Qt.Key_9) {
-                        numKey = event.key - Qt.Key_1
-                    }
-                    if (numKey >= 0) {
-                        var favorites = (ConfigOptions.booru && ConfigOptions.booru.favorites)
-                            ? ConfigOptions.booru.favorites
-                            : Booru.providerList.slice(0, 9)
-                        if (numKey < favorites.length) {
-                            Booru.setProvider(favorites[numKey])
-                        }
-                        event.accepted = true
-                        return
-                    }
+                    event.accepted = keyHandler.handleKeyPress(event)
                 }
 
                 // Pin button
@@ -786,6 +342,19 @@ Scope {
                         sidebarBackground.forceActiveFocus()
                     }
                 }
+
+                // Debug panel overlay (F12 to open)
+                DebugPanel {
+                    id: debugPanel
+                    parent: sidebarBackground
+                    visible: root.showDebugPanel && root.sidebarOpen
+                    z: 200
+
+                    onClosed: {
+                        root.showDebugPanel = false
+                        sidebarBackground.forceActiveFocus()
+                    }
+                }
             }
         }
     }
@@ -804,8 +373,8 @@ Scope {
         totalCount: root.imageCount
 
         onRequestClose: root.hidePreview()
-        onRequestDownload: function(imageData) { root.downloadImage(imageData, false) }
-        onRequestSaveWallpaper: function(imageData) { root.downloadImage(imageData, true) }
+        onRequestDownload: function(imageData) { DownloadManager.downloadImage(imageData, root.previewProvider, false) }
+        onRequestSaveWallpaper: function(imageData) { DownloadManager.downloadImage(imageData, root.previewProvider, true) }
     }
 
     // Keybindings help overlay

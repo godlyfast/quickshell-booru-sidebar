@@ -188,7 +188,7 @@ Singleton {
                 root.index = newIndex
                 root.initialized = true
                 root.scanning = false
-                console.log("[CacheIndex] Initialized with " + Object.keys(newIndex).length + " files")
+                Logger.info("CacheIndex", `Initialized with ${Object.keys(newIndex).length} files`)
             }
         }
 
@@ -197,7 +197,7 @@ Singleton {
                 // Scan failed, mark as initialized anyway to not block
                 root.initialized = true
                 root.scanning = false
-                console.log("[CacheIndex] Scan failed, using empty index")
+                Logger.warn("CacheIndex", "Scan failed, using empty index")
             }
         }
     }
@@ -288,7 +288,7 @@ Singleton {
                 }
                 if (added > 0) {
                     root.index = newIndex
-                    console.log("[CacheIndex] Quick refresh added " + added + " files")
+                    Logger.debug("CacheIndex", `Quick refresh added ${added} files`)
                 }
             }
         }

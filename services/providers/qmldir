@@ -1,0 +1,2 @@
+module providers
+singleton ProviderRegistry 1.0 ProviderRegistry.qml

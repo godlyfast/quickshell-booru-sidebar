@@ -9,6 +9,7 @@ import Quickshell.Hyprland
 import "../../common"
 import "../../common/widgets"
 import "../../common/utils"
+import "../../common/functions/shell_utils.js" as ShellUtils
 import "../../../services" as Services
 
 /**
@@ -23,6 +24,18 @@ Button {
     property string previewDownloadPath
     property string downloadPath
     property string nsfwPath
+
+    // Timing constants (milliseconds) - extracted for maintainability
+    readonly property int triggerDelay: 100         // Allow property bindings to settle before triggering
+    readonly property int videoPreviewDelay: 50     // Faster trigger for video preview thumbnails
+    readonly property int progressCheckInterval: 500 // Balance responsiveness vs CPU for progress polling
+    readonly property int retryDelay: 1000          // Give CDN time to recover before retry
+
+    // Network constants - curl timeout values (seconds)
+    readonly property int connectTimeout: 10        // TCP connection timeout
+    readonly property int previewMaxTime: 30        // Max time for preview/thumbnail downloads
+    readonly property int videoMaxTime: 300         // Max time for full video downloads (5 min for large files)
+    readonly property int maxRetries: 2             // Retry count for failed downloads
 
     // Preview signals - emitted on hover for full-size preview
     signal showPreview(var imageData, string cachedSource, bool manualDownload, string provider)
@@ -45,20 +58,36 @@ Button {
         }
     }
 
+    // Bug 1.6: Cleanup MediaPlayer resources to prevent memory leaks
+    function cleanupMediaPlayer() {
+        if (root.mediaPlayer) {
+            root.mediaPlayer.stop()
+            root.mediaPlayer.source = ""
+        }
+    }
+
+    // Bug 1.6: Monitor pool entry changes to cleanup on eviction
+    onPoolEntryChanged: {
+        // If pool entry was taken away (eviction) or no longer matches this image, cleanup
+        if (!poolEntry || (poolEntry && poolEntry.imageId !== root.imageData.id)) {
+            cleanupMediaPlayer()
+        }
+    }
+
     // Listen for cache file registrations to update sources reactively
     Connections {
         target: Services.CacheIndex
         function onFileRegistered(filename, filepath) {
             // Video cache update
             if (root.isVideo) {
-                var videoName = "video_" + (root.imageData.md5 ? root.imageData.md5 : root.imageData.id) + "." + root.fileExt
+                var videoName = "video_" + root.baseId + "." + root.fileExt
                 if (filename === videoName) {
                     root.cachedVideoSource = "file://" + filepath
                 }
             }
             // GIF cache update
             if (root.isGif) {
-                var gifName = "gif_" + (root.imageData.md5 ? root.imageData.md5 : root.imageData.id) + ".gif"
+                var gifName = "gif_" + root.baseId + ".gif"
                 if (filename === gifName || filename === root.fileName) {
                     root.cachedGifSource = "file://" + filepath
                 }
@@ -145,8 +174,10 @@ Button {
         }
     }
 
-    // Release pool player when component is destroyed
+    // Release pool player and cleanup MediaPlayer when component is destroyed
     Component.onDestruction: {
+        // Bug 1.6: Cleanup MediaPlayer resources first
+        cleanupMediaPlayer()
         if (root.poolEntry) {
             Services.VideoPlayerPool.releasePlayer(root.imageData.id)
         }
@@ -183,12 +214,8 @@ Button {
 
     property bool showActions: false
 
-    // Shell escape helper - escapes single quotes for safe shell string embedding
-    // 'foo'bar' -> 'foo'\''bar' (end quote, escaped quote, start quote)
-    function shellEscape(str) {
-        if (!str) return "";
-        return str.replace(/'/g, "'\\''");
-    }
+    // Shell escape helper - use shared utility
+    function shellEscape(str) { return ShellUtils.shellEscape(str) }
 
     // Video detection - fallback to extracting from URL if file_ext not provided
     property string fileExt: {
@@ -207,6 +234,9 @@ Button {
     // (zerochan may have .gif content served from .jpg URL via fallback)
     property bool isGif: fileExt === "gif" || cachedImageSource.toLowerCase().endsWith(".gif")
     property bool isArchive: (fileExt === "zip" || fileExt === "rar" || fileExt === "7z")  // Danbooru image packs
+
+    // Base identifier - md5 preferred (consistent across providers), fallback to id
+    property string baseId: root.imageData.md5 ? root.imageData.md5 : root.imageData.id
 
     // File paths for download status checks
     property string savedFilePath: root.downloadPath + "/" + root.fileName
@@ -281,7 +311,7 @@ Button {
     property string highResFilePath: root.previewDownloadPath + "/" + root.highResFileName
 
     // Grabber uses md5-based filename for Danbooru
-    property string grabberHighResPath: root.previewDownloadPath + "/hires_" + (root.imageData.md5 ? root.imageData.md5 : root.imageData.id) + "." + root.fileExt
+    property string grabberHighResPath: root.previewDownloadPath + "/hires_" + root.baseId + "." + root.fileExt
 
     // Unified cache check for all manual download providers
     property bool highResCacheChecked: false
@@ -299,15 +329,6 @@ Button {
             }
             // If not cached, downloaders below will trigger
         }
-    }
-
-    // Universal cache check - REPLACED by CacheIndex singleton for O(1) lookups
-    // Previously spawned a bash Process per image; now uses in-memory index
-    // Process retained for backwards compatibility but never runs
-    Process {
-        id: universalCacheCheck
-        running: false  // Disabled - CacheIndex handles cache lookups
-        command: ["true"]
     }
 
     // Download hi-res to cache for non-manual providers (after cache check)
@@ -383,7 +404,7 @@ Button {
     // Trigger Grabber download for Danbooru (only if not cached)
     Timer {
         id: grabberTrigger
-        interval: 100
+        interval: root.triggerDelay
         running: root.manualDownload && root.provider === "danbooru" && !root.isGif && !root.isVideo && !root.isArchive && imageDownloader.downloadedPath.length > 0 && !grabberHighResDownloader.downloading && root.localHighResSource === "" && root.highResCacheChecked
         onTriggered: grabberHighResDownloader.startDownload()
     }
@@ -401,13 +422,10 @@ Button {
     property string localGifSource: ""
 
     // Universal GIF cache - uses CacheIndex for O(1) lookups
+    // CacheIndex.lookup() internally checks gif_ prefix and extension variants
     property bool gifCacheChecked: Services.CacheIndex.initialized
     property string cachedGifSource: {
         if (!Services.CacheIndex.initialized || !root.isGif) return ""
-        // Look up GIF with gif_ prefix variant
-        var cached = Services.CacheIndex.lookup("gif_" + root.gifFileName)
-        if (cached.length > 0) return cached
-        // Also check without prefix (user downloads)
         return Services.CacheIndex.lookup(root.gifFileName)
     }
 
@@ -424,13 +442,6 @@ Button {
                 root.localGifSource = modelData.preview_url ? modelData.preview_url : ""
             }
         }
-    }
-
-    // Universal GIF cache check - REPLACED by CacheIndex singleton
-    Process {
-        id: gifCacheCheck
-        running: false  // Disabled - CacheIndex handles cache lookups
-        command: ["true"]
     }
 
     // Download GIF to cache for non-manual providers
@@ -457,7 +468,7 @@ Button {
     // Ugoira (animated ZIP) support
     // Danbooru provides pre-converted WebM at sample_url (large_file_url)
     // We download this directly instead of downloading ZIP + converting
-    property string ugoiraVideoPath: root.previewDownloadPath + "/ugoira_" + (root.imageData.md5 ? root.imageData.md5 : root.imageData.id) + ".webm"
+    property string ugoiraVideoPath: root.previewDownloadPath + "/ugoira_" + root.baseId + ".webm"
     property string ugoiraSampleUrl: root.imageData.sample_url ? root.imageData.sample_url : ""
     property string localUgoiraSource: ""
     property bool ugoiraCacheChecked: false
@@ -511,7 +522,7 @@ Button {
     // Uses repeat: false and internal guard to prevent race conditions
     Timer {
         id: ugoiraDownloadTrigger
-        interval: 100
+        interval: root.triggerDelay
         repeat: false
         running: root.isArchive && root.ugoiraCacheChecked && root.localUgoiraSource === "" && root.ugoiraSampleUrl.length > 0
         onTriggered: {
@@ -523,21 +534,19 @@ Button {
     }
 
     // Universal video cache - uses CacheIndex for O(1) lookups
+    // CacheIndex.lookup() internally checks video_ prefix variant
     property bool videoCacheChecked: Services.CacheIndex.initialized
+    // Base name for video cache (without video_ prefix - CacheIndex adds it)
+    property string videoBaseName: root.baseId + "." + root.fileExt
     property string cachedVideoSource: {
         if (!Services.CacheIndex.initialized || !root.isVideo) return ""
-        // Look up video with video_ prefix
-        var videoName = "video_" + (root.imageData.md5 ? root.imageData.md5 : root.imageData.id) + "." + root.fileExt
-        var cached = Services.CacheIndex.lookup(videoName)
-        if (cached.length > 0) return cached
-        // Also check by filename (user downloads)
-        return Services.CacheIndex.lookup(root.fileName)
+        return Services.CacheIndex.lookup(root.videoBaseName)
     }
     property bool videoDownloadFailed: false
-    property string videoFilePath: root.previewDownloadPath + "/video_" + (root.imageData.md5 ? root.imageData.md5 : root.imageData.id) + "." + root.fileExt
+    property string videoFilePath: root.previewDownloadPath + "/video_" + root.videoBaseName
 
     // Video preview for manualDownload providers (Sankaku CDN blocks direct image requests)
-    property string videoPreviewPath: root.previewDownloadPath + "/vidpreview_" + (root.imageData.md5 ? root.imageData.md5 : root.imageData.id) + ".jpg"
+    property string videoPreviewPath: root.previewDownloadPath + "/vidpreview_" + root.baseId + ".jpg"
     property string localVideoPreview: ""
     property bool videoPreviewCacheChecked: false
 
@@ -575,23 +584,22 @@ Button {
 
             // Check if preview URL is AVIF (Sankaku videos use AVIF previews)
             // If so, download AVIF and convert to JPEG using avifdec
+            var curlOpts = `--connect-timeout ${root.connectTimeout} --max-time ${root.previewMaxTime}`
             if (previewUrl.indexOf(".avif") >= 0) {
                 return ["bash", "-c",
-                    "mkdir -p \"$(dirname '" + jpgPath + "')\" && " +
-                    "curl -fsSL --connect-timeout 5 --max-time 30 " +
-                    "-A 'Mozilla/5.0 BooruSidebar/1.0' '" + url + "' -o '" + avifPath + "' && " +
-                    "[ -s '" + avifPath + "' ] && " +
-                    "avifdec '" + avifPath + "' '" + jpgPath + "' >/dev/null 2>&1 && " +
-                    "rm -f '" + avifPath + "' && " +
-                    "[ -s '" + jpgPath + "' ]"
+                    `mkdir -p "$(dirname '${jpgPath}')" && ` +
+                    `curl -fsSL ${curlOpts} -A 'Mozilla/5.0 BooruSidebar/1.0' '${url}' -o '${avifPath}' && ` +
+                    `[ -s '${avifPath}' ] && ` +
+                    `avifdec '${avifPath}' '${jpgPath}' >/dev/null 2>&1 && ` +
+                    `rm -f '${avifPath}' && ` +
+                    `[ -s '${jpgPath}' ]`
                 ]
             } else {
                 // Non-AVIF preview, download directly
                 return ["bash", "-c",
-                    "mkdir -p \"$(dirname '" + jpgPath + "')\" && " +
-                    "curl -fsSL --connect-timeout 5 --max-time 30 " +
-                    "-A 'Mozilla/5.0 BooruSidebar/1.0' '" + url + "' -o '" + jpgPath + "' && " +
-                    "[ -s '" + jpgPath + "' ]"
+                    `mkdir -p "$(dirname '${jpgPath}')" && ` +
+                    `curl -fsSL ${curlOpts} -A 'Mozilla/5.0 BooruSidebar/1.0' '${url}' -o '${jpgPath}' && ` +
+                    `[ -s '${jpgPath}' ]`
                 ]
             }
         }
@@ -607,14 +615,14 @@ Button {
             if (code === 0) {
                 root.localVideoPreview = "file://" + root.videoPreviewPath
             } else {
-                console.log("[BooruImage] Video preview download/conversion failed: " + root.imageData.preview_url)
+                Services.Logger.warn("BooruImage", `Video preview download/conversion failed: ${root.imageData.preview_url}`)
             }
         }
     }
 
     Timer {
         id: videoPreviewTrigger
-        interval: 50
+        interval: root.videoPreviewDelay
         repeat: false
         // Download preview for manualDownload providers showing videos (after cache check)
         running: root.isVideo && root.manualDownload && root.videoPreviewCacheChecked
@@ -627,14 +635,6 @@ Button {
                 videoPreviewDownloader.running = true
             }
         }
-    }
-
-    // Universal video cache check - REPLACED by CacheIndex singleton
-    // Note: Video validation (checking file is not HTML error) now relies on MediaPlayer error handling
-    Process {
-        id: videoCacheCheck
-        running: false  // Disabled - CacheIndex handles cache lookups
-        command: ["true"]
     }
 
     // Video download progress tracking
@@ -653,7 +653,6 @@ Button {
         id: universalVideoDownloader
         property bool downloading: false
         property int retryCount: 0
-        property int maxRetries: 2
         running: false
 
         // Build command dynamically when starting to ensure fresh URL
@@ -662,15 +661,15 @@ Button {
             var path = shellEscape(root.videoFilePath)
             // Danbooru blocks custom User-Agent, Sankaku requires it
             var userAgent = root.provider === "danbooru" ? "" : "-A 'Mozilla/5.0 BooruSidebar/1.0' "
+            var curlOpts = `--connect-timeout ${root.connectTimeout} --max-time ${root.videoMaxTime}`
             // Validate downloaded file is actually a video, not an HTML error page
             // Sankaku CDN returns 403 HTML with HTTP 200 status on expired tokens
             return ["bash", "-c",
-                "mkdir -p \"$(dirname '" + path + "')\" && " +
-                "curl -fSL --connect-timeout 10 --max-time 300 " +
-                userAgent + "'" + url + "' -o '" + path + "' && " +
-                "[ -s '" + path + "' ] && " +  // File exists and non-empty
-                "file -b '" + path + "' | grep -qiE 'video|MP4|WebM|ISO Media' || " +  // Must be video
-                "{ rm -f '" + path + "'; exit 1; }"  // Delete HTML error page, fail
+                `mkdir -p "$(dirname '${path}')" && ` +
+                `curl -fSL ${curlOpts} ${userAgent}'${url}' -o '${path}' && ` +
+                `[ -s '${path}' ] && ` +  // File exists and non-empty
+                `file -b '${path}' | grep -qiE 'video|MP4|WebM|ISO Media' || ` +  // Must be video
+                `{ rm -f '${path}'; exit 1; }`  // Delete HTML error page, fail
             ]
         }
 
@@ -694,7 +693,7 @@ Button {
                 var cachedPath = "file://" + root.videoFilePath
                 root.cachedVideoSource = cachedPath
                 // Register in CacheIndex for instant future lookups
-                var videoName = "video_" + (root.imageData.md5 ? root.imageData.md5 : root.imageData.id) + "." + root.fileExt
+                var videoName = "video_" + root.videoBaseName
                 Services.CacheIndex.register(videoName, root.videoFilePath)
                 // Re-request pool slot if evicted while downloading (ensures source binding updates)
                 if (videoContainer.visible && (!root.poolEntry || root.poolEntry.imageId !== root.imageData.id)) {
@@ -706,15 +705,15 @@ Button {
                 }
             } else {
                 // Retry on failure
-                if (retryCount < maxRetries) {
+                if (retryCount < root.maxRetries) {
                     retryCount++
-                    console.log("[BooruImage] Video download failed, retry " + retryCount + "/" + maxRetries + ": " + root.imageData.file_url)
+                    Services.Logger.warn("BooruImage", `Video download failed, retry ${retryCount}/${root.maxRetries}: ${root.imageData.file_url}`)
                     videoRetryTimer.start()
                 } else {
                     downloading = false
                     retryCount = 0
                     root.videoDownloadFailed = true
-                    console.log("[BooruImage] Video download failed after " + maxRetries + " retries: " + root.imageData.file_url)
+                    Services.Logger.error("BooruImage", `Video download failed after ${root.maxRetries} retries: ${root.imageData.file_url}`)
                 }
             }
         }
@@ -723,7 +722,7 @@ Button {
     // Check download progress periodically
     Timer {
         id: videoProgressTimer
-        interval: 500
+        interval: root.progressCheckInterval
         repeat: true
         running: false
         onTriggered: videoProgressChecker.running = true
@@ -745,7 +744,7 @@ Button {
 
     Timer {
         id: videoRetryTimer
-        interval: 1000  // Wait 1 second before retry
+        interval: root.retryDelay
         repeat: false
         onTriggered: {
             universalVideoDownloader.command = universalVideoDownloader.buildCommand()
@@ -755,7 +754,7 @@ Button {
 
     Timer {
         id: videoDownloadTrigger
-        interval: 100
+        interval: root.triggerDelay
         repeat: false
         running: root.isVideo && root.videoCacheChecked && root.cachedVideoSource === ""
                  && root.imageData.file_url && root.imageData.file_url.length > 0
@@ -784,7 +783,7 @@ Button {
                 Quickshell.execDetached(["notify-send", "Download complete", message, "-a", "Booru"])
             } else {
                 // Fallback to curl on Grabber failure (User-Agent for Sankaku etc.)
-                console.log("[BooruImage] Grabber failed, falling back to curl: " + message)
+                Services.Logger.warn("BooruImage", `Grabber failed, falling back to curl: ${message}`)
                 var targetPath = root.imageData.is_nsfw ? root.nsfwPath : root.downloadPath
                 var escapedPath = shellEscape(targetPath)
                 var escapedUrl = shellEscape(root.imageData.file_url)
@@ -807,7 +806,7 @@ Button {
                 Quickshell.execDetached(["notify-send", "Wallpaper saved", message, "-a", "Booru"])
             } else {
                 // Fallback to curl on Grabber failure (User-Agent for Sankaku etc.)
-                console.log("[BooruImage] Grabber wallpaper failed, falling back to curl: " + message)
+                Services.Logger.warn("BooruImage", `Grabber wallpaper failed, falling back to curl: ${message}`)
                 var wallpaperPath = root.downloadPath.replace(/\/booru$/, '/wallpapers')
                 var escapedWpPath = shellEscape(wallpaperPath)
                 var escapedUrl = shellEscape(root.imageData.file_url)
@@ -823,7 +822,7 @@ Button {
     // Use Timer to ensure all properties are bound before checking
     Timer {
         id: fileCheckTimer
-        interval: 100
+        interval: root.triggerDelay
         running: root.fileName.length > 0 && root.downloadPath.length > 0
         onTriggered: {
             // Build command dynamically when timer fires to ensure paths are set
@@ -1126,10 +1125,7 @@ Button {
             // Debug: Log when video container conditions change
             Component.onCompleted: {
                 if (root.isVideo) {
-                    console.log("[BooruImage] Video item created:", root.imageData.id,
-                        "visible:", visible,
-                        "videoSource:", videoSource.substring(0, 50),
-                        "videoCacheChecked:", root.videoCacheChecked)
+                    Services.Logger.debug("BooruImage", `Video item created: ${root.imageData.id} visible: ${visible} videoSource: ${videoSource.substring(0, 50)} videoCacheChecked: ${root.videoCacheChecked}`)
                 }
             }
 
@@ -1431,193 +1427,34 @@ Button {
             onClicked: root.showActions = !root.showActions
         }
 
-        // Download status badges (bottom-right corner)
-        Row {
+        // Download status badges (bottom-right corner) - extracted to ImageStatusBadges.qml
+        ImageStatusBadges {
             anchors.bottom: parent.bottom
             anchors.right: parent.right
             anchors.margins: 6
-            spacing: 4
             z: 5
-
-            // Downloaded badge
-            Rectangle {
-                visible: root.isSavedLocally
-                width: 22
-                height: 22
-                radius: 4
-                color: Qt.rgba(0, 0, 0, 0.6)
-
-                MaterialSymbol {
-                    anchors.centerIn: parent
-                    iconSize: 14
-                    color: "#ffffff"
-                    text: "download_done"
-                }
-            }
-
-            // Wallpaper badge
-            Rectangle {
-                visible: root.isSavedAsWallpaper
-                width: 22
-                height: 22
-                radius: 4
-                color: Qt.rgba(0, 0, 0, 0.6)
-
-                MaterialSymbol {
-                    anchors.centerIn: parent
-                    iconSize: 14
-                    color: "#ffffff"
-                    text: "wallpaper"
-                }
-            }
+            isSavedLocally: root.isSavedLocally
+            isSavedAsWallpaper: root.isSavedAsWallpaper
         }
 
-        // Context menu popup - renders in overlay layer above all content
-        Popup {
+        // Context menu popup - extracted to ImageContextMenu.qml
+        ImageContextMenu {
             id: contextMenuPopup
             visible: root.showActions
-            y: menuButton.y + menuButton.height + 4
-            x: Math.max(4, Math.min(parent.width - 164, menuButton.x + menuButton.width - 160))
-            width: 160
-            height: menuColumn.implicitHeight + 16
-            padding: 0
-            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-            onClosed: root.showActions = false
+            imageData: root.imageData
+            fileName: root.fileName
+            provider: root.provider
+            isVideo: root.isVideo
+            useGrabber: root.useGrabber
+            downloadPath: root.downloadPath
+            nsfwPath: root.nsfwPath
+            grabberDownloader: grabberDownloader
+            wallpaperDownloader: wallpaperDownloader
+            menuButton: menuButton
 
-            background: Rectangle {
-                radius: Appearance.rounding.small
-                color: Appearance.m3colors.m3layerBackground2
-            }
-
-            contentItem: Column {
-                id: menuColumn
-                width: 152
-                spacing: 2
-                padding: 4
-
-                RippleButton {
-                    width: parent.width - 8
-                    implicitHeight: 36
-                    buttonRadius: 4
-
-                    contentItem: StyledText {
-                        anchors.centerIn: parent
-                        text: "Open file link"
-                        font.pixelSize: Appearance.font.pixelSize.textSmall
-                    }
-
-                    onClicked: {
-                        root.showActions = false
-                        Qt.openUrlExternally(root.imageData.file_url)
-                    }
-                }
-
-                RippleButton {
-                    width: parent.width - 8
-                    implicitHeight: 36
-                    buttonRadius: 4
-
-                    contentItem: StyledText {
-                        anchors.centerIn: parent
-                        text: root.isVideo ? "Play in mpv" : "Open in viewer"
-                        font.pixelSize: Appearance.font.pixelSize.textSmall
-                    }
-
-                    onClicked: {
-                        root.showActions = false
-                        if (root.isVideo) {
-                            // mpv can stream URLs directly (use --user-agent for Sankaku)
-                            Quickshell.execDetached(["mpv", "--loop", "--user-agent=Mozilla/5.0 BooruSidebar/1.0", root.imageData.file_url])
-                        } else {
-                            // Download to temp and open with system default
-                            var tmpFile = "/tmp/booru_" + root.fileName
-                            var escapedUrl = shellEscape(root.imageData.file_url)
-                            var escapedTmp = shellEscape(tmpFile)
-                            Quickshell.execDetached(["bash", "-c",
-                                "curl -sL -A 'Mozilla/5.0 BooruSidebar/1.0' '" + escapedUrl + "' -o '" + escapedTmp + "' && xdg-open '" + escapedTmp + "'"
-                            ])
-                        }
-                    }
-                }
-
-                RippleButton {
-                    visible: root.imageData.source && root.imageData.source.length > 0
-                    width: parent.width - 8
-                    implicitHeight: 36
-                    buttonRadius: 4
-
-                    contentItem: StyledText {
-                        anchors.centerIn: parent
-                        text: "Go to source"
-                        font.pixelSize: Appearance.font.pixelSize.textSmall
-                    }
-
-                    onClicked: {
-                        root.showActions = false
-                        Qt.openUrlExternally(root.imageData.source)
-                    }
-                }
-
-                RippleButton {
-                    width: parent.width - 8
-                    implicitHeight: 36
-                    buttonRadius: 4
-
-                    contentItem: StyledText {
-                        anchors.centerIn: parent
-                        text: "Download"
-                        font.pixelSize: Appearance.font.pixelSize.textSmall
-                    }
-
-                    onClicked: {
-                        root.showActions = false
-                        root.isSavedLocally = true
-                        var targetPath = root.imageData.is_nsfw ? root.nsfwPath : root.downloadPath
-                        if (root.useGrabber) {
-                            grabberDownloader.outputPath = targetPath
-                            grabberDownloader.startDownload()
-                        } else {
-                            // Fallback to curl for unsupported providers (User-Agent for Sankaku etc.)
-                            var escapedPath = shellEscape(targetPath)
-                            var escapedUrl = shellEscape(root.imageData.file_url)
-                            var escapedFile = shellEscape(root.fileName)
-                            Quickshell.execDetached(["bash", "-c",
-                                "mkdir -p '" + escapedPath + "' && curl -sL -A 'Mozilla/5.0 BooruSidebar/1.0' '" + escapedUrl + "' -o '" + escapedPath + "/" + escapedFile + "' && notify-send 'Download complete' '" + escapedPath + "/" + escapedFile + "' -a 'Booru'"
-                            ])
-                        }
-                    }
-                }
-
-                RippleButton {
-                    width: parent.width - 8
-                    implicitHeight: 36
-                    buttonRadius: 4
-
-                    contentItem: StyledText {
-                        anchors.centerIn: parent
-                        text: "Save as wallpaper"
-                        font.pixelSize: Appearance.font.pixelSize.textSmall
-                    }
-
-                    onClicked: {
-                        root.showActions = false
-                        root.isSavedAsWallpaper = true
-                        var wallpaperPath = root.downloadPath.replace(/\/booru$/, '/wallpapers')
-                        if (root.useGrabber) {
-                            wallpaperDownloader.outputPath = wallpaperPath
-                            wallpaperDownloader.startDownload()
-                        } else {
-                            // Fallback to curl for unsupported providers (User-Agent for Sankaku etc.)
-                            var escapedWpPath = shellEscape(wallpaperPath)
-                            var escapedUrl = shellEscape(root.imageData.file_url)
-                            var escapedFile = shellEscape(root.fileName)
-                            Quickshell.execDetached(["bash", "-c",
-                                "mkdir -p '" + escapedWpPath + "' && curl -sL -A 'Mozilla/5.0 BooruSidebar/1.0' '" + escapedUrl + "' -o '" + escapedWpPath + "/" + escapedFile + "' && notify-send 'Wallpaper saved' '" + escapedWpPath + "/" + escapedFile + "' -a 'Booru'"
-                            ])
-                        }
-                    }
-                }
-            }
+            onDownloadStarted: root.isSavedLocally = true
+            onWallpaperStarted: root.isSavedAsWallpaper = true
+            onMenuClosed: root.showActions = false
         }
 
     }

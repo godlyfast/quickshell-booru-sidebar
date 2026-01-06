@@ -662,7 +662,7 @@ Scope {
                 onStatusChanged: {
                     // If cached file:// source failed, fall back to network
                     if (status === Image.Error && root.stableImageUrl.indexOf("file://") === 0 && !root.imageCacheTriedAndFailed) {
-                        console.log("[PreviewPanel] Cache miss, falling back to network:", root.stableImageUrl)
+                        Logger.debug("PreviewPanel", `Cache miss, falling back to network: ${root.stableImageUrl}`)
                         root.imageCacheTriedAndFailed = true
                     }
                 }
@@ -807,7 +807,7 @@ Scope {
                 onStatusChanged: {
                     // If cached file:// source failed, fall back to network
                     if (status === Image.Error && root.stableImageUrl.indexOf("file://") === 0 && !root.gifCacheTriedAndFailed) {
-                        console.log("[PreviewPanel] GIF cache miss, falling back to network:", root.stableImageUrl)
+                        Logger.debug("PreviewPanel", `GIF cache miss, falling back to network: ${root.stableImageUrl}`)
                         root.gifCacheTriedAndFailed = true
                     }
                 }

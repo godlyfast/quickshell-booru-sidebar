@@ -205,7 +205,7 @@ Rectangle {
                 // Save to config and persist
                 ConfigOptions.booru.favorites = favorites
                 Services.ConfigLoader.saveConfig()
-                console.log("[PickerDialog] Assigned", providerKey, "to slot", slot + 1)
+                Services.Logger.info("PickerDialog", `Assigned ${providerKey} to slot ${slot + 1}`)
             }
             return
         }
@@ -402,7 +402,7 @@ Rectangle {
     }
 
     Component.onCompleted: {
-        console.log("[PickerDialog] Loaded!")
+        Services.Logger.debug("PickerDialog", "Loaded!")
         searchQuery = ""
         selectedIndex = 0
         searchMode = false

@@ -66,7 +66,7 @@ Singleton {
             // Notify listeners that config is loaded
             root.configLoaded()
         } catch (e) {
-            console.error("[ConfigLoader] Error reading file:", e);
+            Logger.error("ConfigLoader", `Error reading file: ${e}`);
             Hyprland.dispatch(`exec notify-send "${qsTr("Shell configuration failed to load")}" "${root.filePath}"`)
             return;
         }
@@ -106,7 +106,7 @@ Singleton {
             }
         }
 
-        console.log(`[ConfigLoader] Setting live config value: ${nestedKey} = ${convertedValue}`);
+        Logger.debug("ConfigLoader", `Setting live config value: ${nestedKey} = ${convertedValue}`);
         obj[keys[keys.length - 1]] = convertedValue;
     }
 
@@ -117,22 +117,22 @@ Singleton {
             command: ["dd", "status=none", "of=" + targetPath]
             stdinEnabled: true
             Component.onCompleted: {
-                console.log("[ConfigLoader] Writer process created, target:", targetPath);
-                console.log("[ConfigLoader] Command:", JSON.stringify(command));
+                Logger.debug("ConfigLoader", `Writer process created, target: ${targetPath}`);
+                Logger.debug("ConfigLoader", `Command: ${JSON.stringify(command)}`);
             }
             onStarted: {
-                console.log("[ConfigLoader] Writer process started");
+                Logger.debug("ConfigLoader", "Writer process started");
                 if (jsonContent.length > 0) {
                     write(jsonContent);
-                    console.log("[ConfigLoader] Wrote", jsonContent.length, "bytes, closing stdin");
+                    Logger.debug("ConfigLoader", `Wrote ${jsonContent.length} bytes, closing stdin`);
                     stdinEnabled = false;  // Close stdin to signal EOF
                 }
             }
             onExited: (code) => {
                 if (code === 0) {
-                    console.log("[ConfigLoader] Config saved successfully to:", targetPath);
+                    Logger.info("ConfigLoader", `Config saved successfully to: ${targetPath}`);
                 } else {
-                    console.error("[ConfigLoader] Failed to save config, exit code:", code);
+                    Logger.error("ConfigLoader", `Failed to save config, exit code: ${code}`);
                 }
                 this.destroy();
             }
@@ -142,8 +142,8 @@ Singleton {
     function saveConfig() {
         const plainConfig = ObjectUtils.toPlainObject(ConfigOptions);
         const jsonContent = JSON.stringify(plainConfig, null, 2);
-        console.log("[ConfigLoader] saveConfig called, path:", root.filePath);
-        console.log("[ConfigLoader] JSON content length:", jsonContent.length);
+        Logger.debug("ConfigLoader", `saveConfig called, path: ${root.filePath}`);
+        Logger.debug("ConfigLoader", `JSON content length: ${jsonContent.length}`);
         // Create fresh Process for each save to avoid stdin closure issues
         const writer = configWriterComponent.createObject(root, {
             jsonContent: jsonContent,
@@ -151,7 +151,7 @@ Singleton {
             running: true
         });
         if (!writer) {
-            console.error("[ConfigLoader] Failed to create writer process");
+            Logger.error("ConfigLoader", "Failed to create writer process");
         }
     }
 
@@ -170,7 +170,7 @@ Singleton {
         path: Qt.resolvedUrl(root.filePath)
         watchChanges: true
         onFileChanged: {
-            console.log("[ConfigLoader] File changed, reloading...")
+            Logger.info("ConfigLoader", "File changed, reloading...")
             this.reload()
             delayedFileRead.start()
         }
@@ -180,7 +180,7 @@ Singleton {
         }
         onLoadFailed: (error) => {
             if(error == FileViewError.FileNotFound) {
-                console.log("[ConfigLoader] File not found, creating new file.")
+                Logger.info("ConfigLoader", "File not found, creating new file.")
                 root.saveConfig()
                 Hyprland.dispatch(`exec notify-send "${qsTr("Shell configuration created")}" "${root.filePath}"`)
             } else {

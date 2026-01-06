@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "../functions/shell_utils.js" as ShellUtils
 
 /**
  * Downloads an image via curl and emits done signal with path and dimensions.
@@ -20,11 +21,8 @@ Process {
 
     running: enabled && sourceUrl.length > 0
 
-    // Shell escape helper for safe embedding in shell commands
-    function shellEscape(str) {
-        if (!str) return ""
-        return str.replace(/'/g, "'\\''")
-    }
+    // Shell escape helper - use shared utility
+    function shellEscape(str) { return ShellUtils.shellEscape(str) }
 
     // Build fallback chain: || curl url1 || curl url2 || ...
     property string fallbackChain: {

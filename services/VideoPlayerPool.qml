@@ -17,7 +17,7 @@ Singleton {
     id: root
 
     Component.onCompleted: {
-        console.log("[VideoPlayerPool] Initialized with max slots:", maxPlayers)
+        Logger.info("VideoPlayerPool", `Initialized with max slots: ${maxPlayers}`)
     }
 
     // Configuration
@@ -45,7 +45,7 @@ Singleton {
         if (activeSlots.length < maxPlayers) {
             var slot = { imageId: imageId, lastUsed: Date.now() }
             activeSlots.push(slot)
-            console.log("[VideoPlayerPool] Activated slot for:", imageId, "Total:", activeSlots.length)
+            Logger.debug("VideoPlayerPool", `Activated slot for: ${imageId} Total: ${activeSlots.length}`)
             return slot
         }
 
@@ -60,7 +60,7 @@ Singleton {
         for (var i = 0; i < activeSlots.length; i++) {
             if (activeSlots[i].imageId === imageId) {
                 activeSlots.splice(i, 1)
-                console.log("[VideoPlayerPool] Released slot for:", imageId, "Total:", activeSlots.length)
+                Logger.debug("VideoPlayerPool", `Released slot for: ${imageId} Total: ${activeSlots.length}`)
                 return
             }
         }
@@ -71,7 +71,7 @@ Singleton {
      * Just clears the slots array, causing all local MediaPlayers to lose their source.
      */
     function stopAll() {
-        console.log("[VideoPlayerPool] Clearing all", activeSlots.length, "slots")
+        Logger.debug("VideoPlayerPool", `Clearing all ${activeSlots.length} slots`)
         activeSlots = []
     }
 
@@ -93,7 +93,7 @@ Singleton {
         activeSlots[lruIndex].imageId = imageId
         activeSlots[lruIndex].lastUsed = Date.now()
 
-        console.log("[VideoPlayerPool] Evicted slot from:", evictedId, "for:", imageId)
+        Logger.debug("VideoPlayerPool", `Evicted slot from: ${evictedId} for: ${imageId}`)
         return activeSlots[lruIndex]
     }
 
@@ -109,7 +109,7 @@ Singleton {
                     lruIndex = i
                 }
             }
-            console.log("[VideoPlayerPool] Shrinking: removed slot for:", activeSlots[lruIndex].imageId)
+            Logger.debug("VideoPlayerPool", `Shrinking: removed slot for: ${activeSlots[lruIndex].imageId}`)
             activeSlots.splice(lruIndex, 1)
         }
     }

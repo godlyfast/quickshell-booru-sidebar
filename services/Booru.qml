@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 
 import "../modules/common"
 import "../modules/common/utils"
+import "./providers"
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -18,22 +19,40 @@ Singleton {
     id: root
 
     Component.onCompleted: {
-        console.log("=== BOORU SERVICE LOADED ===")
-        console.log("Provider count: " + providerList.length)
-        console.log("Providers: " + providerList.join(", "))
+        Logger.info("Booru", "=== BOORU SERVICE LOADED ===")
+        Logger.info("Booru", `Provider count: ${ProviderRegistry.providerList.length}`)
+        Logger.debug("Booru", `Providers: ${ProviderRegistry.providerList.join(", ")}`)
     }
+
+    // =========================================================================
+    // Provider Registry Delegates (backwards compatibility)
+    // Static data is now centralized in ProviderRegistry.qml
+    // =========================================================================
+    readonly property var providerList: ProviderRegistry.providerList
+    readonly property var providers: ProviderRegistry.providers
+    readonly property var providerSortOptions: ProviderRegistry.providerSortOptions
+    readonly property var grabberSources: ProviderRegistry.grabberSources
+
+    // Delegate helper functions to ProviderRegistry
+    function providerHasMirrors(provider) { return ProviderRegistry.providerHasMirrors(provider) }
+    function getMirrorList(provider) { return ProviderRegistry.getMirrorList(provider) }
+    function getGrabberSource(provider) { return ProviderRegistry.getGrabberSource(provider) }
+    function getProviderMapFunc(providerKey) { return ProviderRegistry.getProviderMapFunc(providerKey) }
+    function getProviderTagMapFunc(providerKey) { return ProviderRegistry.getProviderTagMapFunc(providerKey) }
+    function getPostUrl(provider, imageId) { return ProviderRegistry.getPostUrl(provider, imageId) }
+    function getWorkingImageSource(url) { return ProviderRegistry.getWorkingImageSource(url) }
 
     // Restore provider settings after config is loaded
     Connections {
         target: ConfigLoader
         function onConfigLoaded() {
-            var savedProvider = ConfigOptions.booru.activeProvider
+            const savedProvider = ConfigOptions.booru.activeProvider
             if (savedProvider && savedProvider.length > 0 && providerList.indexOf(savedProvider) !== -1) {
                 loadingSettings = true
                 currentProvider = savedProvider
                 loadProviderSettings(savedProvider)
                 loadingSettings = false
-                console.log("[Booru] Restored active provider:", savedProvider)
+                Logger.info("Booru", `Restored active provider: ${savedProvider}`)
             }
             // Now allow property change handlers to save
             configReady = true
@@ -62,14 +81,6 @@ Singleton {
     property int currentPage: 1
     property var currentTags: []
     property string defaultUserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
-    property var providerList: {
-        var list = Object.keys(providers).filter(function(provider) {
-            // Include providers with API or useGrabberFallback
-            return provider !== "system" && (providers[provider].api || providers[provider].useGrabberFallback)
-        })
-        console.log("[Booru] providerList: " + list.join(", "))
-        return list
-    }
 
     // Persistent state
     property string currentProvider: "wallhaven"
@@ -100,11 +111,8 @@ Singleton {
     // Backwards compatibility aliases
     readonly property alias danbooruAgeOptions: root.ageFilterOptions
     readonly property alias danbooruAgeLabels: root.ageFilterLabels
-    // Providers that support the age: metatag
-    // Only providers that support the age: metatag (Danbooru/Moebooru with date indexing)
-    // Note: sakugabooru and 3dbooru do NOT support age: metatag despite being Moebooru
-    readonly property var ageFilterProviders: ["danbooru", "aibooru", "yandere", "konachan"]
-    property bool providerSupportsAgeFilter: ageFilterProviders.indexOf(currentProvider) !== -1
+    // Computed property: uses ProviderRegistry.ageFilterProviders
+    property bool providerSupportsAgeFilter: ProviderRegistry.ageFilterProviders.indexOf(currentProvider) !== -1
 
     // Universal sorting - works with all providers that support it
     property string currentSorting: ""  // Empty = provider default
@@ -143,66 +151,16 @@ Singleton {
         }
     }
 
-    // Per-provider sort options (empty array = no sorting support)
-    // Based on API documentation for each booru type
-    property var providerSortOptions: ({
-        // Moebooru (order: metatag) - yande.re, konachan, sakugabooru, 3dbooru
-        "yandere": ["score", "score_asc", "favcount", "random", "rank", "id", "id_desc", "change", "comment", "mpixels", "landscape", "portrait"],
-        "konachan": ["score", "score_asc", "favcount", "random", "rank", "id", "id_desc", "change", "comment", "mpixels", "landscape", "portrait"],
-        "sakugabooru": ["score", "score_asc", "favcount", "random", "rank", "id", "id_desc", "change", "comment", "mpixels", "landscape", "portrait"],
-        "3dbooru": ["score", "score_asc", "favcount", "random", "rank", "id", "id_desc", "change", "comment", "mpixels", "landscape", "portrait"],
-
-        // Danbooru (order: metatag)
-        "danbooru": ["rank", "score", "favcount", "random", "id", "id_desc", "change", "comment", "comment_bumped", "note", "mpixels", "landscape", "portrait"],
-        "aibooru": ["rank", "score", "favcount", "random", "id", "id_desc", "change", "comment", "comment_bumped", "note", "mpixels", "landscape", "portrait"],
-
-        // e621 (order: metatag) - e926 is now a mirror of e621
-        "e621": ["score", "favcount", "random", "id", "id_asc", "comment_count", "tagcount", "mpixels", "filesize", "landscape", "portrait"],
-
-        // Gelbooru-style (sort: metatag)
-        "gelbooru": ["score", "score:asc", "score:desc", "id", "id:asc", "updated", "random"],
-        "safebooru": ["score", "score:asc", "score:desc", "id", "id:asc", "updated", "random"],
-        "rule34": ["score", "score:asc", "score:desc", "id", "id:asc", "updated", "random"],
-        "xbooru": ["score", "score:asc", "score:desc", "id", "id:asc", "updated", "random"],
-        "tbib": ["score", "score:asc", "score:desc", "id", "id:asc", "updated"],
-        "hypnohub": ["score", "score:asc", "score:desc", "id", "id:asc", "updated"],
-
-        // Wallhaven (URL params)
-        "wallhaven": ["toplist", "random", "date_added", "relevance", "views", "favorites", "hot"],
-
-        // Zerochan (s param)
-        "zerochan": ["id", "fav"],
-
-        // Sankaku (order: metatag) - NOTE: favcount causes API timeout errors
-        "sankaku": ["popularity", "date", "quality", "score", "random", "id", "id_asc", "recently_favorited", "recently_voted"],
-        "idol_sankaku": ["popularity", "date", "quality", "score", "random", "id", "id_asc", "recently_favorited", "recently_voted"],
-
-        // Derpibooru (sf param)
-        "derpibooru": ["score", "wilson_score", "relevance", "random", "created_at", "updated_at", "first_seen_at", "width", "height", "comment_count", "tag_count"],
-
-        // No sorting support
-        "waifu.im": [],
-        "nekos_best": [],
-        "paheal": []
-    })
-
-    // Get sort options for current provider
+    // Get sort options for current provider (data from ProviderRegistry)
     function getSortOptions() {
-        var options = providerSortOptions[currentProvider]
-        return options ? options : []
+        return ProviderRegistry.getSortOptionsForProvider(currentProvider)
     }
 
     // Check if current provider supports sorting
     property bool providerSupportsSorting: getSortOptions().length > 0
 
-    // SFW-only providers where NSFW toggle doesn't apply
-    // safebooru.org, nekos.best, zerochan are all SFW-only by design
-    // Note: konachan and e926 are now determined by mirror selection
-    property var sfwOnlyProviders: ["safebooru", "nekos_best", "zerochan"]
-    // NSFW-only providers - rating filter doesn't apply (all content is NSFW)
-    property var nsfwOnlyProviders: ["rule34", "xbooru", "tbib", "paheal", "hypnohub"]
-    // Provider supports NSFW if: not in sfwOnlyProviders AND current mirror isn't SFW-only
-    property bool providerSupportsNsfw: sfwOnlyProviders.indexOf(currentProvider) === -1 && !currentMirrorIsSfwOnly(currentProvider)
+    // Provider supports NSFW if: not SFW-only AND current mirror isn't SFW-only
+    property bool providerSupportsNsfw: ProviderRegistry.sfwOnlyProviders.indexOf(currentProvider) === -1 && !currentMirrorIsSfwOnly(currentProvider)
 
     // Gelbooru API credentials (configured in config.json under "booru")
     // Get your key at: https://gelbooru.com/index.php?page=account&s=options
@@ -218,9 +176,6 @@ Singleton {
     // Get your key at: https://wallhaven.cc/settings/account
     property string wallhavenApiKey: (ConfigOptions.booru && ConfigOptions.booru.wallhavenApiKey) ? ConfigOptions.booru.wallhavenApiKey : ""
 
-    // Providers that require curl (User-Agent header needed, XHR can't set it)
-    property var curlProviders: ["zerochan"]
-
     // Danbooru API credentials (higher rate limits, access to restricted content)
     // Get your key at: https://danbooru.donmai.us/profile → API Key
     property string danbooruLogin: (ConfigOptions.booru && ConfigOptions.booru.danbooruLogin) ? ConfigOptions.booru.danbooruLogin : ""
@@ -230,85 +185,16 @@ Singleton {
     // Tokens: %website%, %id%, %md5%, %artist%, %copyright%, %character%, %ext%
     property string filenameTemplate: (ConfigOptions.booru && ConfigOptions.booru.filenameTemplate) ? ConfigOptions.booru.filenameTemplate : "%website% %id%.%ext%"
 
-    // Grabber source names for each provider (used for CLI downloads)
-    // Maps our provider keys to Grabber's expected source names
-    readonly property var grabberSources: ({
-        "yandere": "yande.re",
-        "konachan": "konachan.com",      // Uses .com mirror for Grabber
-        "sakugabooru": "www.sakugabooru.com",
-        "danbooru": "danbooru.donmai.us",
-        "gelbooru": "gelbooru.com",
-        "safebooru": "safebooru.org",
-        "rule34": "api.rule34.xxx",
-        "e621": "e621.net",
-        "wallhaven": "wallhaven.cc",
-        "xbooru": "xbooru.com",
-        "hypnohub": "hypnohub.net",
-        "aibooru": "aibooru.online",
-        "zerochan": "www.zerochan.net",
-        "sankaku": "chan.sankakucomplex.com",
-        "idol_sankaku": "idol.sankakucomplex.com",
-        "derpibooru": "derpibooru.org",
-        "3dbooru": "behoimi.org",
-        "anime_pictures": "anime-pictures.net",
-        "e_shuushuu": "e-shuushuu.net"
-        // Note: waifu.im, nekos_best, tbib, paheal not supported by Grabber
-    })
-
-    // Check if provider supports Grabber downloads
-    function getGrabberSource(provider) {
-        return grabberSources[provider] ? grabberSources[provider] : null
-    }
-
-    // Get the booru post URL for viewing on the site
-    function getPostUrl(provider, imageId) {
-        var p = providers[provider]
-        if (!p || !imageId) return ""
-
-        var baseUrl = p.url
-        var apiType = p.apiType || ""
-
-        // URL patterns by API type
-        switch (apiType) {
-            case "moebooru":
-                return baseUrl + "/post/show/" + imageId
-            case "danbooru":
-                return baseUrl + "/posts/" + imageId
-            case "gelbooru":
-            case "gelbooruNsfw":
-                return baseUrl + "/index.php?page=post&s=view&id=" + imageId
-            case "e621":
-                return baseUrl + "/posts/" + imageId
-            case "wallhaven":
-                return baseUrl + "/w/" + imageId
-            case "sankaku":
-                return baseUrl + "/post/show/" + imageId
-            case "shimmie":
-                return baseUrl + "/post/view/" + imageId
-            case "philomena":
-                return baseUrl + "/images/" + imageId
-            case "zerochan":
-                return baseUrl + "/" + imageId
-            default:
-                // waifuIm, nekosBest don't have post pages
-                return ""
-        }
-    }
-
-    // Providers that should use Grabber for API requests (bypasses Cloudflare)
-    // Toggle via /grabber command
+    // Grabber API fallback toggle (via /grabber command)
     property bool useGrabberFallback: true
-    // Providers that prefer Grabber over direct API (bypasses User-Agent/Cloudflare issues)
-    // Note: zerochan requires authentication, not currently supported
-    property var grabberPreferredProviders: ["danbooru"]
 
-    // Check if provider should use Grabber for requests
+    // Check if provider should use Grabber for requests (runtime decision)
     function shouldUseGrabber(provider) {
         if (!useGrabberFallback) return false
         // Grabber-only providers always use Grabber
         if (providers[provider] && providers[provider].useGrabberFallback) return true
         // Check if this provider is in the preferred list and has a Grabber source
-        return grabberPreferredProviders.indexOf(provider) !== -1 && grabberSources[provider]
+        return ProviderRegistry.grabberPreferredProviders.indexOf(provider) !== -1 && grabberSources[provider]
     }
 
     // Component for creating GrabberRequest instances
@@ -318,17 +204,6 @@ Singleton {
 
     // Mirror system - tracks current mirror selection per provider
     property var currentMirrors: ({})
-
-    // Check if provider has mirrors
-    function providerHasMirrors(provider) {
-        return providers[provider] && providers[provider].mirrors ? true : false
-    }
-
-    // Get list of mirror keys for a provider
-    function getMirrorList(provider) {
-        if (!providerHasMirrors(provider)) return []
-        return Object.keys(providers[provider].mirrors)
-    }
 
     // Get current mirror key for a provider (defaults to first mirror)
     function getCurrentMirror(provider) {
@@ -343,10 +218,10 @@ Singleton {
     function setMirror(provider, mirrorKey) {
         if (!providerHasMirrors(provider)) return
         if (!providers[provider].mirrors[mirrorKey]) return
-        var newMirrors = JSON.parse(JSON.stringify(currentMirrors))
+        const newMirrors = JSON.parse(JSON.stringify(currentMirrors))
         newMirrors[provider] = mirrorKey
         currentMirrors = newMirrors
-        console.log("[Booru] Mirror set: " + provider + " -> " + mirrorKey)
+        Logger.info("Booru", `Mirror set: ${provider} -> ${mirrorKey}`)
     }
 
     // Get effective API URL for provider (respects mirror selection)
@@ -379,324 +254,12 @@ Singleton {
         return providers[provider].mirrors[mirror].sfwOnly === true
     }
 
-    property var providers: {
-        "system": { "name": "System" },
-        "yandere": {
-            "name": "yande.re",
-            "url": "https://yande.re",
-            "api": "https://yande.re/post.json",
-            "apiType": "moebooru",
-            "description": "All-rounder | Good quality, decent quantity",
-            "tagSearchTemplate": "https://yande.re/tag.json?order=count&limit=10&name={{query}}*"
-        },
-        "konachan": {
-            "name": "Konachan",
-            "url": "https://konachan.net",
-            "api": "https://konachan.net/post.json",
-            "apiType": "moebooru",
-            "description": "For desktop wallpapers | Good quality",
-            "mirrors": {
-                "konachan.net": {
-                    "url": "https://konachan.net",
-                    "api": "https://konachan.net/post.json",
-                    "tagApi": "https://konachan.net/tag.json",
-                    "description": "SFW-focused",
-                    "sfwOnly": true
-                },
-                "konachan.com": {
-                    "url": "https://konachan.com",
-                    "api": "https://konachan.com/post.json",
-                    "tagApi": "https://konachan.com/tag.json",
-                    "description": "More NSFW",
-                    "sfwOnly": false
-                }
-            },
-            "tagSearchTemplate": "https://konachan.net/tag.json?order=count&limit=10&name={{query}}*"
-        },
-        "sakugabooru": {
-            "name": "Sakugabooru",
-            "url": "https://www.sakugabooru.com",
-            "api": "https://www.sakugabooru.com/post.json",
-            "apiType": "moebooru",
-            "description": "Animation sakuga clips | Video-focused",
-            "tagSearchTemplate": "https://www.sakugabooru.com/tag.json?order=count&limit=10&name={{query}}*"
-        },
-        "danbooru": {
-            "name": "Danbooru",
-            "url": "https://danbooru.donmai.us",
-            "api": "https://danbooru.donmai.us/posts.json",
-            "apiType": "danbooru",
-            "description": "The popular one | Best quantity, quality varies",
-            "mirrors": {
-                "danbooru.donmai.us": {
-                    "url": "https://danbooru.donmai.us",
-                    "api": "https://danbooru.donmai.us/posts.json",
-                    "tagApi": "https://danbooru.donmai.us/tags.json",
-                    "description": "Main site",
-                    "sfwOnly": false
-                },
-                "safebooru.donmai.us": {
-                    "url": "https://safebooru.donmai.us",
-                    "api": "https://safebooru.donmai.us/posts.json",
-                    "tagApi": "https://safebooru.donmai.us/tags.json",
-                    "description": "SFW-only",
-                    "sfwOnly": true
-                }
-            },
-            "tagSearchTemplate": "https://danbooru.donmai.us/tags.json?limit=10&search[name_matches]={{query}}*"
-        },
-        "gelbooru": {
-            "name": "Gelbooru",
-            "url": "https://gelbooru.com",
-            "api": "https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1",
-            "apiType": "gelbooru",
-            "description": "Great quantity, lots of NSFW, quality varies",
-            "tagSearchTemplate": "https://gelbooru.com/index.php?page=dapi&s=tag&q=index&json=1&orderby=count&limit=10&name_pattern={{query}}%"
-        },
-        "waifu.im": {
-            "name": "waifu.im",
-            "url": "https://waifu.im",
-            "api": "https://api.waifu.im/search",
-            "apiType": "waifuIm",
-            "description": "Waifus only | Excellent quality, limited quantity",
-            "tagSearchTemplate": "https://api.waifu.im/tags"
-        },
-        "safebooru": {
-            "name": "Safebooru",
-            "url": "https://safebooru.org",
-            "api": "https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1",
-            "apiType": "gelbooru",
-            "description": "SFW only | Family-friendly anime images",
-            "tagSearchTemplate": "https://safebooru.org/autocomplete.php?q={{query}}",
-            // Autocomplete format: {label: "tag (count)", value: "tag"}
-            "tagMapFunc": function(response) {
-                if (!response || !Array.isArray(response)) return []
-                var result = []
-                for (var i = 0; i < response.length; i++) {
-                    var item = response[i]
-                    var count = 0
-                    if (item && item.label) {
-                        var match = item.label.match(/\((\d+)\)/)
-                        if (match && match[1]) count = parseInt(match[1])
-                    }
-                    result.push({ name: (item && item.value) ? item.value : "", count: count })
-                }
-                return result
-            }
-        },
-        "rule34": {
-            "name": "Rule34",
-            "url": "https://rule34.xxx",
-            "api": "https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&json=1",
-            "apiType": "gelbooruNsfw",
-            "description": "NSFW | Requires API key (rule34.xxx/account)",
-            "tagSearchTemplate": "https://api.rule34.xxx/autocomplete.php?q={{query}}",
-            // Autocomplete format: {label: "tag (count)", value: "tag"}
-            "tagMapFunc": function(response) {
-                if (!response || !Array.isArray(response)) return []
-                var result = []
-                for (var i = 0; i < response.length; i++) {
-                    var item = response[i]
-                    var count = 0
-                    if (item && item.label) {
-                        var match = item.label.match(/\((\d+)\)/)
-                        if (match && match[1]) count = parseInt(match[1])
-                    }
-                    result.push({ name: item.value || "", count: count })
-                }
-                return result
-            }
-        },
-        "e621": {
-            "name": "e621",
-            "url": "https://e621.net",
-            "api": "https://e621.net/posts.json",
-            "apiType": "e621",
-            "description": "Furry artwork | NSFW, requires User-Agent",
-            "mirrors": {
-                "e621.net": {
-                    "url": "https://e621.net",
-                    "api": "https://e621.net/posts.json",
-                    "tagApi": "https://e621.net/tags.json",
-                    "description": "Main site (NSFW)",
-                    "sfwOnly": false
-                },
-                "e926.net": {
-                    "url": "https://e926.net",
-                    "api": "https://e926.net/posts.json",
-                    "tagApi": "https://e926.net/tags.json",
-                    "description": "SFW-only mirror",
-                    "sfwOnly": true
-                }
-            },
-            "tagSearchTemplate": "https://e621.net/tags.json?limit=10&search[name_matches]={{query}}*&search[order]=count"
-        },
-        "wallhaven": {
-            "name": "Wallhaven",
-            "url": "https://wallhaven.cc",
-            "api": "https://wallhaven.cc/api/v1/search",
-            "apiType": "wallhaven",
-            "description": "Desktop wallpapers | High quality, all resolutions",
-            "tagSearchTemplate": "https://wallhaven.cc/api/v1/search?q={{query}}&sorting=relevance"
-        },
-        "nekos_best": {
-            "name": "nekos.best",
-            "url": "https://nekos.best",
-            "api": "https://nekos.best/api/v2/neko",
-            "apiType": "nekosBest",
-            "description": "Anime characters | Random images, high quality"
-        },
-        "xbooru": {
-            "name": "Xbooru",
-            "url": "https://xbooru.com",
-            "api": "https://xbooru.com/index.php?page=dapi&s=post&q=index&json=1",
-            "apiType": "gelbooruNsfw",
-            "description": "Hentai focused imageboard"
-        },
-        "tbib": {
-            "name": "TBIB",
-            "url": "https://tbib.org",
-            "api": "https://tbib.org/index.php?page=dapi&s=post&q=index&json=1",
-            "description": "The Big ImageBoard | 8M+ images aggregator",
-            "mapFunc": (response) => {
-                if (!response || !Array.isArray(response)) return []
-                var result = []
-                for (var i = 0; i < response.length; i++) {
-                    var item = response[i]
-                    if (!item || !item.directory || !item.image) continue
-                    var fileUrl = "https://tbib.org/images/" + item.directory + "/" + item.image
-                    var previewUrl = "https://tbib.org/thumbnails/" + item.directory + "/thumbnail_" + (item.hash || "") + ".jpg"
-                    result.push({
-                        "id": item.id,
-                        "width": item.width || 0,
-                        "height": item.height || 0,
-                        "aspect_ratio": (item.width && item.height) ? item.width / item.height : 1,
-                        "tags": item.tags || "",
-                        "rating": item.rating ? item.rating.charAt(0) : "q",
-                        "is_nsfw": (item.rating !== "safe"),
-                        "md5": item.hash || "",
-                        "preview_url": previewUrl,
-                        "sample_url": fileUrl,
-                        "file_url": fileUrl,
-                        "file_ext": item.image.split('.').pop(),
-                        "source": fileUrl
-                    })
-                }
-                return result
-            }
-        },
-        "paheal": {
-            "name": "Paheal Rule34",
-            "url": "https://rule34.paheal.net",
-            "api": "https://rule34.paheal.net/api/danbooru/find_posts",
-            "apiType": "shimmie",
-            "description": "Rule34 (Shimmie) | 3.5M+ images",
-            "isXml": true
-        },
-        "hypnohub": {
-            "name": "Hypnohub",
-            "url": "https://hypnohub.net",
-            "api": "https://hypnohub.net/index.php?page=dapi&s=post&q=index&json=1",
-            "apiType": "gelbooruNsfw",
-            "description": "Hypnosis/mind control themed | ~92k images"
-        },
-        "aibooru": {
-            "name": "AIBooru",
-            "url": "https://aibooru.online",
-            "api": "https://aibooru.online/posts.json",
-            "apiType": "danbooru",
-            "description": "AI-generated art | ~150k images",
-            "tagSearchTemplate": "https://aibooru.online/tags.json?limit=10&search[name_matches]={{query}}*"
-        },
-        "zerochan": {
-            "name": "Zerochan",
-            "url": "https://www.zerochan.net",
-            "api": "https://www.zerochan.net",
-            "apiType": "zerochan",
-            "description": "High-quality anime art | SFW-focused"
-            // Note: Zerochan requires User-Agent header, see constructRequestUrl
-        },
-        "sankaku": {
-            "name": "Sankaku Channel",
-            "url": "https://chan.sankakucomplex.com",
-            "api": "https://sankakuapi.com/v2/posts",
-            "apiType": "sankaku",
-            "description": "Large anime imageboard | Mixed content",
-            "tagSearchTemplate": "https://sankakuapi.com/v2/tags?name={{query}}*&limit=10"
-        },
-        "idol_sankaku": {
-            "name": "Idol Sankaku",
-            "url": "https://idol.sankakucomplex.com",
-            "api": "https://sankakuapi.com/v2/posts",
-            "apiType": "sankaku",
-            "description": "Japanese idols | Real photos",
-            "tagSearchTemplate": "https://sankakuapi.com/v2/tags?name={{query}}*&limit=10"
-        },
-        "derpibooru": {
-            "name": "Derpibooru",
-            "url": "https://derpibooru.org",
-            "api": "https://derpibooru.org/api/v1/json/search/images",
-            "apiType": "philomena",
-            "description": "MLP artwork | Philomena engine",
-            "tagSearchTemplate": "https://derpibooru.org/api/v1/json/search/tags?q={{query}}*"
-        },
-        "3dbooru": {
-            "name": "3Dbooru",
-            "url": "https://behoimi.org",
-            "api": "https://behoimi.org/post/index.json",
-            "apiType": "moebooru",
-            "description": "3D rendered art | Moebooru fork",
-            "tagSearchTemplate": "https://behoimi.org/tag/index.json?order=count&limit=10&name={{query}}*"
-        },
-        "anime_pictures": {
-            "name": "Anime-Pictures",
-            "url": "https://anime-pictures.net",
-            "description": "Curated anime wallpapers | Grabber-only",
-            "useGrabberFallback": true
-        },
-        "e_shuushuu": {
-            "name": "E-Shuushuu",
-            "url": "https://e-shuushuu.net",
-            "description": "Cute anime art | Grabber-only",
-            "useGrabberFallback": true
-        }
-    }
-
-    function getWorkingImageSource(url) {
-        if (!url) return null;
-        if (url.includes('pximg.net')) {
-            var filename = url.substring(url.lastIndexOf('/') + 1)
-            var artworkId = filename.replace(/_p\d+\.(png|jpg|jpeg|gif)$/, '')
-            return "https://www.pixiv.net/en/artworks/" + artworkId
-        }
-        return url;
-    }
-
-    // Get the mapFunc for a provider, using API family mappers when available
-    function getProviderMapFunc(providerKey) {
-        var provider = providers[providerKey]
-        if (!provider) return null
-        // Use inline mapFunc if defined (provider override)
-        if (provider.mapFunc) return provider.mapFunc
-        // Otherwise use API family mapper
-        if (provider.apiType && ApiTypes.BooruApiTypes[provider.apiType]) {
-            return ApiTypes.BooruApiTypes[provider.apiType].mapFunc
-        }
-        return null
-    }
-
-    // Get the tagMapFunc for a provider
-    function getProviderTagMapFunc(providerKey) {
-        var provider = providers[providerKey]
-        if (!provider) return null
-        // Use inline tagMapFunc if defined
-        if (provider.tagMapFunc) return provider.tagMapFunc
-        // Otherwise use API family mapper
-        if (provider.apiType && ApiTypes.BooruApiTypes[provider.apiType]) {
-            return ApiTypes.BooruApiTypes[provider.apiType].tagMapFunc
-        }
-        return null
-    }
+    // =========================================================================
+    // Removed: providers object - now in ProviderRegistry.qml
+    // Removed: providerSortOptions - now in ProviderRegistry.qml
+    // Removed: grabberSources - now in ProviderRegistry.qml
+    // Removed: ageFilterProviders, sfwOnlyProviders, nsfwOnlyProviders - now in ProviderRegistry.qml
+    // =========================================================================
 
     // Pre-populate cache index with filenames from API response
     // Runs a single batch check instead of per-image checks
@@ -793,34 +356,34 @@ Singleton {
 
     // Save current provider settings (sorting, ageFilter, nsfw)
     function saveProviderSettings() {
-        var settings = ConfigOptions.booru.providerSettings || {}
+        const settings = ConfigOptions.booru.providerSettings || {}
         // Create new object to trigger property change
-        var newSettings = JSON.parse(JSON.stringify(settings))
+        const newSettings = JSON.parse(JSON.stringify(settings))
         newSettings[currentProvider] = {
             sorting: currentSorting,
             ageFilter: ageFilter,
             nsfw: allowNsfw
         }
         ConfigOptions.booru.providerSettings = newSettings
-        console.log("[Booru] Saved settings for", currentProvider, ":", JSON.stringify(newSettings[currentProvider]))
+        Logger.debug("Booru", `Saved settings for ${currentProvider}: ${JSON.stringify(newSettings[currentProvider])}`)
     }
 
     // Load saved provider settings
     function loadProviderSettings(provider) {
         loadingSettings = true  // Prevent save loops
-        var settings = ConfigOptions.booru.providerSettings || {}
+        const settings = ConfigOptions.booru.providerSettings || {}
         if (settings[provider]) {
-            var s = settings[provider]
+            const s = settings[provider]
             if (s.sorting !== undefined) currentSorting = s.sorting
             if (s.ageFilter !== undefined) ageFilter = s.ageFilter
             if (s.nsfw !== undefined) allowNsfw = s.nsfw
-            console.log("[Booru] Loaded settings for", provider, ":", JSON.stringify(s))
+            Logger.debug("Booru", `Loaded settings for ${provider}: ${JSON.stringify(s)}`)
         } else {
             // Reset to defaults for new provider
             currentSorting = ""
             ageFilter = "1month"
             // Keep allowNsfw as-is or reset based on provider type
-            console.log("[Booru] No saved settings for", provider, ", using defaults")
+            Logger.debug("Booru", `No saved settings for ${provider}, using defaults`)
         }
         loadingSettings = false
     }
@@ -832,37 +395,12 @@ Singleton {
         var tagString = tags.join(" ")
 
         // Inject sort metatag for providers that use tag-based sorting
-        if (currentSorting && currentSorting.length > 0) {
-            // Moebooru sites use order:X
-            if (currentProvider === "yandere" || currentProvider === "konachan" ||
-                currentProvider === "sakugabooru" ||
-                currentProvider === "3dbooru") {
-                tagString = "order:" + currentSorting + " " + tagString
-            }
-            // Danbooru uses order:X
-            else if (currentProvider === "danbooru" || currentProvider === "aibooru") {
-                tagString = "order:" + currentSorting + " " + tagString
-            }
-            // e621 uses order:X
-            else if (currentProvider === "e621") {
-                tagString = "order:" + currentSorting + " " + tagString
-            }
-            // Gelbooru-based sites use sort:X
-            else if (currentProvider === "gelbooru" || currentProvider === "safebooru" ||
-                     currentProvider === "rule34" || currentProvider === "xbooru" ||
-                     currentProvider === "tbib" || currentProvider === "hypnohub") {
-                tagString = "sort:" + currentSorting + " " + tagString
-            }
-            // Sankaku sites use order:X
-            else if (currentProvider === "sankaku" || currentProvider === "idol_sankaku") {
-                tagString = "order:" + currentSorting + " " + tagString
-            }
-            // Zerochan, Wallhaven, Derpibooru handled via URL params below
-        }
+        // (Zerochan, Wallhaven, Derpibooru handled via URL params below)
+        tagString = ProviderRegistry.injectSortMetatag(currentProvider, tagString, currentSorting)
 
         // Inject age filter for providers that support it (prevents timeout on heavy sorts)
         // ageFilterProviders: danbooru, aibooru, yandere, konachan (NOT sakugabooru/3dbooru)
-        if (ageFilter !== "any" && ageFilterProviders.indexOf(currentProvider) !== -1) {
+        if (ageFilter !== "any" && ProviderRegistry.ageFilterProviders.indexOf(currentProvider) !== -1) {
             tagString = tagString + " age:<" + ageFilter
         }
 
@@ -875,8 +413,8 @@ Singleton {
         var skipNsfwFilter = (currentProvider === "waifu.im" ||
                               currentProvider === "derpibooru" ||
                               currentProvider === "zerochan" ||
-                              sfwOnlyProviders.indexOf(currentProvider) !== -1 ||
-                              nsfwOnlyProviders.indexOf(currentProvider) !== -1)
+                              ProviderRegistry.sfwOnlyProviders.indexOf(currentProvider) !== -1 ||
+                              ProviderRegistry.nsfwOnlyProviders.indexOf(currentProvider) !== -1)
         if (!nsfw && !skipNsfwFilter) {
             if (currentProvider == "gelbooru" || currentProvider == "danbooru" || currentProvider == "rule34" || currentProvider == "aibooru")
                 tagString += " rating:general";
@@ -997,27 +535,27 @@ Singleton {
         currentTags = tags
         currentPage = page
 
-        var requestProvider = currentProvider  // Capture provider at request time
+        const requestProvider = currentProvider  // Capture provider at request time
 
         // Use Grabber for preferred providers (bypasses Cloudflare)
         if (shouldUseGrabber(requestProvider)) {
-            console.log("[Booru] Using Grabber for " + requestProvider)
+            Logger.info("Booru", `Using Grabber for ${requestProvider}`)
             makeGrabberRequest(tags, nsfw, limit, page, requestProvider)
             return
         }
 
         // Use curl for providers that need User-Agent header
-        if (curlProviders.indexOf(requestProvider) !== -1) {
-            console.log("[Booru] Using curl for " + requestProvider)
+        if (ProviderRegistry.curlProviders.indexOf(requestProvider) !== -1) {
+            Logger.info("Booru", `Using curl for ${requestProvider}`)
             makeCurlRequest(tags, nsfw, limit, page, requestProvider)
             return
         }
 
-        var url = constructRequestUrl(tags, nsfw, limit, page)
-        console.log("[Booru] " + currentProvider + " request: " + url)
+        const url = constructRequestUrl(tags, nsfw, limit, page)
+        Logger.info("Booru", `${currentProvider} request: ${url}`)
         if (currentProvider == "rule34") {
             // Only log whether credentials are set, not their values (security)
-            console.log("[Booru] Rule34 credentials: " + (rule34ApiKey && rule34UserId ? "configured" : "NOT SET"))
+            Logger.debug("Booru", `Rule34 credentials: ${rule34ApiKey && rule34UserId ? "configured" : "NOT SET"}`)
         }
 
         var newResponse = root.booruResponseDataComponent.createObject(null, {
@@ -1028,7 +566,7 @@ Singleton {
             "message": ""
         })
 
-        var xhr = new XMLHttpRequest()
+        const xhr = new XMLHttpRequest()
         xhr.open("GET", url)
         // Danbooru/e621/e926/Sankaku need User-Agent or API blocks them
         if (requestProvider == "danbooru" || requestProvider == "e621" || requestProvider == "e926" ||
@@ -1036,59 +574,100 @@ Singleton {
             try {
                 xhr.setRequestHeader("User-Agent", "Mozilla/5.0 BooruSidebar/1.0")
             } catch (e) {
-                console.log("[Booru] Could not set User-Agent for " + requestProvider)
+                Logger.warn("Booru", `Could not set User-Agent for ${requestProvider}`)
             }
         }
 
+        // Bug 1.2: Timeout handling - create timer to abort stale requests
+        let requestAborted = false
+        const timeoutTimer = Qt.createQmlObject('import QtQuick; Timer { interval: 30000; running: true }', root)
+
+        timeoutTimer.triggered.connect(() => {
+            if (xhr.readyState !== XMLHttpRequest.DONE && !requestAborted) {
+                requestAborted = true
+                Logger.warn("Booru", `Request timeout for ${requestProvider} after 30s`)
+                try { xhr.abort() } catch (e) { /* ignore abort errors */ }
+                removeFromPending()
+                newResponse.message = `${root.failMessage}\n(Request timed out after 30 seconds)`
+                root.runningRequests--
+                addResponse(newResponse)
+                root.responseFinished()
+            }
+            timeoutTimer.destroy()
+        })
+
         // Helper to remove XHR from pending list
-        function removeFromPending() {
-            var idx = root.pendingXhrRequests.indexOf(xhr)
+        const removeFromPending = () => {
+            const idx = root.pendingXhrRequests.indexOf(xhr)
             if (idx !== -1) {
                 root.pendingXhrRequests.splice(idx, 1)
             }
         }
 
         // Helper to add response (single page, already cleared)
-        function addResponse(resp) {
+        const addResponse = (resp) => {
             root.responses = [resp]
         }
 
-        xhr.onreadystatechange = function() {
+        xhr.onreadystatechange = () => {
             if (xhr.readyState === XMLHttpRequest.DONE) {
-                console.log("[Booru] " + requestProvider + " done - HTTP " + xhr.status)
+                // Stop and cleanup timeout timer
+                if (timeoutTimer) {
+                    timeoutTimer.stop()
+                    timeoutTimer.destroy()
+                }
+
+                // Bug 1.2: Skip if already handled by timeout
+                if (requestAborted) return
+
+                Logger.info("Booru", `${requestProvider} done - HTTP ${xhr.status}`)
                 removeFromPending()
+
+                // Bug 1.3: Verify provider hasn't changed during request
+                if (root.currentProvider !== requestProvider) {
+                    Logger.warn("Booru", `Provider changed during request, discarding stale response from ${requestProvider}`)
+                    root.runningRequests--
+                    return
+                }
             }
             if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
                 try {
-                    var provider = providers[requestProvider]
-                    var response
+                    const provider = providers[requestProvider]
+                    let response
                     // Handle XML responses (e.g., Paheal)
                     if (provider.isXml) {
                         response = xhr.responseXML
-                        console.log("[Booru] " + requestProvider + " got XML response")
+                        Logger.debug("Booru", `${requestProvider} got XML response`)
                     } else {
                         response = JSON.parse(xhr.responseText)
-                        console.log("[Booru] " + requestProvider + " got " + (response.length || "?") + " raw items")
+                        Logger.debug("Booru", `${requestProvider} got ${response.length ?? "?"} raw items`)
                     }
-                    // Use helper function to get mapFunc (supports apiType family mappers)
-                    var mapFunc = getProviderMapFunc(requestProvider)
+                    // Bug 1.4: Validate mapFunc before calling
+                    const mapFunc = getProviderMapFunc(requestProvider)
+                    if (!mapFunc) {
+                        Logger.error("Booru", `No mapFunc for provider: ${requestProvider}`)
+                        newResponse.message = `${root.failMessage}\n(Provider not configured)`
+                        root.runningRequests--
+                        addResponse(newResponse)
+                        return
+                    }
                     response = mapFunc(response, provider)
-                    console.log("[Booru] " + requestProvider + " mapped to " + response.length + " items")
+                    Logger.info("Booru", `${requestProvider} mapped to ${response.length} items`)
                     newResponse.images = response
                     newResponse.message = response.length > 0 ? "" : root.failMessage
 
                     // Pre-populate cache index for instant lookups
                     preBatchCacheCheck(response)
                 } catch (e) {
-                    console.log("[Booru] Failed to parse " + requestProvider + ": " + e)
+                    Logger.error("Booru", `Failed to parse ${requestProvider}: ${e}`)
                     newResponse.message = root.failMessage
                 } finally {
                     root.runningRequests--
                     addResponse(newResponse)
                 }
             } else if (xhr.readyState === XMLHttpRequest.DONE) {
-                console.log("[Booru] " + requestProvider + " failed - HTTP " + xhr.status)
-                if (xhr.responseText) console.log("[Booru] Response: " + xhr.responseText.substring(0, 200))
+                Logger.error("Booru", `${requestProvider} failed - HTTP ${xhr.status}`)
+                if (xhr.responseText) Logger.debug("Booru", `Response: ${xhr.responseText.substring(0, 200)}`)
                 newResponse.message = root.failMessage
                 root.runningRequests--
                 addResponse(newResponse)
@@ -1114,20 +693,15 @@ Singleton {
         var source = grabberSources[requestProvider]
         var tagString = tags.join(" ")
 
-        // Add sort metatag if sorting is set (for order: metatag providers)
-        if (currentSorting && currentSorting.length > 0) {
-            if (requestProvider === "danbooru" || requestProvider === "aibooru" ||
-                requestProvider === "yandere" || requestProvider === "konachan") {
-                tagString = "order:" + currentSorting + " " + tagString
-            }
-        }
+        // Inject sort metatag for providers that use tag-based sorting
+        tagString = ProviderRegistry.injectSortMetatag(requestProvider, tagString, currentSorting)
 
         // Inject age filter for providers that support it
-        if (ageFilter !== "any" && ageFilterProviders.indexOf(requestProvider) !== -1) {
+        if (ageFilter !== "any" && ProviderRegistry.ageFilterProviders.indexOf(requestProvider) !== -1) {
             tagString = tagString + " age:<" + ageFilter
         }
 
-        console.log("[Booru] Grabber request: source=" + source + " tags=" + tagString + " page=" + page)
+        Logger.info("Booru", `Grabber request: source=${source} tags=${tagString} page=${page}`)
 
         // Build properties for GrabberRequest
         var grabberProps = {
@@ -1143,7 +717,7 @@ Singleton {
         if (requestProvider === "danbooru" && danbooruApiKey) {
             grabberProps.user = danbooruLogin
             grabberProps.password = danbooruApiKey
-            console.log("[Booru] Using Danbooru auth: " + danbooruLogin)
+            Logger.debug("Booru", `Using Danbooru auth: ${danbooruLogin}`)
         }
 
         var grabberReq = grabberRequestComponent.createObject(root, grabberProps)
@@ -1151,7 +725,7 @@ Singleton {
         root.runningRequests++
 
         grabberReq.finished.connect(function(images) {
-            console.log("[Booru] Grabber returned " + images.length + " images")
+            Logger.info("Booru", `Grabber returned ${images.length} images`)
             newResponse.images = images
             newResponse.message = images.length > 0 ? "" : root.failMessage
             // Pre-populate cache index for instant lookups
@@ -1163,7 +737,7 @@ Singleton {
         })
 
         grabberReq.failed.connect(function(error) {
-            console.log("[Booru] Grabber failed: " + error)
+            Logger.error("Booru", `Grabber failed: ${error}`)
             newResponse.message = root.failMessage + "\n(Grabber: " + error + ")"
             root.runningRequests--
             root.responses = root.responses.concat([newResponse])
@@ -1185,7 +759,7 @@ Singleton {
         })
 
         var url = constructRequestUrl(tags, nsfw, limit, page)
-        console.log("[Booru] curl request: " + url)
+        Logger.info("Booru", `curl request: ${url}`)
 
         root.runningRequests++
 
@@ -1215,23 +789,33 @@ Singleton {
                 onRead: data => { curlProc.outputText += data }
             }
 
-            onExited: function(code, status) {
-                console.log("[Booru] curl " + requestProvider + " exited with code " + code)
+            onExited: (code, status) => {
+                Logger.debug("Booru", `curl ${requestProvider} exited with code ${code}`)
                 if (code === 0 && curlProc.outputText.length > 0) {
                     try {
-                        var response = JSON.parse(curlProc.outputText)
-                        var mapFunc = root.getProviderMapFunc(requestProvider)
-                        var images = mapFunc(response, root.providers[requestProvider])
-                        console.log("[Booru] curl " + requestProvider + " mapped " + images.length + " images")
+                        const response = JSON.parse(curlProc.outputText)
+                        // Bug 1.4: Validate mapFunc before calling
+                        const mapFunc = root.getProviderMapFunc(requestProvider)
+                        if (!mapFunc) {
+                            Logger.error("Booru", `No mapFunc for curl provider: ${requestProvider}`)
+                            responseObj.message = `${root.failMessage}\n(Provider not configured)`
+                            root.runningRequests--
+                            root.responses = [responseObj]
+                            root.responseFinished()
+                            curlProc.destroy()
+                            return
+                        }
+                        const images = mapFunc(response, root.providers[requestProvider])
+                        Logger.info("Booru", `curl ${requestProvider} mapped ${images.length} images`)
                         responseObj.images = images
                         responseObj.message = images.length > 0 ? "" : root.failMessage
                         root.preBatchCacheCheck(images)
                     } catch (e) {
-                        console.log("[Booru] curl parse error: " + e)
+                        Logger.error("Booru", `curl parse error: ${e}`)
                         responseObj.message = root.failMessage
                     }
                 } else {
-                    console.log("[Booru] curl failed or empty response")
+                    Logger.error("Booru", "curl failed or empty response")
                     responseObj.message = root.failMessage
                 }
                 root.runningRequests--
@@ -1244,41 +828,45 @@ Singleton {
 
     property var currentTagRequest: null
     function triggerTagSearch(query) {
+        // Bug 1.5: Wrap abort in try/catch to handle race conditions
         if (currentTagRequest) {
-            currentTagRequest.abort();
+            try {
+                currentTagRequest.abort()
+            } catch (e) {
+                // Ignore abort errors on race condition
+            }
         }
 
-        var provider = providers[currentProvider]
+        const provider = providers[currentProvider]
         if (!provider.tagSearchTemplate) return
 
-        var url = provider.tagSearchTemplate.replace("{{query}}", encodeURIComponent(query))
+        let url = provider.tagSearchTemplate.replace("{{query}}", encodeURIComponent(query))
 
         // For providers with mirrors, replace the base URL with the mirror's tagApi
         if (provider.mirrors) {
-            var mirror = getCurrentMirror(currentProvider)
-            var mirrorData = provider.mirrors[mirror]
-            if (mirrorData.tagApi) {
+            const mirror = getCurrentMirror(currentProvider)
+            const mirrorData = provider.mirrors[mirror]
+            if (mirrorData?.tagApi) {
                 // Extract the query params from the template and append to mirror's tagApi
-                var queryPart = provider.tagSearchTemplate.split("?")[1]
+                const queryPart = provider.tagSearchTemplate.split("?")[1]
                 if (queryPart) {
-                    queryPart = queryPart.replace("{{query}}", encodeURIComponent(query))
-                    url = mirrorData.tagApi + "?" + queryPart
+                    url = `${mirrorData.tagApi}?${queryPart.replace("{{query}}", encodeURIComponent(query))}`
                 }
             }
         }
 
         // Add API credentials for tag search
         if (currentProvider === "gelbooru" && gelbooruApiKey && gelbooruUserId) {
-            url += "&api_key=" + gelbooruApiKey + "&user_id=" + gelbooruUserId
+            url += `&api_key=${gelbooruApiKey}&user_id=${gelbooruUserId}`
         }
         if (currentProvider === "rule34" && rule34ApiKey && rule34UserId) {
-            url += "&api_key=" + rule34ApiKey + "&user_id=" + rule34UserId
+            url += `&api_key=${rule34ApiKey}&user_id=${rule34UserId}`
         }
         if (currentProvider === "danbooru" && danbooruApiKey) {
-            url += (danbooruLogin ? "&login=" + danbooruLogin : "") + "&api_key=" + danbooruApiKey
+            url += `${danbooruLogin ? "&login=" + danbooruLogin : ""}&api_key=${danbooruApiKey}`
         }
 
-        var xhr = new XMLHttpRequest()
+        const xhr = new XMLHttpRequest()
         currentTagRequest = xhr
         xhr.open("GET", url)
         // Danbooru/e621/e926/Sankaku need User-Agent or API blocks them
@@ -1287,26 +875,26 @@ Singleton {
             try {
                 xhr.setRequestHeader("User-Agent", "Mozilla/5.0 BooruSidebar/1.0")
             } catch (e) {
-                console.log("[Booru] Could not set User-Agent for tag search: " + e)
+                Logger.warn("Booru", `Could not set User-Agent for tag search: ${e}`)
             }
         }
-        var requestProvider = currentProvider  // Capture for closure
-        xhr.onreadystatechange = function() {
+        const requestProvider = currentProvider  // Capture for closure
+        xhr.onreadystatechange = () => {
             if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
                 currentTagRequest = null
                 try {
-                    var response = JSON.parse(xhr.responseText)
+                    let response = JSON.parse(xhr.responseText)
                     // Use helper function to get tagMapFunc (supports apiType family mappers)
-                    var tagMapFunc = getProviderTagMapFunc(requestProvider)
+                    const tagMapFunc = getProviderTagMapFunc(requestProvider)
                     if (tagMapFunc) {
                         response = tagMapFunc(response)
                     }
                     root.tagSuggestion(query, response)
                 } catch (e) {
-                    console.log("[Booru] Failed to parse tag response: " + e)
+                    Logger.error("Booru", `Failed to parse tag response: ${e}`)
                 }
             } else if (xhr.readyState === XMLHttpRequest.DONE) {
-                console.log("[Booru] Tag search failed - HTTP " + xhr.status)
+                Logger.warn("Booru", `Tag search failed - HTTP ${xhr.status}`)
                 currentTagRequest = null
             }
         }
