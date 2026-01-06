@@ -84,6 +84,7 @@ Item {
 
     // Clean cache for current page items and reload
     function cleanCacheAndReload() {
+        Logger.info("Anime", "Cleaning cache and reloading")
         // Helper to extract clean filename from URL (strips query params)
         function getFileName(url) {
             if (!url) return ""
@@ -165,6 +166,7 @@ Item {
     }
 
     function reloadCurrentPage() {
+        Logger.info("Anime", `Reloading page ${Booru.currentPage} with tags [${Booru.currentTags.join(", ")}]`)
         var tags = Booru.currentTags
         var page = Booru.currentPage
         Booru.clearResponses()
@@ -202,26 +204,34 @@ Item {
     ]
 
     function handleInput(inputText) {
+        Logger.info("Anime", `handleInput: "${inputText}"`)
         if (inputText.startsWith(root.commandPrefix)) {
             var command = inputText.split(" ")[0].substring(1)
             var args = inputText.split(" ").slice(1)
+            Logger.debug("Anime", `Command: /${command} args=[${args.join(", ")}]`)
 
             if (command === "mode" && args.length > 0) {
+                Logger.info("Anime", `Switching provider to: ${args[0]}`)
                 Booru.setProvider(args[0]);
             } else if (command === "clear") {
+                Logger.info("Anime", "Clearing responses")
                 Booru.clearResponses();
             } else if (command === "next") {
                 if (Booru.responses.length > 0) {
+                    Logger.info("Anime", `Loading next page: ${Booru.currentPage + 1}`)
                     Booru.makeRequest(Booru.currentTags, Booru.allowNsfw, Booru.limit, Booru.currentPage + 1)
                 }
             } else if (command === "prev") {
                 if (Booru.responses.length > 0 && Booru.currentPage > 1) {
+                    Logger.info("Anime", `Loading prev page: ${Booru.currentPage - 1}`)
                     Booru.makeRequest(Booru.currentTags, Booru.allowNsfw, Booru.limit, Booru.currentPage - 1)
                 }
             } else if (command === "safe") {
+                Logger.info("Anime", "NSFW disabled")
                 Booru.allowNsfw = false;
                 Booru.addSystemMessage("NSFW content disabled");
             } else if (command === "lewd") {
+                Logger.info("Anime", "NSFW enabled")
                 Booru.allowNsfw = true;
                 Booru.addSystemMessage("NSFW content enabled");
             } else if (command === "sort" && args.length > 0) {
@@ -360,6 +370,7 @@ Item {
                     break;
                 }
             }
+            Logger.info("Anime", `Tag search: [${tagList.join(", ")}] page=${pageIndex}`)
             Booru.makeRequest(tagList, Booru.allowNsfw, Booru.limit, pageIndex);
         }
     }

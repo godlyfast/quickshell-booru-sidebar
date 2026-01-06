@@ -63,6 +63,7 @@ Popup {
             }
 
             onClicked: {
+                Services.Logger.info("ImageContextMenu", `Open file link: id=${root.imageData.id}`)
                 root.close()
                 Qt.openUrlExternally(root.imageData.file_url)
             }
@@ -82,8 +83,10 @@ Popup {
             onClicked: {
                 root.close()
                 if (root.isVideo) {
+                    Services.Logger.info("ImageContextMenu", `Play in mpv: id=${root.imageData.id}`)
                     Quickshell.execDetached(["mpv", "--loop", "--user-agent=Mozilla/5.0 BooruSidebar/1.0", root.imageData.file_url])
                 } else {
+                    Services.Logger.info("ImageContextMenu", `Open in viewer: id=${root.imageData.id}`)
                     const tmpFile = "/tmp/booru_" + root.fileName
                     const escapedUrl = ShellUtils.shellEscape(root.imageData.file_url)
                     const escapedTmp = ShellUtils.shellEscape(tmpFile)
@@ -107,6 +110,7 @@ Popup {
             }
 
             onClicked: {
+                Services.Logger.info("ImageContextMenu", `Go to source: id=${root.imageData.id} source=${root.imageData.source.substring(0, 50)}`)
                 root.close()
                 Qt.openUrlExternally(root.imageData.source)
             }
@@ -124,6 +128,7 @@ Popup {
             }
 
             onClicked: {
+                Services.Logger.info("ImageContextMenu", `Download: id=${root.imageData.id} useGrabber=${root.useGrabber}`)
                 root.close()
                 root.downloadStarted()
                 const targetPath = root.imageData.is_nsfw ? root.nsfwPath : root.downloadPath
@@ -153,6 +158,7 @@ Popup {
             }
 
             onClicked: {
+                Services.Logger.info("ImageContextMenu", `Save as wallpaper: id=${root.imageData.id}`)
                 root.close()
                 root.wallpaperStarted()
                 const wallpaperPath = root.downloadPath.replace(/\/booru$/, '/wallpapers')

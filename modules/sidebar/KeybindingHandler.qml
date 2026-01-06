@@ -80,12 +80,14 @@ QtObject {
 
         // === TAB: Toggle preview for hovered image ===
         if (event.key === Qt.Key_Tab && Booru.hoveredBooruImage) {
+            Logger.debug("Keybindings", "Tab: toggle preview for hovered image")
             Booru.hoveredBooruImage.togglePreview()
             return true
         }
 
         // === W: Save hovered image as wallpaper (when not in preview) ===
         if (event.key === Qt.Key_W && !sidebarState.previewActive && Booru.hoveredBooruImage) {
+            Logger.debug("Keybindings", "W: save hovered image as wallpaper")
             Booru.hoveredBooruImage.saveAsWallpaper()
             return true
         }
@@ -141,19 +143,24 @@ QtObject {
         if (!hasValidSource) return false
 
         if (event.key === Qt.Key_M && Booru.hoveredAudioOutput) {
+            Logger.debug("Keybindings", `M: toggle mute on hovered video (${!Booru.hoveredAudioOutput.muted})`)
             Booru.hoveredAudioOutput.muted = !Booru.hoveredAudioOutput.muted
             return true
         }
         if (event.key === Qt.Key_Right) {
+            Logger.debug("Keybindings", "→: seek +5s on hovered video")
             hoverPlayer.position = Math.min(hoverPlayer.duration, hoverPlayer.position + 5000)
             return true
         }
         if (event.key === Qt.Key_Left) {
+            Logger.debug("Keybindings", "←: seek -5s on hovered video")
             hoverPlayer.position = Math.max(0, hoverPlayer.position - 5000)
             return true
         }
         if (event.key === Qt.Key_Space) {
-            if (hoverPlayer.playbackState === MediaPlayer.PlayingState) {
+            const playing = hoverPlayer.playbackState === MediaPlayer.PlayingState
+            Logger.debug("Keybindings", `Space: ${playing ? "pause" : "play"} hovered video`)
+            if (playing) {
                 hoverPlayer.pause()
             } else {
                 hoverPlayer.play()
@@ -251,31 +258,37 @@ QtObject {
 
         // Preview actions
         if (event.key === Qt.Key_D) {
+            Logger.debug("Keybindings", "D: download preview image")
             DownloadManager.downloadImage(sidebarState.previewImageData, sidebarState.previewProvider, false)
             return true
         }
         if (event.key === Qt.Key_W) {
+            Logger.debug("Keybindings", "W: save preview as wallpaper")
             DownloadManager.downloadImage(sidebarState.previewImageData, sidebarState.previewProvider, true)
             return true
         }
         if (event.key === Qt.Key_G) {
+            Logger.debug("Keybindings", "G: go to post page")
             const postUrl = Booru.getPostUrl(sidebarState.previewProvider, sidebarState.previewImageData ? sidebarState.previewImageData.id : "")
             if (postUrl) Qt.openUrlExternally(postUrl)
             return true
         }
         if (event.key === Qt.Key_S) {
+            Logger.debug("Keybindings", "S: open source URL")
             if (sidebarState.previewImageData && sidebarState.previewImageData.source) {
                 Qt.openUrlExternally(sidebarState.previewImageData.source)
             }
             return true
         }
         if (event.key === Qt.Key_Y) {
+            Logger.debug("Keybindings", "Y: copy URL to clipboard")
             if (sidebarState.previewImageData && sidebarState.previewImageData.file_url) {
                 DownloadManager.copyToClipboard(sidebarState.previewImageData.file_url)
             }
             return true
         }
         if (event.key === Qt.Key_I) {
+            Logger.debug("Keybindings", `I: toggle info panel (${!previewPanel.showInfoPanel})`)
             previewPanel.showInfoPanel = !previewPanel.showInfoPanel
             return true
         }

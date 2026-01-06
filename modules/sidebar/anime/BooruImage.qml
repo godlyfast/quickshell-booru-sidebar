@@ -106,6 +106,7 @@ Button {
     property bool isHovered: hoverArea.containsMouse
     onIsHoveredChanged: {
         if (isHovered) {
+            Services.Logger.debug("BooruImage", `Hover enter: id=${root.imageData.id} isVideo=${root.isVideo}`)
             // Track video player for keyboard controls
             if (root.isVideo) {
                 Services.Booru.hoveredVideoPlayer = root.mediaPlayer
@@ -114,6 +115,7 @@ Button {
             // Track hovered image for TAB key preview toggle
             Services.Booru.hoveredBooruImage = root
         } else {
+            Services.Logger.debug("BooruImage", `Hover exit: id=${root.imageData.id}`)
             // Clear video player reference
             if (Services.Booru.hoveredVideoPlayer === root.mediaPlayer) {
                 Services.Booru.hoveredVideoPlayer = null
@@ -325,7 +327,11 @@ Button {
             root.highResCacheChecked = true
             if (code === 0) {
                 // File exists - use it immediately
+                Services.Logger.cacheHit("BooruImage")
+                Services.Logger.debug("BooruImage", `Cache hit (hi-res): id=${root.imageData.id}`)
                 root.localHighResSource = "file://" + root.effectiveHighResPath
+            } else {
+                Services.Logger.cacheMiss("BooruImage")
             }
             // If not cached, downloaders below will trigger
         }
@@ -344,6 +350,7 @@ Button {
 
         onDone: function(path, width, height) {
             if (path.length > 0) {
+                Services.Logger.debug("BooruImage", `Hi-res downloaded: id=${root.imageData.id} ${width}x${height}`)
                 var cachedPath = "file://" + path
                 root.cachedImageSource = cachedPath
                 // Register in CacheIndex for instant future lookups

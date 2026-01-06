@@ -22,7 +22,7 @@ Singleton {
     enum Level { DEBUG, INFO, WARN, ERROR }
 
     // Configuration
-    property int logLevel: Logger.Level.INFO
+    property int logLevel: Logger.Level.DEBUG
     property bool writeToFile: true
     property bool showTimestamp: true
     property string logFilePath: `${Directories.cacheDir}/booru/debug.log`

@@ -40,8 +40,12 @@ Singleton {
         const notifyTitle = isWallpaper ? "Wallpaper saved" : "Download complete"
         const grabberSource = Booru.getGrabberSource(provider)
 
+        Logger.info("DownloadManager", `Download started: id=${imageData.id} provider=${provider} isWallpaper=${isWallpaper}`)
+        Logger.debug("DownloadManager", `Target: ${targetPath}`)
+
         if (grabberSource && grabberSource.length > 0) {
             // Use Grabber for supported providers
+            Logger.debug("DownloadManager", `Using Grabber source: ${grabberSource}`)
             const downloader = isWallpaper ? wallpaperDownloader : previewDownloader
             downloader.source = grabberSource
             downloader.imageId = String(imageData.id)
@@ -50,6 +54,7 @@ Singleton {
             downloader.startDownload()
         } else {
             // Fallback to curl
+            Logger.debug("DownloadManager", "Using curl fallback (no Grabber source)")
             curlDownload(imageData, targetPath, notifyTitle)
         }
     }
@@ -77,6 +82,7 @@ Singleton {
      */
     function copyToClipboard(url) {
         if (!url) return
+        Logger.info("DownloadManager", `Copying URL to clipboard: ${url.substring(0, 60)}...`)
         clipboardProcess.command = ["wl-copy", url]
         clipboardProcess.running = true
     }
@@ -89,8 +95,10 @@ Singleton {
 
         onDone: function(success, message) {
             if (success) {
+                Logger.info("DownloadManager", `Grabber download complete: ${message}`)
                 Quickshell.execDetached(["notify-send", notifyTitle, message, "-a", "Booru"])
             } else if (root.currentImageData && root.currentImageData.file_url) {
+                Logger.warn("DownloadManager", "Grabber failed, falling back to curl")
                 const targetPath = root.currentImageData.is_nsfw ? root.nsfwPath : root.downloadPath
                 root.curlDownload(root.currentImageData, targetPath, notifyTitle)
             }
@@ -105,8 +113,10 @@ Singleton {
 
         onDone: function(success, message) {
             if (success) {
+                Logger.info("DownloadManager", `Wallpaper saved: ${message}`)
                 Quickshell.execDetached(["notify-send", notifyTitle, message, "-a", "Booru"])
             } else if (root.currentImageData && root.currentImageData.file_url) {
+                Logger.warn("DownloadManager", "Grabber wallpaper failed, falling back to curl")
                 root.curlDownload(root.currentImageData, root.wallpaperPath, notifyTitle)
             }
         }

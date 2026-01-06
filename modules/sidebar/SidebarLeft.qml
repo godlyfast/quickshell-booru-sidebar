@@ -20,6 +20,7 @@ Scope {
 
     // Handle sidebar open/close
     onSidebarOpenChanged: {
+        Logger.info("Sidebar", `Sidebar ${sidebarOpen ? "opened" : "closed"}`)
         if (sidebarOpen) {
             // Ensure keyboard focus when sidebar opens (delayed to ensure component is ready)
             focusTimer.start()
@@ -50,6 +51,7 @@ Scope {
 
     // Called by BooruImage when clicked to show preview
     function showPreview(imageData, cachedSource, manualDownload, provider) {
+        Logger.info("Sidebar", `showPreview: id=${imageData ? imageData.id : 'null'} provider=${provider}`)
         // Deep copy to avoid reference issues when model changes
         var imageCopy = imageData ? JSON.parse(JSON.stringify(imageData)) : null
         root.previewImageData = imageCopy
@@ -63,6 +65,7 @@ Scope {
 
     // Called to hide preview (close button or clicking outside)
     function hidePreview() {
+        Logger.debug("Sidebar", "hidePreview called")
         // Stop any playing video in preview before closing
         previewPanel.stopVideo()
         // Set flag BEFORE closing preview to prevent focus grab from closing sidebar
@@ -302,7 +305,10 @@ Scope {
                         text: sidebarRoot.pinned ? "push_pin" : "push_pin"
                     }
 
-                    onClicked: sidebarRoot.pinned = !sidebarRoot.pinned
+                    onClicked: {
+                        Logger.info("Sidebar", `Pin button: ${!sidebarRoot.pinned ? "pinned" : "unpinned"}`)
+                        sidebarRoot.pinned = !sidebarRoot.pinned
+                    }
                 }
 
                 // Content
@@ -512,6 +518,7 @@ Scope {
         description: "Toggles Booru sidebar"
 
         onPressed: {
+            Logger.info("Sidebar", `GlobalShortcut: toggle → ${!root.sidebarOpen ? "open" : "close"}`)
             root.sidebarOpen = !root.sidebarOpen
         }
     }
