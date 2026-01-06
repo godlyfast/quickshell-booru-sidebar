@@ -76,13 +76,19 @@ Scope {
             currentImageId = newImageData.id
             // Determine URL first so we can check its extension
             var url = ""
+            var urlSource = "none"
             if (newCachedSource && newCachedSource.length > 0) {
                 url = newCachedSource
+                urlSource = "cached"
             } else if (newImageData.file_url) {
                 url = newImageData.file_url
+                urlSource = "file_url"
             } else if (newImageData.sample_url) {
                 url = newImageData.sample_url
+                urlSource = "sample_url"
             }
+            Logger.info("PreviewPanel", `Showing id=${newImageData.id} via ${urlSource}: ${url.substring(0, 80)}`)
+            if (newImageData.source) Logger.info("PreviewPanel", `  original source: ${newImageData.source.substring(0, 80)}`)
             stableImageUrl = url
             // Detect media type from API extension OR cached file extension
             var ext = newImageData.file_ext ? newImageData.file_ext.toLowerCase() : ""

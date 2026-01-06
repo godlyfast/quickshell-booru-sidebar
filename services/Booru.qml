@@ -652,7 +652,18 @@ Singleton {
                         return
                     }
                     response = mapFunc(response, provider)
-                    Logger.info("Booru", `${requestProvider} mapped to ${response.length} items`)
+                    Logger.info("Booru", `${requestProvider} mapped to ${response.length} images`)
+
+                    // Detailed logging for first 3 images to trace URL selection
+                    for (let i = 0; i < Math.min(3, response.length); i++) {
+                        const img = response[i]
+                        Logger.info("Booru", `  [${i}] id=${img.id} ext=${img.file_ext} ${img.width}x${img.height}`)
+                        Logger.info("Booru", `  [${i}] preview: ${img.preview_url?.substring(0, 100) || "(none)"}`)
+                        Logger.info("Booru", `  [${i}] sample:  ${img.sample_url?.substring(0, 100) || "(none)"}`)
+                        Logger.info("Booru", `  [${i}] file:    ${img.file_url?.substring(0, 100) || "(none)"}`)
+                        if (img.source) Logger.info("Booru", `  [${i}] source:  ${img.source?.substring(0, 100)}`)
+                    }
+
                     newResponse.images = response
                     newResponse.message = response.length > 0 ? "" : root.failMessage
 
@@ -726,6 +737,17 @@ Singleton {
 
         grabberReq.finished.connect(function(images) {
             Logger.info("Booru", `Grabber returned ${images.length} images`)
+
+            // Detailed logging for first 3 images to trace URL selection
+            for (let i = 0; i < Math.min(3, images.length); i++) {
+                const img = images[i]
+                Logger.info("Booru", `  [${i}] id=${img.id} ext=${img.file_ext} ${img.width}x${img.height}`)
+                Logger.info("Booru", `  [${i}] preview: ${img.preview_url?.substring(0, 100) || "(none)"}`)
+                Logger.info("Booru", `  [${i}] sample:  ${img.sample_url?.substring(0, 100) || "(none)"}`)
+                Logger.info("Booru", `  [${i}] file:    ${img.file_url?.substring(0, 100) || "(none)"}`)
+                if (img.source) Logger.info("Booru", `  [${i}] source:  ${img.source?.substring(0, 100)}`)
+            }
+
             newResponse.images = images
             newResponse.message = images.length > 0 ? "" : root.failMessage
             // Pre-populate cache index for instant lookups

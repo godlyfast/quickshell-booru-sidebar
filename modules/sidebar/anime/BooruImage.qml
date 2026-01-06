@@ -1498,4 +1498,12 @@ Button {
             }
         }
     }
+
+    // Debug: Log image data when component is created (only first visible for performance)
+    Component.onCompleted: {
+        // Only log if this is likely to be visible (first few items)
+        if (root.imageData && root.visible) {
+            Services.Logger.info("BooruImage", `Loaded id=${root.imageData.id} provider=${root.provider} ${root.imageData.width}x${root.imageData.height}`)
+        }
+    }
 }
