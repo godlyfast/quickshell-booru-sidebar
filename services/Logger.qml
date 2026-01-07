@@ -112,9 +112,24 @@ Singleton {
         command: ["tee", "-a", root.logFilePath]
 
         onExited: (code, status) => {
+            // Track failures
+            if (code !== 0) {
+                root.writeFailures++
+                console.error(`Logger: Log writer exited with code ${code} (failure ${root.writeFailures}/${root.maxWriteFailures})`)
+
+                // Disable file logging after too many failures
+                if (root.writeFailures >= root.maxWriteFailures) {
+                    root.writeDisabledByError = true
+                    console.error("Logger: File logging disabled due to repeated failures")
+                    writeRecoveryTimer.start()
+                    return
+                }
+            } else {
+                root.writeFailures = 0  // Reset on successful exit
+            }
+
             // Restart if unexpectedly stopped
-            if (root.writeToFile && root.logWriterReady) {
-                root.warn("Logger", `Log writer exited (code ${code}), restarting...`)
+            if (root.writeToFile && root.logWriterReady && !root.writeDisabledByError) {
                 Qt.callLater(() => { logWriter.running = true })
             }
         }
@@ -126,13 +141,38 @@ Singleton {
     // Buffer for writes before writer is ready
     property var pendingWrites: []
 
+    // Error tracking for write failures
+    property int writeFailures: 0
+    readonly property int maxWriteFailures: 5  // Disable after this many consecutive failures
+    property bool writeDisabledByError: false
+
+    // Recovery timer - try to re-enable file logging after 5 minutes
+    Timer {
+        id: writeRecoveryTimer
+        interval: 300000  // 5 minutes
+        repeat: false
+        onTriggered: {
+            console.log("Logger: Attempting to recover file logging...")
+            root.writeFailures = 0
+            root.writeDisabledByError = false
+            if (root.writeToFile && root.logWriterReady) {
+                logWriter.running = true
+            }
+        }
+    }
+
     // Append line to log file
     function appendToFile(line) {
+        // Skip if writing disabled due to errors
+        if (writeDisabledByError) return
+
         if (logWriter.running) {
             logWriter.write(line + "\n")
         } else {
-            // Buffer writes until writer is ready
-            pendingWrites.push(line)
+            // Buffer writes until writer is ready (limit buffer size)
+            if (pendingWrites.length < 100) {
+                pendingWrites.push(line)
+            }
         }
     }
 

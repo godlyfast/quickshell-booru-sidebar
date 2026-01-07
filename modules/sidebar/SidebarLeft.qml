@@ -310,7 +310,7 @@ Scope {
                     buttonRadius: Appearance.rounding.full
                     colBackground: sidebarRoot.pinned ? Appearance.colors.colLayer2Active : Qt.rgba(0, 0, 0, 0.2)
                     colBackgroundHover: Appearance.colors.colLayer2Hover
-                    z: 10
+                    z: ZOrder.button
 
                     contentItem: MaterialSymbol {
                         horizontalAlignment: Text.AlignHCenter
@@ -351,7 +351,7 @@ Scope {
                     id: pickerDialog
                     visible: root.showPickerDialog && root.sidebarOpen
                     anchors.fill: parent
-                    z: 100
+                    z: ZOrder.overlay
 
                     onProviderSelected: function(key) {
                         Services.Booru.setProvider(key)
@@ -368,7 +368,7 @@ Scope {
                     id: debugPanel
                     parent: sidebarBackground
                     visible: root.showDebugPanel && root.sidebarOpen
-                    z: 200
+                    z: ZOrder.modal
 
                     onClosed: {
                         root.showDebugPanel = false

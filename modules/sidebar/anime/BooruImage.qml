@@ -204,11 +204,11 @@ Button {
         }
     }
 
-    // Hover detection area (z: 999 ensures it receives hover events on top)
+    // Hover detection area (ZOrder.hoverDetector ensures it receives hover events on top)
     MouseArea {
         id: hoverArea
         anchors.fill: parent
-        z: 999
+        z: ZOrder.hoverDetector
         hoverEnabled: true
         acceptedButtons: Qt.NoButton  // Don't intercept clicks, just track hover
         propagateComposedEvents: true
@@ -1665,7 +1665,7 @@ Button {
             anchors.bottom: parent.bottom
             anchors.right: parent.right
             anchors.margins: 6
-            z: 5
+            z: ZOrder.indicator
             isSavedLocally: root.isSavedLocally
             isSavedAsWallpaper: root.isSavedAsWallpaper
         }

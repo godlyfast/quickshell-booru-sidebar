@@ -714,7 +714,7 @@ Singleton {
                     preBatchCacheCheck(response)
                 } catch (e) {
                     Logger.error("Booru", `Failed to parse ${requestProvider}: ${e}`)
-                    newResponse.message = root.failMessage
+                    newResponse.message = `${root.failMessage}\n(Parse error)`
                 } finally {
                     root.runningRequests--
                     addResponse(newResponse)
@@ -722,7 +722,7 @@ Singleton {
             } else if (xhr.readyState === XMLHttpRequest.DONE) {
                 Logger.error("Booru", `${requestProvider} failed - HTTP ${xhr.status}`)
                 if (xhr.responseText) Logger.debug("Booru", `Response: ${xhr.responseText.substring(0, 200)}`)
-                newResponse.message = root.failMessage
+                newResponse.message = `${root.failMessage}\n(HTTP ${xhr.status})`
                 root.runningRequests--
                 addResponse(newResponse)
             }
@@ -903,11 +903,11 @@ Singleton {
                         root.preBatchCacheCheck(images)
                     } catch (e) {
                         Logger.error("Booru", `curl parse error: ${e}`)
-                        responseObj.message = root.failMessage
+                        responseObj.message = `${root.failMessage}\n(Parse error)`
                     }
                 } else {
                     Logger.error("Booru", "curl failed or empty response")
-                    responseObj.message = root.failMessage
+                    responseObj.message = `${root.failMessage}\n(curl: no response)`
                 }
                 root.runningRequests--
                 root.responses = [responseObj]

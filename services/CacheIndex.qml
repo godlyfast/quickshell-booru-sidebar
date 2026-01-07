@@ -81,14 +81,16 @@ Singleton {
         return "preview"
     }
 
-    // Memoization cache for lookup results
+    // Memoization cache for lookup results with LRU eviction
     // Key: baseName, Value: { generation: int, result: string }
     property var lookupCache: ({})
+    property var cacheAccessOrder: []  // LRU tracking: most recent at end
+    readonly property int cacheMaxSize: 500  // Limit cache entries
 
     /**
      * Instant lookup - returns file:// path or empty string.
      * Single hash lookup + priority selection. O(1) complexity.
-     * Memoized to avoid redundant work when bindings re-evaluate.
+     * Memoized with LRU eviction to bound memory usage.
      */
     function lookup(filename) {
         if (!filename || !root.initialized) return ""
@@ -99,6 +101,12 @@ Singleton {
         // Check memoization cache - if generation matches, return cached result
         var cached = root.lookupCache[base]
         if (cached && cached.generation === root.generation) {
+            // LRU: move to end of access order (most recently used)
+            var idx = root.cacheAccessOrder.indexOf(base)
+            if (idx >= 0) {
+                root.cacheAccessOrder.splice(idx, 1)
+                root.cacheAccessOrder.push(base)
+            }
             return cached.result
         }
 
@@ -113,8 +121,15 @@ Singleton {
             slot = entry.hires ? "hires" : (entry.ugoira ? "ugoira" : (entry.gif ? "gif" : (entry.video ? "video" : (entry.preview ? "preview" : "none"))))
         }
 
-        // Cache the result
+        // LRU eviction: remove oldest entries if at capacity
+        while (root.cacheAccessOrder.length >= root.cacheMaxSize) {
+            var oldest = root.cacheAccessOrder.shift()
+            delete root.lookupCache[oldest]
+        }
+
+        // Cache the result and track access order
         root.lookupCache[base] = { generation: root.generation, result: result }
+        root.cacheAccessOrder.push(base)
 
         // Only log cache misses (first lookup or after generation change)
         Logger.debug("CacheIndex", `lookup(${base.substring(0, 12)}...) slot=${slot} hasHires=${entry ? !!entry.hires : false}`)
@@ -231,6 +246,7 @@ Singleton {
         root.index = newIndex
         root.generation++
         root.lookupCache = {}  // Clear memoization cache
+        root.cacheAccessOrder = []  // Clear LRU tracking
         root.mutating = false
 
         // Notify components to reset their cache state
@@ -357,9 +373,14 @@ Singleton {
     }
 
     // Periodic refresh to catch external downloads (browser, other apps)
+    // Uses exponential backoff when no new files found (30s → 60s → 120s, max 5min)
+    property int refreshBackoff: 1  // Multiplier for backoff
+    readonly property int refreshBaseInterval: 30000  // 30 seconds base
+    readonly property int refreshMaxInterval: 300000  // 5 minutes max
+
     Timer {
         id: refreshTimer
-        interval: 30000  // 30 seconds
+        interval: Math.min(root.refreshBaseInterval * root.refreshBackoff, root.refreshMaxInterval)
         running: root.initialized
         repeat: true
         onTriggered: {
@@ -399,8 +420,13 @@ Singleton {
                         }
                     }
                 }
+
+                // Exponential backoff: double interval when idle, reset when active
                 if (added > 0) {
-                    Logger.debug("CacheIndex", `Quick refresh added ${added} files`)
+                    root.refreshBackoff = 1  // Reset backoff on activity
+                    Logger.debug("CacheIndex", `Quick refresh added ${added} files, backoff reset`)
+                } else {
+                    root.refreshBackoff = Math.min(root.refreshBackoff * 2, 10)  // Max 10x = 5min
                 }
             }
         }

@@ -371,7 +371,7 @@ Scope {
                         radius: Appearance.rounding.full
                         color: Qt.rgba(0, 0, 0, 0.6)
                         visible: root.totalCount > 0
-                        z: 100
+                        z: ZOrder.overlay
 
                         StyledText {
                             id: positionText
@@ -388,7 +388,7 @@ Scope {
                         anchors.right: parent.right
                         anchors.margins: 8
                         spacing: 8
-                        z: 100
+                        z: ZOrder.overlay
 
                         // Download button
                         RippleButton {
@@ -534,7 +534,7 @@ Scope {
                         radius: Appearance.rounding.normal
                         color: Qt.rgba(0, 0, 0, 0.85)
                         visible: root.showInfoPanel && root.stableImageData !== null
-                        z: 10
+                        z: ZOrder.button
 
                         // Header with title and close button
                         Rectangle {
