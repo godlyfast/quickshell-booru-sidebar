@@ -341,7 +341,17 @@ Singleton {
             }
         }
         pendingXhrRequests = []
+
+        // Destroy response objects to release references
+        for (var j = 0; j < responses.length; j++) {
+            if (responses[j] && responses[j].destroy) {
+                responses[j].destroy()
+            }
+        }
         responses = []
+
+        // Force JavaScript garbage collection to free memory
+        gc()
     }
 
     function addSystemMessage(message) {

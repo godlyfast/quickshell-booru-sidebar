@@ -81,9 +81,14 @@ Singleton {
         return "preview"
     }
 
+    // Memoization cache for lookup results
+    // Key: baseName, Value: { generation: int, result: string }
+    property var lookupCache: ({})
+
     /**
      * Instant lookup - returns file:// path or empty string.
      * Single hash lookup + priority selection. O(1) complexity.
+     * Memoized to avoid redundant work when bindings re-evaluate.
      */
     function lookup(filename) {
         if (!filename || !root.initialized) return ""
@@ -91,17 +96,30 @@ Singleton {
         var base = extractBaseName(filename)
         if (!base) return ""
 
+        // Check memoization cache - if generation matches, return cached result
+        var cached = root.lookupCache[base]
+        if (cached && cached.generation === root.generation) {
+            return cached.result
+        }
+
         var entry = root.index[base]
-        if (!entry) return ""
+        var result = ""
+        var slot = "none"
 
-        // Priority: hires > ugoira > gif > video > preview
-        var path = entry.hires || entry.ugoira || entry.gif || entry.video || entry.preview
+        if (entry) {
+            // Priority: hires > ugoira > gif > video > preview
+            var path = entry.hires || entry.ugoira || entry.gif || entry.video || entry.preview
+            result = path ? "file://" + path : ""
+            slot = entry.hires ? "hires" : (entry.ugoira ? "ugoira" : (entry.gif ? "gif" : (entry.video ? "video" : (entry.preview ? "preview" : "none"))))
+        }
 
-        // Debug: Log which slot was selected
-        var slot = entry.hires ? "hires" : (entry.ugoira ? "ugoira" : (entry.gif ? "gif" : (entry.video ? "video" : (entry.preview ? "preview" : "none"))))
-        Logger.debug("CacheIndex", `lookup(${base.substring(0, 12)}...) slot=${slot} hasHires=${!!entry.hires}`)
+        // Cache the result
+        root.lookupCache[base] = { generation: root.generation, result: result }
 
-        return path ? "file://" + path : ""
+        // Only log cache misses (first lookup or after generation change)
+        Logger.debug("CacheIndex", `lookup(${base.substring(0, 12)}...) slot=${slot} hasHires=${entry ? !!entry.hires : false}`)
+
+        return result
     }
 
     /**
@@ -212,6 +230,7 @@ Singleton {
         // Assign ONCE at end
         root.index = newIndex
         root.generation++
+        root.lookupCache = {}  // Clear memoization cache
         root.mutating = false
 
         // Notify components to reset their cache state

@@ -78,10 +78,21 @@ Button {
     Connections {
         target: Services.CacheIndex
 
-        // NOTE: onFileRegistered is no longer needed here.
-        // The cached*Source bindings depend on CacheIndex.generation,
-        // so they automatically re-evaluate when register() is called.
-        // Direct assignment to binding properties BREAKS the bindings!
+        // Targeted file registration - only update this image if the file matches
+        // This avoids the N^2 problem where ALL images re-evaluate on ANY registration
+        function onFileRegistered(baseName, fullPath) {
+            // Check if registered file matches any of our possible cache names
+            if (baseName === root.fileName ||
+                baseName === root.gifFileName ||
+                baseName === root.videoBaseName ||
+                baseName === root.highResFileName ||
+                baseName === "hires_" + root.baseId + "." + root.fileExt ||
+                baseName === "video_" + root.baseId + "." + root.fileExt ||
+                baseName === "gif_" + root.baseId + "." + root.fileExt) {
+                root.localCacheRefresh++
+                Services.Logger.debug("BooruImage", `File registered for id=${root.imageData.id}: ${baseName}`)
+            }
+        }
 
         // Reset all cache state when cache is cleared
         // This fixes the "stuck low graphics" bug for Danbooru and other manual providers
@@ -240,9 +251,10 @@ Button {
         return ext
     }
     property bool isVideo: (fileExt === "mp4" || fileExt === "webm")
-    // Check both API-provided extension AND actual cached file extension
-    // (zerochan may have .gif content served from .jpg URL via fallback)
-    property bool isGif: fileExt === "gif" || cachedImageSource.toLowerCase().endsWith(".gif")
+    // Only check API-provided extension - do NOT check cachedImageSource here!
+    // That creates a circular dependency: isGif -> cachedImageSource -> isGif
+    // which causes repeated binding re-evaluations and lag
+    property bool isGif: fileExt === "gif"
     property bool isArchive: (fileExt === "zip" || fileExt === "rar" || fileExt === "7z")  // Danbooru image packs
 
     // Base identifier - md5 preferred (consistent across providers), fallback to id
@@ -269,12 +281,12 @@ Button {
     // CacheIndex provides instant O(1) lookup, no need for per-image Process
     property bool universalCacheChecked: Services.CacheIndex.initialized
 
-    // Reactive cache lookup - re-evaluates when generation or localCacheRefresh changes
+    // Reactive cache lookup - re-evaluates when localCacheRefresh changes
     property string cachedImageSource: {
-        // Depend on BOTH counters for reactive updates
-        // CacheIndex.generation handles external changes (downloads completing)
-        // localCacheRefresh handles immediate cache clear (fixes race condition)
-        var _ = Services.CacheIndex.generation + root.localCacheRefresh
+        // Only depend on LOCAL counter for reactive updates (not global CacheIndex.generation!)
+        // Global generation caused ALL images to re-evaluate on ANY file registration = lag
+        // localCacheRefresh is incremented by onFileRegistered ONLY when matching this image
+        var _ = root.localCacheRefresh
         if (!Services.CacheIndex.initialized || root.isVideo || root.isGif) return ""
         return Services.CacheIndex.lookup(root.fileName)
     }
@@ -519,8 +531,8 @@ Button {
     // CacheIndex.lookup() internally checks gif_ prefix and extension variants
     property bool gifCacheChecked: Services.CacheIndex.initialized
     property string cachedGifSource: {
-        // Depend on BOTH counters for reactive updates (same pattern as cachedImageSource)
-        var _ = Services.CacheIndex.generation + root.localCacheRefresh
+        // Only depend on LOCAL counter (not global CacheIndex.generation!)
+        var _ = root.localCacheRefresh
         if (!Services.CacheIndex.initialized || !root.isGif) return ""
         return Services.CacheIndex.lookup(root.gifFileName)
     }
@@ -672,8 +684,8 @@ Button {
     // Base name for video cache (without video_ prefix - CacheIndex adds it)
     property string videoBaseName: root.baseId + "." + root.fileExt
     property string cachedVideoSource: {
-        // Depend on BOTH counters for reactive updates (same pattern as cachedImageSource)
-        var _ = Services.CacheIndex.generation + root.localCacheRefresh
+        // Only depend on LOCAL counter (not global CacheIndex.generation!)
+        var _ = root.localCacheRefresh
         if (!Services.CacheIndex.initialized || !root.isVideo) return ""
         return Services.CacheIndex.lookup(root.videoBaseName)
     }
@@ -1066,8 +1078,10 @@ Button {
                     // 4. Network fallback - file_url is hi-res
                     return modelData.file_url || ""
                 }
-                sourceSize.width: parent.width * 2
-                sourceSize.height: parent.height * 2
+                // Use 1.5x for decent quality without excessive memory
+                // (2x was doubling memory usage for marginal HiDPI benefit)
+                sourceSize.width: parent.width * 1.5
+                sourceSize.height: parent.height * 1.5
                 asynchronous: true
                 cache: true
 
