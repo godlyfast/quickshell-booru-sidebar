@@ -30,6 +30,7 @@ Singleton {
     // Rotating log buffer (keep last 1000 entries in memory for debug UI)
     property var logBuffer: []
     readonly property int maxBufferSize: 1000
+    property int logGeneration: 0  // Increment on changes for efficient reactivity
 
     // Signals for debug UI
     signal logAdded(var entry)
@@ -67,8 +68,8 @@ Singleton {
         if (logBuffer.length > maxBufferSize) {
             logBuffer.shift()
         }
-        // Trigger reactive update
-        logBuffer = logBuffer.slice()
+        // Trigger reactive update via generation counter (avoids O(n) array copy)
+        logGeneration++
 
         // Console output (maintains existing behavior)
         const formatted = formatEntry(entry)

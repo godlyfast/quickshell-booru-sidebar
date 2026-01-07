@@ -174,7 +174,8 @@ Popup {
                         Item { Layout.fillWidth: true }
 
                         StyledText {
-                            text: Services.Logger.logBuffer.length + " entries"
+                            // Depend on logGeneration for reactivity (avoids array copy)
+                            text: (void(Services.Logger.logGeneration), Services.Logger.logBuffer.length) + " entries"
                             font.pixelSize: 10
                             opacity: 0.6
                         }
@@ -191,7 +192,8 @@ Popup {
                             anchors.fill: parent
                             anchors.margins: 4
                             clip: true
-                            model: Services.Logger.logBuffer.filter(entry => entry.levelNum >= root.selectedLogLevel)
+                            // Depend on logGeneration for reactivity (avoids array copy)
+                            model: (void(Services.Logger.logGeneration), Services.Logger.logBuffer.filter(entry => entry.levelNum >= root.selectedLogLevel))
 
                             delegate: Rectangle {
                                 width: logList.width
