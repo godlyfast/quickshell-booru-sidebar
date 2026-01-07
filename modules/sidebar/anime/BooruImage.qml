@@ -98,22 +98,28 @@ Button {
         // Reset all cache state when cache is cleared
         // This fixes the "stuck low graphics" bug for Danbooru and other manual providers
         function onCacheCleared() {
+            Services.Logger.info("BooruImage", `Cache cleared signal: id=${root.imageData.id}`)
+
             // Reset cache check flags - allows downloaders to re-run
             root.highResCacheChecked = false
             root.ugoiraCacheChecked = false
             root.videoPreviewCacheChecked = false
             root.videoDownloadFailed = false
 
-            // Clear local source paths
+            // Clear local source paths (these are plain properties, safe to assign)
             root.localHighResSource = ""
             root.localGifSource = ""
             root.localUgoiraSource = ""
             root.localVideoPreview = ""
 
-            // Clear cached sources (triggers re-lookup via generation counter)
-            root.cachedImageSource = ""
-            root.cachedGifSource = ""
-            root.cachedVideoSource = ""
+            // DO NOT directly assign to cached*Source properties!
+            // They are bindings that depend on CacheIndex.generation.
+            // Directly assigning breaks the binding.
+            // The generation counter increment in batchUnregister will
+            // automatically trigger re-evaluation of these bindings.
+
+            // Log state after reset for debugging
+            Services.Logger.debug("BooruImage", `Post-reset state: id=${root.imageData.id} provider=${root.provider} manualDownload=${root.manualDownload}`)
         }
     }
 
@@ -293,15 +299,29 @@ Button {
     // Check if currently cached source is hi-res (has hires_ prefix)
     property bool cachedIsHiRes: cachedImageSource.indexOf("/hires_") >= 0
 
+    // Track previous source to detect degradation
+    property string previousCachedSource: ""
+
     // Log when cachedImageSource changes and track resolution
     onCachedImageSourceChanged: {
+        var wasHiRes = previousCachedSource.indexOf("/hires_") >= 0
+        var nowHiRes = cachedIsHiRes
+
         if (cachedImageSource.length > 0) {
-            if (cachedIsHiRes) {
-                Services.Logger.info("BooruImage", `Cache HI-RES available: id=${root.imageData.id} path=${cachedImageSource.substring(cachedImageSource.lastIndexOf('/') + 1)}`)
+            if (wasHiRes && !nowHiRes) {
+                // DEGRADATION DETECTED - switched from hires to preview!
+                Services.Logger.error("BooruImage", `DEGRADED: id=${root.imageData.id} was=${previousCachedSource.substring(previousCachedSource.lastIndexOf('/') + 1)} now=${cachedImageSource.substring(cachedImageSource.lastIndexOf('/') + 1)}`)
+            } else if (nowHiRes) {
+                Services.Logger.info("BooruImage", `Cache HI-RES: id=${root.imageData.id} path=${cachedImageSource.substring(cachedImageSource.lastIndexOf('/') + 1)}`)
             } else {
                 Services.Logger.warn("BooruImage", `Cache PREVIEW only: id=${root.imageData.id} (no hires_ file)`)
             }
+        } else if (previousCachedSource.length > 0) {
+            // Source cleared
+            Services.Logger.warn("BooruImage", `Cache CLEARED: id=${root.imageData.id} was=${previousCachedSource.substring(previousCachedSource.lastIndexOf('/') + 1)}`)
         }
+
+        previousCachedSource = cachedImageSource
     }
 
     // Local dimension overrides - don't mutate shared model data
@@ -366,6 +386,11 @@ Button {
         id: highResCacheCheck
         running: root.manualDownload && !root.isGif && !root.isVideo && !root.isArchive && root.effectiveHighResPath.length > 0 && !root.highResCacheChecked
         command: ["test", "-f", root.effectiveHighResPath]
+        onRunningChanged: {
+            if (running) {
+                Services.Logger.debug("BooruImage", `highResCacheCheck STARTING: id=${root.imageData.id}`)
+            }
+        }
         onExited: function(code, status) {
             root.highResCacheChecked = true
             if (code === 0) {
@@ -375,6 +400,7 @@ Button {
                 root.localHighResSource = "file://" + root.effectiveHighResPath
             } else {
                 Services.Logger.cacheMiss("BooruImage")
+                Services.Logger.debug("BooruImage", `highResCacheCheck MISS: id=${root.imageData.id} - downloader should trigger`)
             }
             // If not cached, downloaders below will trigger
         }
@@ -436,8 +462,14 @@ Button {
         filenameTemplate: "hires_%md5%.%ext%"
         user: Services.Booru.danbooruLogin
         password: Services.Booru.danbooruApiKey
+        onDownloadingChanged: {
+            if (downloading) {
+                Services.Logger.info("BooruImage", `Grabber DOWNLOADING: id=${root.imageData.id}`)
+            }
+        }
         onDone: (success, message) => {
             if (success) {
+                Services.Logger.info("BooruImage", `Grabber SUCCESS: id=${root.imageData.id}`)
                 var cachedPath = "file://" + root.grabberHighResPath
                 root.localHighResSource = cachedPath
                 // Update preview if it's showing this image
@@ -445,6 +477,7 @@ Button {
                     root.updatePreviewSource(cachedPath)
                 }
             } else {
+                Services.Logger.error("BooruImage", `Grabber FAILED: id=${root.imageData.id} msg=${message}`)
                 // Fallback to preview
                 root.localHighResSource = "file://" + imageDownloader.downloadedPath
             }
@@ -456,7 +489,15 @@ Button {
         id: grabberTrigger
         interval: root.triggerDelay
         running: root.manualDownload && root.provider === "danbooru" && !root.isGif && !root.isVideo && !root.isArchive && imageDownloader.downloadedPath.length > 0 && !grabberHighResDownloader.downloading && root.localHighResSource === "" && root.highResCacheChecked
-        onTriggered: grabberHighResDownloader.startDownload()
+        onRunningChanged: {
+            if (running) {
+                Services.Logger.debug("BooruImage", `grabberTrigger ARMED: id=${root.imageData.id} delay=${root.triggerDelay}ms`)
+            }
+        }
+        onTriggered: {
+            Services.Logger.info("BooruImage", `grabberTrigger FIRED: id=${root.imageData.id}`)
+            grabberHighResDownloader.startDownload()
+        }
     }
 
     // Manual download for GIFs (providers that block direct requests)

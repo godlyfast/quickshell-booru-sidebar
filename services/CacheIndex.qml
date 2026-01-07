@@ -96,6 +96,11 @@ Singleton {
 
         // Priority: hires > ugoira > gif > video > preview
         var path = entry.hires || entry.ugoira || entry.gif || entry.video || entry.preview
+
+        // Debug: Log which slot was selected
+        var slot = entry.hires ? "hires" : (entry.ugoira ? "ugoira" : (entry.gif ? "gif" : (entry.video ? "video" : (entry.preview ? "preview" : "none"))))
+        Logger.debug("CacheIndex", `lookup(${base.substring(0, 12)}...) slot=${slot} hasHires=${!!entry.hires}`)
+
         return path ? "file://" + path : ""
     }
 
