@@ -9,16 +9,26 @@ import "../modules/common/functions/file_utils.js" as FileUtils
 
 /**
  * In-memory cache index for instant filename lookups.
- * Eliminates per-image bash process spawns by scanning directories once
- * and providing O(1) lookups.
+ *
+ * Index structure: { baseName: { hires, gif, video, ugoira, preview } }
+ * - baseName is the md5/id without prefix or extension
+ * - Each slot holds the full path to that variant (or undefined)
+ *
+ * Priority order: hires > ugoira > gif > video > preview
  */
 Singleton {
     id: root
 
-    // Internal index: { filename: fullPath }
+    // Internal index: { baseName: { hires?, gif?, video?, ugoira?, preview? } }
     property var index: ({})
     property bool initialized: false
     property bool scanning: false
+
+    // Generation counter - incremented on any mutation for reactive bindings
+    property int generation: 0
+
+    // Mutex-like flag to prevent concurrent mutations
+    property bool mutating: false
 
     // Cache directories to scan (without file:// prefix)
     readonly property string previewDir: Directories.cacheDir + "/booru/previews"
@@ -32,59 +42,61 @@ Singleton {
     // Signal emitted when a file is registered (for reactive cache updates)
     signal fileRegistered(string filename, string filepath)
 
-    // Common image extensions to check when original extension not found
-    readonly property var imageExtensions: [".jpg", ".png", ".gif", ".jpeg", ".webp"]
+    // Signal emitted when cache is cleared (for components to reset state)
+    signal cacheCleared()
+
+    // Prefix patterns for categorizing files
+    readonly property var prefixes: ["hires_", "gif_", "video_", "ugoira_"]
+
+    /**
+     * Extract baseName from filename (strip prefix and extension).
+     * "hires_abc123.jpg" → "abc123"
+     * "abc123.png" → "abc123"
+     */
+    function extractBaseName(filename) {
+        if (!filename) return ""
+        var name = filename
+        // Strip prefix if present
+        for (var i = 0; i < prefixes.length; i++) {
+            if (name.indexOf(prefixes[i]) === 0) {
+                name = name.substring(prefixes[i].length)
+                break
+            }
+        }
+        // Strip extension
+        var dotIdx = name.lastIndexOf(".")
+        return dotIdx > 0 ? name.substring(0, dotIdx) : name
+    }
+
+    /**
+     * Determine which slot a filename belongs to based on prefix.
+     * "hires_abc.jpg" → "hires"
+     * "abc.jpg" → "preview"
+     */
+    function getSlot(filename) {
+        if (filename.indexOf("hires_") === 0) return "hires"
+        if (filename.indexOf("gif_") === 0) return "gif"
+        if (filename.indexOf("video_") === 0) return "video"
+        if (filename.indexOf("ugoira_") === 0) return "ugoira"
+        return "preview"
+    }
 
     /**
      * Instant lookup - returns file:// path or empty string.
-     * Checks multiple filename variants (hires_, gif_, video_ prefixes)
-     * and extension variants for zerochan fallback downloads.
+     * Single hash lookup + priority selection. O(1) complexity.
      */
     function lookup(filename) {
         if (!filename || !root.initialized) return ""
 
-        // If filename already has a prefix, check it directly first
-        if (filename.indexOf("video_") === 0 || filename.indexOf("gif_") === 0 || filename.indexOf("hires_") === 0) {
-            if (root.index[filename]) return "file://" + root.index[filename]
-        }
+        var base = extractBaseName(filename)
+        if (!base) return ""
 
-        // Check hires_ prefix FIRST - prioritize high-resolution images
-        var hiresName = "hires_" + filename
-        if (root.index[hiresName]) return "file://" + root.index[hiresName]
+        var entry = root.index[base]
+        if (!entry) return ""
 
-        // Fall back to exact filename (preview/sample)
-        if (root.index[filename]) return "file://" + root.index[filename]
-
-        // Check gif_ prefix variant
-        var gifName = "gif_" + filename
-        if (root.index[gifName]) return "file://" + root.index[gifName]
-
-        // Check video_ prefix variant
-        var videoName = "video_" + filename
-        if (root.index[videoName]) return "file://" + root.index[videoName]
-
-        // Check extension variants (for zerochan fallback downloads where extension may differ)
-        var dotIdx = filename.lastIndexOf(".")
-        if (dotIdx > 0) {
-            var baseName = filename.substring(0, dotIdx)
-            // First pass: check hires_ variants (prioritize high-res)
-            for (var i = 0; i < imageExtensions.length; i++) {
-                var ext = imageExtensions[i]
-                var hiresAlt = "hires_" + baseName + ext
-                if (root.index[hiresAlt]) {
-                    return "file://" + root.index[hiresAlt]
-                }
-            }
-            // Second pass: check exact matches (preview/sample)
-            for (var j = 0; j < imageExtensions.length; j++) {
-                var altName = baseName + imageExtensions[j]
-                if (root.index[altName]) {
-                    return "file://" + root.index[altName]
-                }
-            }
-        }
-
-        return ""
+        // Priority: hires > ugoira > gif > video > preview
+        var path = entry.hires || entry.ugoira || entry.gif || entry.video || entry.preview
+        return path ? "file://" + path : ""
     }
 
     /**
@@ -93,14 +105,35 @@ Singleton {
      */
     function register(filename, fullPath) {
         if (!filename || !fullPath) return
-        var isNew = !root.index[filename]
-        var newIndex = {}
-        for (var key in root.index) {
-            newIndex[key] = root.index[key]
+
+        // Mutex: queue concurrent registrations for next tick
+        if (root.mutating) {
+            Qt.callLater(() => register(filename, fullPath))
+            return
         }
-        newIndex[filename] = fullPath
+        root.mutating = true
+
+        var base = extractBaseName(filename)
+        if (!base) {
+            root.mutating = false
+            return
+        }
+
+        var slot = getSlot(filename)
+
+        // Deep clone index for reactivity
+        var newIndex = JSON.parse(JSON.stringify(root.index))
+
+        // Create or update entry
+        if (!newIndex[base]) {
+            newIndex[base] = {}
+        }
+        var isNew = !newIndex[base][slot]
+        newIndex[base][slot] = fullPath
         root.index = newIndex
-        // Notify components of new cache entry
+        root.generation++
+        root.mutating = false
+
         if (isNew) {
             root.fileRegistered(filename, fullPath)
         }
@@ -111,35 +144,74 @@ Singleton {
      * Called when cache files are deleted.
      */
     function unregister(filename) {
-        if (!filename || !root.index[filename]) return
-        var newIndex = {}
-        for (var key in root.index) {
-            if (key !== filename) {
-                newIndex[key] = root.index[key]
-            }
+        if (!filename) return
+
+        // Mutex: queue concurrent unregistrations for next tick
+        if (root.mutating) {
+            Qt.callLater(() => unregister(filename))
+            return
+        }
+
+        var base = extractBaseName(filename)
+        var slot = getSlot(filename)
+        if (!root.index[base] || !root.index[base][slot]) return
+
+        root.mutating = true
+
+        // Deep clone index
+        var newIndex = JSON.parse(JSON.stringify(root.index))
+
+        // Remove slot
+        delete newIndex[base][slot]
+
+        // Remove entry if empty
+        if (Object.keys(newIndex[base]).length === 0) {
+            delete newIndex[base]
         }
         root.index = newIndex
+        root.generation++
+        root.mutating = false
     }
 
     /**
      * Batch unregister - removes multiple files from cache index.
+     * Emits cacheCleared signal when complete so components can reset state.
      */
     function batchUnregister(filenames) {
         if (!filenames || filenames.length === 0) return
-        var toRemove = {}
+
+        // Mutex: queue if already mutating
+        if (root.mutating) {
+            Qt.callLater(() => batchUnregister(filenames))
+            return
+        }
+        root.mutating = true
+
+        // Deep clone ONCE at start
+        var newIndex = JSON.parse(JSON.stringify(root.index))
+
+        // Mutate in-place
         for (var i = 0; i < filenames.length; i++) {
-            // Extract just the filename from full path
             var path = filenames[i]
             var name = path.substring(path.lastIndexOf('/') + 1)
-            toRemove[name] = true
-        }
-        var newIndex = {}
-        for (var key in root.index) {
-            if (!toRemove[key]) {
-                newIndex[key] = root.index[key]
+            var base = extractBaseName(name)
+            var slot = getSlot(name)
+            if (newIndex[base] && newIndex[base][slot]) {
+                delete newIndex[base][slot]
+                if (Object.keys(newIndex[base]).length === 0) {
+                    delete newIndex[base]
+                }
             }
         }
+
+        // Assign ONCE at end
         root.index = newIndex
+        root.generation++
+        root.mutating = false
+
+        // Notify components to reset their cache state
+        Logger.info("CacheIndex", `Cache cleared: ${filenames.length} files unregistered, generation=${root.generation}`)
+        root.cacheCleared()
     }
 
     /**
@@ -176,19 +248,31 @@ Singleton {
             onStreamFinished: {
                 var lines = text.split('\n')
                 var newIndex = {}
+                var fileCount = 0
                 for (var i = 0; i < lines.length; i++) {
                     var parts = lines[i].split('\t')
                     if (parts.length >= 2 && parts[0].length > 0) {
-                        // First occurrence wins (priority order: preview, download, nsfw, wallpaper)
-                        if (!newIndex[parts[0]]) {
-                            newIndex[parts[0]] = parts[1]
+                        var filename = parts[0]
+                        var fullPath = parts[1]
+                        var base = root.extractBaseName(filename)
+                        var slot = root.getSlot(filename)
+
+                        if (!base) continue
+
+                        if (!newIndex[base]) {
+                            newIndex[base] = {}
+                        }
+                        // First occurrence wins per slot (priority: preview > download > nsfw > wallpaper)
+                        if (!newIndex[base][slot]) {
+                            newIndex[base][slot] = fullPath
+                            fileCount++
                         }
                     }
                 }
                 root.index = newIndex
                 root.initialized = true
                 root.scanning = false
-                Logger.info("CacheIndex", `Initialized with ${Object.keys(newIndex).length} files`)
+                Logger.info("CacheIndex", `Initialized with ${fileCount} files in ${Object.keys(newIndex).length} entries`)
             }
         }
 
@@ -272,22 +356,26 @@ Singleton {
         stdout: StdioCollector {
             onStreamFinished: {
                 var lines = text.split('\n')
-                var newIndex = {}
-                for (var key in root.index) {
-                    newIndex[key] = root.index[key]
-                }
                 var added = 0
+
                 for (var i = 0; i < lines.length; i++) {
                     var parts = lines[i].split('\t')
                     if (parts.length >= 2 && parts[0].length > 0) {
-                        if (!newIndex[parts[0]]) {
-                            newIndex[parts[0]] = parts[1]
+                        var filename = parts[0]
+                        var fullPath = parts[1]
+                        var base = root.extractBaseName(filename)
+                        var slot = root.getSlot(filename)
+
+                        if (!base) continue
+
+                        // Check if this slot is new
+                        if (!root.index[base] || !root.index[base][slot]) {
+                            root.register(filename, fullPath)
                             added++
                         }
                     }
                 }
                 if (added > 0) {
-                    root.index = newIndex
                     Logger.debug("CacheIndex", `Quick refresh added ${added} files`)
                 }
             }

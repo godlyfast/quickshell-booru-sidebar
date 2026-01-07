@@ -74,9 +74,10 @@ Button {
         }
     }
 
-    // Listen for cache file registrations to update sources reactively
+    // Listen for cache signals to update sources reactively
     Connections {
         target: Services.CacheIndex
+
         function onFileRegistered(filename, filepath) {
             // Video cache update
             if (root.isVideo) {
@@ -92,13 +93,27 @@ Button {
                     root.cachedGifSource = "file://" + filepath
                 }
             }
-            // Static image cache update (check various prefixes)
-            if (!root.isVideo && !root.isGif) {
-                var hiresName = "hires_" + root.fileName
-                if (filename === root.fileName || filename === hiresName) {
-                    root.cachedImageSource = "file://" + filepath
-                }
-            }
+        }
+
+        // Reset all cache state when cache is cleared
+        // This fixes the "stuck low graphics" bug for Danbooru and other manual providers
+        function onCacheCleared() {
+            // Reset cache check flags - allows downloaders to re-run
+            root.highResCacheChecked = false
+            root.ugoiraCacheChecked = false
+            root.videoPreviewCacheChecked = false
+            root.videoDownloadFailed = false
+
+            // Clear local source paths
+            root.localHighResSource = ""
+            root.localGifSource = ""
+            root.localUgoiraSource = ""
+            root.localVideoPreview = ""
+
+            // Clear cached sources (triggers re-lookup via generation counter)
+            root.cachedImageSource = ""
+            root.cachedGifSource = ""
+            root.cachedVideoSource = ""
         }
     }
 
@@ -255,9 +270,12 @@ Button {
     // Universal cache - applies to ALL providers, not just manualDownload
     // CacheIndex provides instant O(1) lookup, no need for per-image Process
     property bool universalCacheChecked: Services.CacheIndex.initialized
+
+    // Reactive cache lookup - re-evaluates when generation changes (cache mutations)
     property string cachedImageSource: {
-        if (!Services.CacheIndex.initialized) return ""
-        // Look up by filename (without hires_ prefix, CacheIndex checks variants)
+        // Depend on generation counter for reactive updates
+        var _ = Services.CacheIndex.generation
+        if (!Services.CacheIndex.initialized || root.isVideo || root.isGif) return ""
         return Services.CacheIndex.lookup(root.fileName)
     }
 
@@ -432,6 +450,8 @@ Button {
     // CacheIndex.lookup() internally checks gif_ prefix and extension variants
     property bool gifCacheChecked: Services.CacheIndex.initialized
     property string cachedGifSource: {
+        // Depend on generation counter for reactive updates
+        var _ = Services.CacheIndex.generation
         if (!Services.CacheIndex.initialized || !root.isGif) return ""
         return Services.CacheIndex.lookup(root.gifFileName)
     }
@@ -583,6 +603,8 @@ Button {
     // Base name for video cache (without video_ prefix - CacheIndex adds it)
     property string videoBaseName: root.baseId + "." + root.fileExt
     property string cachedVideoSource: {
+        // Depend on generation counter for reactive updates
+        var _ = Services.CacheIndex.generation
         if (!Services.CacheIndex.initialized || !root.isVideo) return ""
         return Services.CacheIndex.lookup(root.videoBaseName)
     }

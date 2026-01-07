@@ -41,6 +41,20 @@ Scope {
         }
     }
 
+    // Reset preview when cache is cleared (prevents stale file paths)
+    Connections {
+        target: CacheIndex
+        function onCacheCleared() {
+            // If preview is showing a cached file, clear it
+            if (root.stableImageUrl && root.stableImageUrl.indexOf("file://") === 0) {
+                Logger.debug("PreviewPanel", "Cache cleared, resetting preview source")
+                root.stableImageUrl = ""
+                root.imageCacheTriedAndFailed = true
+                root.gifCacheTriedAndFailed = true
+            }
+        }
+    }
+
     // STABLE image data - only updated via setImageData(), immune to external binding issues
     property var stableImageData: null
 
