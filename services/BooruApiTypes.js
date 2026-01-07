@@ -16,12 +16,20 @@ function getWorkingImageSource(source) {
 
 // Helper function to extract file extension from URL (strips query parameters)
 // Handles signed URLs like: https://example.com/file.mp4?token=abc123
+// NOTE: Falls back to "jpg" when extension cannot be determined. This is intentional
+// because most booru images are JPG, and we need a valid extension for caching.
+// Callers relying on accurate extension detection should validate the result.
 function getFileExtFromUrl(url) {
-    if (!url) return "jpg"
+    if (!url) return "jpg"  // Empty URL - assume JPG (most common)
     var queryIdx = url.indexOf('?')
     if (queryIdx > 0) url = url.substring(0, queryIdx)
     var ext = url.split('.').pop()
-    return ext ? ext.toLowerCase() : "jpg"
+    // Check if the "extension" looks valid (2-4 chars, alphanumeric)
+    // URLs without extensions (e.g., Pixiv) fall back to jpg
+    if (!ext || ext.length > 5 || ext.length < 2 || !/^[a-z0-9]+$/i.test(ext)) {
+        return "jpg"  // Invalid/missing extension - assume JPG
+    }
+    return ext.toLowerCase()
 }
 
 // =============================================================================

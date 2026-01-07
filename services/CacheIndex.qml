@@ -45,8 +45,18 @@ Singleton {
     // Signal emitted when cache is cleared (for components to reset state)
     signal cacheCleared()
 
-    // Prefix patterns for categorizing files
-    readonly property var prefixes: ["hires_", "gif_", "video_", "ugoira_"]
+    // ═══════════════════════════════════════════════════════════════════════
+    // FILE NAMING PREFIXES - Single Source of Truth
+    // ═══════════════════════════════════════════════════════════════════════
+    // These prefixes categorize cached files by type. Use these constants
+    // instead of hardcoding strings in other components.
+    // Access via: CacheIndex.hiresPrefix, CacheIndex.gifPrefix, etc.
+    // ═══════════════════════════════════════════════════════════════════════
+    readonly property string hiresPrefix: "hires_"
+    readonly property string gifPrefix: "gif_"
+    readonly property string videoPrefix: "video_"
+    readonly property string ugoiraPrefix: "ugoira_"
+    readonly property var prefixes: [hiresPrefix, gifPrefix, videoPrefix, ugoiraPrefix]
 
     /**
      * Extract baseName from filename (strip prefix and extension).
@@ -74,10 +84,10 @@ Singleton {
      * "abc.jpg" → "preview"
      */
     function getSlot(filename) {
-        if (filename.indexOf("hires_") === 0) return "hires"
-        if (filename.indexOf("gif_") === 0) return "gif"
-        if (filename.indexOf("video_") === 0) return "video"
-        if (filename.indexOf("ugoira_") === 0) return "ugoira"
+        if (filename.indexOf(hiresPrefix) === 0) return "hires"
+        if (filename.indexOf(gifPrefix) === 0) return "gif"
+        if (filename.indexOf(videoPrefix) === 0) return "video"
+        if (filename.indexOf(ugoiraPrefix) === 0) return "ugoira"
         return "preview"
     }
 

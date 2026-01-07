@@ -53,6 +53,8 @@ Singleton {
         property string danbooruApiKey: ""
         // Last used provider (restored on startup)
         property string activeProvider: "wallhaven"
+        // Wallhaven minimum resolution filter (e.g., "3840x2160", "2560x1440", "any")
+        property string wallhavenResolution: "3840x2160"
         // Provider picker favorites (1-9 keys)
         property var favorites: ["yandere", "wallhaven", "danbooru", "gelbooru", "konachan", "e621", "safebooru", "aibooru", "sankaku"]
         // Provider usage counts for popularity sorting

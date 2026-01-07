@@ -95,8 +95,9 @@ Singleton {
     property string wallhavenTopRange: "1M"  // 1d, 3d, 1w, 1M, 3M, 6M, 1y
     readonly property var topRangeOptions: ["1d", "3d", "1w", "1M", "3M", "6M", "1y"]
 
-    // Wallhaven minimum resolution filter
-    property string wallhavenResolution: "3840x2160"  // Default: 4K
+    // Wallhaven minimum resolution filter (persisted to config.json)
+    property string wallhavenResolution: ConfigOptions.booru.wallhavenResolution
+    onWallhavenResolutionChanged: ConfigOptions.booru.wallhavenResolution = wallhavenResolution
     readonly property var resolutionOptions: ["1280x720", "1920x1080", "2560x1440", "3840x2160", "any"]
     readonly property var resolutionLabels: ({"1280x720": "720p", "1920x1080": "1080p", "2560x1440": "1440p", "3840x2160": "4K", "any": "Any"})
 
@@ -386,6 +387,23 @@ Singleton {
      */
     function formatErrorMessage(method, detail) {
         return `${root.failMessage}\n(${method}: ${detail})`
+    }
+
+    /**
+     * Log details for first N images in a response.
+     * Helps trace URL selection and debug image loading issues.
+     * @param images - Array of normalized image objects
+     * @param count - Number of images to log (default 3)
+     */
+    function logImageDetails(images, count = 3) {
+        for (let i = 0; i < Math.min(count, images.length); i++) {
+            const img = images[i]
+            Logger.info("Booru", `  [${i}] id=${img.id} ext=${img.file_ext} ${img.width}x${img.height}`)
+            Logger.info("Booru", `  [${i}] preview: ${img.preview_url?.substring(0, 100) || "(none)"}`)
+            Logger.info("Booru", `  [${i}] sample:  ${img.sample_url?.substring(0, 100) || "(none)"}`)
+            Logger.info("Booru", `  [${i}] file:    ${img.file_url?.substring(0, 100) || "(none)"}`)
+            if (img.source) Logger.info("Booru", `  [${i}] source:  ${img.source?.substring(0, 100)}`)
+        }
     }
 
     // Save current provider settings (sorting, ageFilter, nsfw)
@@ -706,16 +724,7 @@ Singleton {
                     }
                     response = mapFunc(response, provider)
                     Logger.info("Booru", `${requestProvider} mapped to ${response.length} images`)
-
-                    // Detailed logging for first 3 images to trace URL selection
-                    for (let i = 0; i < Math.min(3, response.length); i++) {
-                        const img = response[i]
-                        Logger.info("Booru", `  [${i}] id=${img.id} ext=${img.file_ext} ${img.width}x${img.height}`)
-                        Logger.info("Booru", `  [${i}] preview: ${img.preview_url?.substring(0, 100) || "(none)"}`)
-                        Logger.info("Booru", `  [${i}] sample:  ${img.sample_url?.substring(0, 100) || "(none)"}`)
-                        Logger.info("Booru", `  [${i}] file:    ${img.file_url?.substring(0, 100) || "(none)"}`)
-                        if (img.source) Logger.info("Booru", `  [${i}] source:  ${img.source?.substring(0, 100)}`)
-                    }
+                    logImageDetails(response)
 
                     newResponse.images = response
                     newResponse.message = response.length > 0 ? "" : root.failMessage
@@ -799,15 +808,7 @@ Singleton {
                 return
             }
 
-            // Detailed logging for first 3 images to trace URL selection
-            for (let i = 0; i < Math.min(3, images.length); i++) {
-                const img = images[i]
-                Logger.info("Booru", `  [${i}] id=${img.id} ext=${img.file_ext} ${img.width}x${img.height}`)
-                Logger.info("Booru", `  [${i}] preview: ${img.preview_url?.substring(0, 100) || "(none)"}`)
-                Logger.info("Booru", `  [${i}] sample:  ${img.sample_url?.substring(0, 100) || "(none)"}`)
-                Logger.info("Booru", `  [${i}] file:    ${img.file_url?.substring(0, 100) || "(none)"}`)
-                if (img.source) Logger.info("Booru", `  [${i}] source:  ${img.source?.substring(0, 100)}`)
-            }
+            logImageDetails(images)
 
             newResponse.images = images
             newResponse.message = images.length > 0 ? "" : root.failMessage

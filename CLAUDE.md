@@ -423,7 +423,8 @@ source: {
     "gelbooruUserId": "",
     "rule34ApiKey": "",
     "rule34UserId": "",
-    "wallhavenApiKey": ""
+    "wallhavenApiKey": "",
+    "wallhavenResolution": "3840x2160"
   },
   "appearance": {
     "transparency": 0.5,
