@@ -251,11 +251,36 @@ Button {
         return ext
     }
     property bool isVideo: (fileExt === "mp4" || fileExt === "webm")
-    // Only check API-provided extension - do NOT check cachedImageSource here!
-    // That creates a circular dependency: isGif -> cachedImageSource -> isGif
-    // which causes repeated binding re-evaluations and lag
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ⚠️  CIRCULAR DEPENDENCY WARNING - READ BEFORE MODIFYING
+    // ═══════════════════════════════════════════════════════════════════════
+    //
+    // These media type properties (isGif, isVideo, isArchive) must ONLY check
+    // the API-provided `fileExt` - never `cachedImageSource` or other cache paths!
+    //
+    // DEPENDENCY CHAIN (if incorrectly checking cache):
+    //   isGif → cachedImageSource → isGif  ← CIRCULAR!
+    //
+    // WHY: cachedImageSource (line ~295) excludes GIFs/videos from cache lookup:
+    //   `if (root.isVideo || root.isGif) return ""`
+    //
+    // This is intentional - GIFs/videos have separate caching. But if isGif
+    // were to check cachedImageSource, QML would detect the circular binding
+    // and repeatedly re-evaluate both properties, causing severe UI lag.
+    //
+    // SAFE TO ADD: Properties that only depend on `fileExt` or `imageData`
+    // UNSAFE: Any property that depends on cachedImageSource, cachedGifSource,
+    //         cachedVideoSource, or other cache lookup results
+    // ═══════════════════════════════════════════════════════════════════════
+
     property bool isGif: fileExt === "gif"
     property bool isArchive: (fileExt === "zip" || fileExt === "rar" || fileExt === "7z")  // Danbooru image packs
+
+    // Computed helpers for visibility bindings (improves readability)
+    property bool isUgoiraReady: root.isArchive && root.localUgoiraSource.length > 0
+    property bool isStaticImage: !root.isVideo && !root.isGif && !root.isUgoiraReady
+    property bool isAnimatedContent: root.isVideo || root.isGif || root.isUgoiraReady
 
     // Base identifier - md5 preferred (consistent across providers), fallback to id
     property string baseId: root.imageData.md5 ? root.imageData.md5 : root.imageData.id
@@ -1049,8 +1074,8 @@ Button {
         Item {
             id: staticImageContainer
             anchors.fill: parent
-            // Hide when video, GIF, or converted ugoira is playing
-            visible: !root.isVideo && !root.isGif && !(root.isArchive && root.localUgoiraSource.length > 0)
+            // Hide for animated content (video, GIF, or converted ugoira)
+            visible: root.isStaticImage
 
             layer.enabled: true
             layer.effect: OpacityMask {
@@ -1332,11 +1357,11 @@ Button {
             id: videoContainer
             anchors.fill: parent
             // Show for regular videos OR ugoira with downloaded WebM
-            visible: root.isVideo || (root.isArchive && root.localUgoiraSource.length > 0)
+            visible: root.isVideo || root.isUgoiraReady
 
             // Compute video source: ugoira → cached → network (if allowed)
             property string videoSource: {
-                if (root.isArchive && root.localUgoiraSource.length > 0) {
+                if (root.isUgoiraReady) {
                     return root.localUgoiraSource
                 } else if (root.isVideo) {
                     // Universal cache first
@@ -1606,8 +1631,8 @@ Button {
             anchors.fill: parent
             radius: imageRadius
             color: Appearance.colors.colLayer2
-            // Hide for videos, GIFs, and ugoira (when video source is ready)
-            visible: !root.isVideo && !root.isGif && !(root.isArchive && root.localUgoiraSource.length > 0) && previewImage.status !== Image.Ready && highResImage.status !== Image.Ready
+            // Show only for static images while loading
+            visible: root.isStaticImage && previewImage.status !== Image.Ready && highResImage.status !== Image.Ready
 
             StyledText {
                 anchors.centerIn: parent

@@ -378,6 +378,16 @@ Singleton {
         })])
     }
 
+    /**
+     * Format an error message for display to user.
+     * Provides consistent format across XHR, curl, and Grabber errors.
+     * @param method - Request method (http, curl, grabber)
+     * @param detail - Technical detail (e.g., "404", "timeout", error message)
+     */
+    function formatErrorMessage(method, detail) {
+        return `${root.failMessage}\n(${method}: ${detail})`
+    }
+
     // Save current provider settings (sorting, ageFilter, nsfw)
     function saveProviderSettings() {
         const settings = ConfigOptions.booru.providerSettings || {}
@@ -622,7 +632,7 @@ Singleton {
                 Logger.warn("Booru", `Request timeout for ${requestProvider} after 30s`)
                 try { xhr.abort() } catch (e) { /* ignore abort errors */ }
                 removeFromPending()
-                newResponse.message = `${root.failMessage}\n(Request timed out after 30 seconds)`
+                newResponse.message = root.formatErrorMessage("http", "timeout")
                 root.runningRequests--
                 addResponse(newResponse)
                 root.responseFinished()
@@ -714,7 +724,7 @@ Singleton {
                     preBatchCacheCheck(response)
                 } catch (e) {
                     Logger.error("Booru", `Failed to parse ${requestProvider}: ${e}`)
-                    newResponse.message = `${root.failMessage}\n(Parse error)`
+                    newResponse.message = root.formatErrorMessage("http", "parse error")
                 } finally {
                     root.runningRequests--
                     addResponse(newResponse)
@@ -722,7 +732,7 @@ Singleton {
             } else if (xhr.readyState === XMLHttpRequest.DONE) {
                 Logger.error("Booru", `${requestProvider} failed - HTTP ${xhr.status}`)
                 if (xhr.responseText) Logger.debug("Booru", `Response: ${xhr.responseText.substring(0, 200)}`)
-                newResponse.message = `${root.failMessage}\n(HTTP ${xhr.status})`
+                newResponse.message = root.formatErrorMessage("http", xhr.status)
                 root.runningRequests--
                 addResponse(newResponse)
             }
@@ -818,7 +828,7 @@ Singleton {
                 grabberReq.destroy()
                 return
             }
-            newResponse.message = root.failMessage + "\n(Grabber: " + error + ")"
+            newResponse.message = root.formatErrorMessage("grabber", error)
             root.runningRequests--
             root.responses = root.responses.concat([newResponse])
             root.responseFinished()
@@ -903,11 +913,11 @@ Singleton {
                         root.preBatchCacheCheck(images)
                     } catch (e) {
                         Logger.error("Booru", `curl parse error: ${e}`)
-                        responseObj.message = `${root.failMessage}\n(Parse error)`
+                        responseObj.message = root.formatErrorMessage("curl", "parse error")
                     }
                 } else {
                     Logger.error("Booru", "curl failed or empty response")
-                    responseObj.message = `${root.failMessage}\n(curl: no response)`
+                    responseObj.message = root.formatErrorMessage("curl", "no response")
                 }
                 root.runningRequests--
                 root.responses = [responseObj]
