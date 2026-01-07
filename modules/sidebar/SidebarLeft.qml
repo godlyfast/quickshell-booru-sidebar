@@ -41,6 +41,9 @@ Scope {
         }
     }
 
+    // Preview panel reference (alias for access from within Loader components)
+    property alias previewPanelRef: previewPanel
+
     // Preview panel state
     property var previewImageData: null
     property bool previewActive: false
@@ -156,20 +159,26 @@ Scope {
             ext = fileName.split('.').pop().toLowerCase()
         }
 
+        // Base identifier - md5 preferred (consistent), fallback to id
+        var baseId = imageData.md5 ? imageData.md5 : imageData.id
+
         // Determine cache path based on media type
         var cachePath
-        if (ext === "gif") {
+        if (ext === "zip" || ext === "rar" || ext === "7z") {
+            // Ugoira/archives are cached as WebM videos with ugoira_ prefix
+            cachePath = cacheDir + "/ugoira_" + baseId + ".webm"
+        } else if (ext === "gif") {
             // GIFs use gif_ prefix
             cachePath = cacheDir + "/gif_" + fileName
         } else if (ext === "mp4" || ext === "webm") {
             // Videos use video_ prefix with md5/id
-            cachePath = cacheDir + "/video_" + (imageData.md5 ? imageData.md5 : imageData.id) + "." + ext
+            cachePath = cacheDir + "/video_" + baseId + "." + ext
         } else {
             // Images use hires_ prefix
             cachePath = cacheDir + "/hires_" + fileName
             // For danbooru, use md5/id based naming
             if (provider === "danbooru") {
-                cachePath = cacheDir + "/hires_" + (imageData.md5 ? imageData.md5 : imageData.id) + "." + ext
+                cachePath = cacheDir + "/hires_" + baseId + "." + ext
             }
         }
 
@@ -276,7 +285,7 @@ Scope {
                     id: keyHandler
                     sidebarState: root
                     animeContent: animeContent
-                    previewPanel: previewPanel
+                    previewPanel: root.previewPanelRef  // Use explicit alias to access from within Loader
                     sidebarRoot: sidebarRoot
                     sidebarBackground: sidebarBackground
                 }

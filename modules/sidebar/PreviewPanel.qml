@@ -64,6 +64,14 @@ Scope {
         return "image"
     }
 
+    // Helper to check if file is a ugoira/archive
+    function isUgoiraArchive(ext, url) {
+        ext = ext ? ext.toLowerCase() : ""
+        var urlLower = url ? url.toLowerCase() : ""
+        return ext === "zip" || ext === "rar" || ext === "7z" ||
+               urlLower.endsWith(".zip") || urlLower.endsWith(".rar") || urlLower.endsWith(".7z")
+    }
+
     // Explicit update function to avoid binding-related issues
     function setImageData(newImageData, newCachedSource) {
         // Stop any playing video before switching to new content
@@ -78,9 +86,18 @@ Scope {
             // Determine URL first so we can check its extension
             var url = ""
             var urlSource = "none"
+            var ext = newImageData.file_ext ? newImageData.file_ext.toLowerCase() : ""
+
+            // Check if this is a ugoira/archive - prefer sample_url (pre-converted WebM)
+            var isUgoira = isUgoiraArchive(ext, newImageData.file_url || "")
+
             if (newCachedSource && newCachedSource.length > 0) {
                 url = newCachedSource
                 urlSource = "cached"
+            } else if (isUgoira && newImageData.sample_url) {
+                // For ugoira, sample_url is the pre-converted WebM video
+                url = newImageData.sample_url
+                urlSource = "sample_url (ugoira)"
             } else if (newImageData.file_url) {
                 url = newImageData.file_url
                 urlSource = "file_url"
@@ -92,8 +109,8 @@ Scope {
             if (newImageData.source) Logger.info("PreviewPanel", `  original source: ${newImageData.source.substring(0, 80)}`)
             stableImageUrl = url
             // Detect media type from API extension OR cached file extension
-            var ext = newImageData.file_ext ? newImageData.file_ext.toLowerCase() : ""
-            stableMediaType = detectMediaType(ext, url)
+            // For ugoira, force video type since sample_url is WebM
+            stableMediaType = isUgoira ? "video" : detectMediaType(ext, url)
             zoomLevel = 1.0
             panX = 0
             panY = 0
