@@ -82,15 +82,24 @@ Singleton {
     }
 
     // Memoization cache for lookup results with LRU eviction
+    // IMPORTANT: These are plain JS variables, NOT QML properties!
+    // Using QML properties would create binding dependencies that cause loops.
     // Key: baseName, Value: { generation: int, result: string }
-    property var lookupCache: ({})
-    property var cacheAccessOrder: []  // LRU tracking: most recent at end
     readonly property int cacheMaxSize: 500  // Limit cache entries
+
+    // Private JS state (not reactive - avoids binding loops)
+    property var _private: ({
+        lookupCache: {},
+        cacheAccessOrder: []
+    })
 
     /**
      * Instant lookup - returns file:// path or empty string.
      * Single hash lookup + priority selection. O(1) complexity.
      * Memoized with LRU eviction to bound memory usage.
+     *
+     * IMPORTANT: This function is pure during binding evaluation.
+     * Memoization uses a private JS object to avoid binding loops.
      */
     function lookup(filename) {
         if (!filename || !root.initialized) return ""
@@ -99,13 +108,14 @@ Singleton {
         if (!base) return ""
 
         // Check memoization cache - if generation matches, return cached result
-        var cached = root.lookupCache[base]
+        // Access through _private to avoid creating binding dependencies
+        var cached = root._private.lookupCache[base]
         if (cached && cached.generation === root.generation) {
-            // LRU: move to end of access order (most recently used)
-            var idx = root.cacheAccessOrder.indexOf(base)
+            // Update LRU access order synchronously (no binding dependency)
+            var idx = root._private.cacheAccessOrder.indexOf(base)
             if (idx >= 0) {
-                root.cacheAccessOrder.splice(idx, 1)
-                root.cacheAccessOrder.push(base)
+                root._private.cacheAccessOrder.splice(idx, 1)
+                root._private.cacheAccessOrder.push(base)
             }
             return cached.result
         }
@@ -121,18 +131,17 @@ Singleton {
             slot = entry.hires ? "hires" : (entry.ugoira ? "ugoira" : (entry.gif ? "gif" : (entry.video ? "video" : (entry.preview ? "preview" : "none"))))
         }
 
+        // Update memoization cache synchronously (no binding dependency)
         // LRU eviction: remove oldest entries if at capacity
-        while (root.cacheAccessOrder.length >= root.cacheMaxSize) {
-            var oldest = root.cacheAccessOrder.shift()
-            delete root.lookupCache[oldest]
+        while (root._private.cacheAccessOrder.length >= root.cacheMaxSize) {
+            var oldest = root._private.cacheAccessOrder.shift()
+            delete root._private.lookupCache[oldest]
         }
+        root._private.lookupCache[base] = { generation: root.generation, result: result }
+        root._private.cacheAccessOrder.push(base)
 
-        // Cache the result and track access order
-        root.lookupCache[base] = { generation: root.generation, result: result }
-        root.cacheAccessOrder.push(base)
-
-        // Only log cache misses (first lookup or after generation change)
-        Logger.debug("CacheIndex", `lookup(${base.substring(0, 12)}...) slot=${slot} hasHires=${entry ? !!entry.hires : false}`)
+        // NOTE: No logging inside lookup() to keep it pure for bindings.
+        // Logging creates side effects that can cause binding loops.
 
         return result
     }
@@ -245,8 +254,8 @@ Singleton {
         // Assign ONCE at end
         root.index = newIndex
         root.generation++
-        root.lookupCache = {}  // Clear memoization cache
-        root.cacheAccessOrder = []  // Clear LRU tracking
+        root._private.lookupCache = {}  // Clear memoization cache
+        root._private.cacheAccessOrder = []  // Clear LRU tracking
         root.mutating = false
 
         // Notify components to reset their cache state
