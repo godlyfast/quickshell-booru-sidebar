@@ -78,22 +78,10 @@ Button {
     Connections {
         target: Services.CacheIndex
 
-        function onFileRegistered(filename, filepath) {
-            // Video cache update
-            if (root.isVideo) {
-                var videoName = "video_" + root.baseId + "." + root.fileExt
-                if (filename === videoName) {
-                    root.cachedVideoSource = "file://" + filepath
-                }
-            }
-            // GIF cache update
-            if (root.isGif) {
-                var gifName = "gif_" + root.baseId + ".gif"
-                if (filename === gifName || filename === root.fileName) {
-                    root.cachedGifSource = "file://" + filepath
-                }
-            }
-        }
+        // NOTE: onFileRegistered is no longer needed here.
+        // The cached*Source bindings depend on CacheIndex.generation,
+        // so they automatically re-evaluate when register() is called.
+        // Direct assignment to binding properties BREAKS the bindings!
 
         // Reset all cache state when cache is cleared
         // This fixes the "stuck low graphics" bug for Danbooru and other manual providers
@@ -112,14 +100,13 @@ Button {
             root.localUgoiraSource = ""
             root.localVideoPreview = ""
 
-            // DO NOT directly assign to cached*Source properties!
-            // They are bindings that depend on CacheIndex.generation.
-            // Directly assigning breaks the binding.
-            // The generation counter increment in batchUnregister will
-            // automatically trigger re-evaluation of these bindings.
+            // INCREMENT LOCAL REFRESH COUNTER to force cached*Source bindings to re-evaluate
+            // This fixes the race condition where CacheIndex.generation change notification
+            // hasn't propagated yet and Image component tries to load deleted files
+            root.localCacheRefresh++
 
             // Log state after reset for debugging
-            Services.Logger.debug("BooruImage", `Post-reset state: id=${root.imageData.id} provider=${root.provider} manualDownload=${root.manualDownload}`)
+            Services.Logger.debug("BooruImage", `Post-reset state: id=${root.imageData.id} provider=${root.provider} manualDownload=${root.manualDownload} localRefresh=${root.localCacheRefresh}`)
         }
     }
 
@@ -273,14 +260,21 @@ Button {
     // Local file paths for progressive loading (manual download providers)
     property string localHighResSource: ""
 
+    // Local refresh counter - incremented in onCacheCleared to force binding re-evaluation
+    // This fixes the race condition where CacheIndex.generation change notification
+    // hasn't propagated before Image.Error fires on deleted files
+    property int localCacheRefresh: 0
+
     // Universal cache - applies to ALL providers, not just manualDownload
     // CacheIndex provides instant O(1) lookup, no need for per-image Process
     property bool universalCacheChecked: Services.CacheIndex.initialized
 
-    // Reactive cache lookup - re-evaluates when generation changes (cache mutations)
+    // Reactive cache lookup - re-evaluates when generation or localCacheRefresh changes
     property string cachedImageSource: {
-        // Depend on generation counter for reactive updates
-        var _ = Services.CacheIndex.generation
+        // Depend on BOTH counters for reactive updates
+        // CacheIndex.generation handles external changes (downloads completing)
+        // localCacheRefresh handles immediate cache clear (fixes race condition)
+        var _ = Services.CacheIndex.generation + root.localCacheRefresh
         if (!Services.CacheIndex.initialized || root.isVideo || root.isGif) return ""
         return Services.CacheIndex.lookup(root.fileName)
     }
@@ -421,8 +415,8 @@ Button {
             if (path.length > 0) {
                 Services.Logger.debug("BooruImage", `Hi-res downloaded: id=${root.imageData.id} ${width}x${height}`)
                 var cachedPath = "file://" + path
-                root.cachedImageSource = cachedPath
-                // Register in CacheIndex for instant future lookups
+                // Register in CacheIndex - this triggers generation++ which causes
+                // cachedImageSource binding to re-evaluate. DO NOT directly assign!
                 Services.CacheIndex.register(root.highResFileName, path)
                 // Update preview if it's showing this image
                 if (root.isPreviewActive) {
@@ -470,8 +464,17 @@ Button {
         onDone: (success, message) => {
             if (success) {
                 Services.Logger.info("BooruImage", `Grabber SUCCESS: id=${root.imageData.id}`)
-                var cachedPath = "file://" + root.grabberHighResPath
+                var fullPath = root.grabberHighResPath
+                var cachedPath = "file://" + fullPath
                 root.localHighResSource = cachedPath
+
+                // CRITICAL: Register hi-res file in CacheIndex!
+                // Without this, quickRefresh might register preview first,
+                // and cachedImageSource binding would return preview instead of hires.
+                var hiresFilename = fullPath.substring(fullPath.lastIndexOf('/') + 1)
+                Services.CacheIndex.register(hiresFilename, fullPath)
+                Services.Logger.debug("BooruImage", `Grabber registered: ${hiresFilename}`)
+
                 // Update preview if it's showing this image
                 if (root.isPreviewActive) {
                     root.updatePreviewSource(cachedPath)
@@ -516,8 +519,8 @@ Button {
     // CacheIndex.lookup() internally checks gif_ prefix and extension variants
     property bool gifCacheChecked: Services.CacheIndex.initialized
     property string cachedGifSource: {
-        // Depend on generation counter for reactive updates
-        var _ = Services.CacheIndex.generation
+        // Depend on BOTH counters for reactive updates (same pattern as cachedImageSource)
+        var _ = Services.CacheIndex.generation + root.localCacheRefresh
         if (!Services.CacheIndex.initialized || !root.isGif) return ""
         return Services.CacheIndex.lookup(root.gifFileName)
     }
@@ -584,8 +587,8 @@ Button {
         onDone: function(path, width, height) {
             if (path.length > 0) {
                 var cachedPath = "file://" + path
-                root.cachedGifSource = cachedPath
-                // Register in CacheIndex for instant future lookups
+                // Register in CacheIndex - this triggers generation++ which causes
+                // cachedGifSource binding to re-evaluate. DO NOT directly assign!
                 Services.CacheIndex.register("gif_" + root.gifFileName, path)
                 // Update preview if it's showing this GIF
                 if (root.isPreviewActive) {
@@ -669,8 +672,8 @@ Button {
     // Base name for video cache (without video_ prefix - CacheIndex adds it)
     property string videoBaseName: root.baseId + "." + root.fileExt
     property string cachedVideoSource: {
-        // Depend on generation counter for reactive updates
-        var _ = Services.CacheIndex.generation
+        // Depend on BOTH counters for reactive updates (same pattern as cachedImageSource)
+        var _ = Services.CacheIndex.generation + root.localCacheRefresh
         if (!Services.CacheIndex.initialized || !root.isVideo) return ""
         return Services.CacheIndex.lookup(root.videoBaseName)
     }
@@ -823,8 +826,8 @@ Button {
                 root.videoDownloadFailed = false
                 root.videoDownloadProgress = 100
                 var cachedPath = "file://" + root.videoFilePath
-                root.cachedVideoSource = cachedPath
-                // Register in CacheIndex for instant future lookups
+                // Register in CacheIndex - this triggers generation++ which causes
+                // cachedVideoSource binding to re-evaluate. DO NOT directly assign!
                 var videoName = "video_" + root.videoBaseName
                 Services.CacheIndex.register(videoName, root.videoFilePath)
                 // Re-request pool slot if evicted while downloading (ensures source binding updates)
