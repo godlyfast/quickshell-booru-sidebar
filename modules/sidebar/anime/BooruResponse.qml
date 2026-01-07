@@ -31,12 +31,68 @@ Rectangle {
     property real imageSpacing: 5
     property real responsePadding: 8
 
+    // Cached layout result - only recomputed when width changes (debounced)
+    property var cachedLayout: []
+
+    // Compute layout rows from images - called once per debounced width change
+    function computeLayout() {
+        var i = 0
+        var rows = []
+        var responseList = root.responseData.images || []
+        var minRowHeight = root.rowTooShortThreshold
+        var availableImageWidth = root.availableWidth - root.imageSpacing - (root.responsePadding * 2)
+
+        while (i < responseList.length) {
+            var row = { height: 0, images: [] }
+            var j = i
+            var combinedAspect = 0
+            var rowHeight = 0
+
+            while (j < responseList.length) {
+                combinedAspect += responseList[j].aspect_ratio || 1
+                var imagesInRow = j - i + 1
+                var totalSpacing = root.imageSpacing * (imagesInRow - 1)
+                var rowAvailableWidth = availableImageWidth - totalSpacing
+                rowHeight = rowAvailableWidth / combinedAspect
+
+                if (rowHeight < minRowHeight) {
+                    combinedAspect -= responseList[j].aspect_ratio || 1
+                    imagesInRow -= 1
+                    totalSpacing = root.imageSpacing * (imagesInRow - 1)
+                    rowAvailableWidth = availableImageWidth - totalSpacing
+                    rowHeight = rowAvailableWidth / combinedAspect
+                    break
+                }
+                j++
+            }
+
+            if (j === i) {
+                row.images.push(responseList[i])
+                row.height = availableImageWidth / (responseList[i].aspect_ratio || 1)
+                rows.push(row)
+                i++
+            } else {
+                for (var k = i; k < j; k++) {
+                    row.images.push(responseList[k])
+                }
+                imagesInRow = j - i
+                totalSpacing = root.imageSpacing * (imagesInRow - 1)
+                rowAvailableWidth = availableImageWidth - totalSpacing
+                row.height = rowAvailableWidth / combinedAspect
+                rows.push(row)
+                i = j
+            }
+        }
+        return rows
+    }
+
     anchors.left: parent ? parent.left : undefined
     anchors.right: parent ? parent.right : undefined
     implicitHeight: columnLayout.implicitHeight + root.responsePadding * 2
 
     Component.onCompleted: {
         availableWidth = parent ? parent.width : 400
+        cachedLayout = computeLayout()
         var imageCount = root.responseData && root.responseData.images ? root.responseData.images.length : 0
         var tagCount = root.responseData && root.responseData.tags ? root.responseData.tags.length : 0
         Logger.debug("BooruResponse", `Rendered: ${root.responseData.provider} page=${root.responseData.page} images=${imageCount} tags=${tagCount}`)
@@ -52,9 +108,10 @@ Rectangle {
 
     Timer {
         id: updateWidthTimer
-        interval: 100
+        interval: 16  // ~60fps for smooth resize
         onTriggered: {
             availableWidth = parent ? parent.width : 400
+            cachedLayout = computeLayout()
         }
     }
 
@@ -143,59 +200,9 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
-        // Image grid
+        // Image grid - uses cached layout to avoid recalculation on every binding evaluation
         Repeater {
-            model: {
-                // Greedily add images to rows (ES5 for QML V4 engine)
-                var i = 0;
-                var rows = [];
-                var responseList = root.responseData.images || [];
-                var minRowHeight = root.rowTooShortThreshold;
-                var availableImageWidth = root.availableWidth - root.imageSpacing - (root.responsePadding * 2);
-
-                while (i < responseList.length) {
-                    var row = { height: 0, images: [] };
-                    var j = i;
-                    var combinedAspect = 0;
-                    var rowHeight = 0;
-
-                    while (j < responseList.length) {
-                        combinedAspect += responseList[j].aspect_ratio || 1;
-                        var imagesInRow = j - i + 1;
-                        var totalSpacing = root.imageSpacing * (imagesInRow - 1);
-                        var rowAvailableWidth = availableImageWidth - totalSpacing;
-                        rowHeight = rowAvailableWidth / combinedAspect;
-
-                        if (rowHeight < minRowHeight) {
-                            combinedAspect -= responseList[j].aspect_ratio || 1;
-                            imagesInRow -= 1;
-                            totalSpacing = root.imageSpacing * (imagesInRow - 1);
-                            rowAvailableWidth = availableImageWidth - totalSpacing;
-                            rowHeight = rowAvailableWidth / combinedAspect;
-                            break;
-                        }
-                        j++;
-                    }
-
-                    if (j === i) {
-                        row.images.push(responseList[i]);
-                        row.height = availableImageWidth / (responseList[i].aspect_ratio || 1);
-                        rows.push(row);
-                        i++;
-                    } else {
-                        for (var k = i; k < j; k++) {
-                            row.images.push(responseList[k]);
-                        }
-                        imagesInRow = j - i;
-                        totalSpacing = root.imageSpacing * (imagesInRow - 1);
-                        rowAvailableWidth = availableImageWidth - totalSpacing;
-                        row.height = rowAvailableWidth / combinedAspect;
-                        rows.push(row);
-                        i = j;
-                    }
-                }
-                return rows;
-            }
+            model: root.cachedLayout
 
             delegate: RowLayout {
                 id: imageRow

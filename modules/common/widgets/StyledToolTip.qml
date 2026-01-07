@@ -16,16 +16,32 @@ ToolTip {
         return ans
     }
     verticalPadding: 5
-    horizontalPadding: 10    
+    horizontalPadding: 10
     opacity: internalVisibleCondition ? 1 : 0
     visible: opacity > 0
 
+    // Track dynamically created animations for cleanup
+    property var _animations: []
+
+    function _createAnimation(parent) {
+        const anim = Appearance?.animation.elementMoveFast.numberAnimation.createObject(parent)
+        if (anim) _animations.push(anim)
+        return anim
+    }
+
+    Component.onDestruction: {
+        // Clean up dynamically created animation objects
+        for (const anim of _animations) {
+            if (anim) anim.destroy()
+        }
+    }
+
     Behavior on opacity {
-        animation: Appearance?.animation.elementMoveFast.numberAnimation.createObject(this)
+        animation: root._createAnimation(this)
     }
 
     background: null
-    
+
     contentItem: Item {
         id: contentItemBackground
         implicitWidth: tooltipTextObject.width + 2 * root.horizontalPadding
@@ -42,10 +58,10 @@ ToolTip {
             clip: true
 
             Behavior on width {
-                animation: Appearance?.animation.elementMoveFast.numberAnimation.createObject(this)
+                animation: root._createAnimation(this)
             }
             Behavior on height {
-                animation: Appearance?.animation.elementMoveFast.numberAnimation.createObject(this)
+                animation: root._createAnimation(this)
             }
 
             StyledText {

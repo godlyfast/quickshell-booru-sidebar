@@ -103,14 +103,46 @@ Singleton {
         }
     }
 
+    // Persistent log writer - single Process for all writes
+    // Uses 'tee -a' to append to file with stdin
+    Process {
+        id: logWriter
+        running: root.writeToFile && root.logWriterReady
+        stdinEnabled: true
+        command: ["tee", "-a", root.logFilePath]
+
+        onExited: (code, status) => {
+            // Restart if unexpectedly stopped
+            if (root.writeToFile && root.logWriterReady) {
+                root.warn("Logger", `Log writer exited (code ${code}), restarting...`)
+                Qt.callLater(() => { logWriter.running = true })
+            }
+        }
+    }
+
+    // Track if log directory is ready
+    property bool logWriterReady: false
+
+    // Buffer for writes before writer is ready
+    property var pendingWrites: []
+
     // Append line to log file
     function appendToFile(line) {
-        // Escape single quotes for shell
-        const escaped = line.replace(/'/g, "'\\''")
-        const proc = Qt.createQmlObject(
-            'import Quickshell.Io; Process { running: true }', root)
-        proc.command = ["bash", "-c",
-            `mkdir -p "$(dirname '${logFilePath}')" && echo '${escaped}' >> '${logFilePath}'`]
+        if (logWriter.running) {
+            logWriter.write(line + "\n")
+        } else {
+            // Buffer writes until writer is ready
+            pendingWrites.push(line)
+        }
+    }
+
+    // Flush pending writes when writer becomes ready
+    function flushPendingWrites() {
+        if (!logWriter.running || pendingWrites.length === 0) return
+        for (const line of pendingWrites) {
+            logWriter.write(line + "\n")
+        }
+        pendingWrites = []
     }
 
     // Performance tracking: Start timing a request
@@ -180,12 +212,24 @@ Singleton {
         info("Logger", "Log buffer cleared")
     }
 
-    // Clear log file
+    // Clear log file - stop writer, truncate, restart
+    Process {
+        id: fileClearer
+        running: false
+        command: ["bash", "-c", `> '${root.logFilePath}'`]
+        onExited: {
+            root.info("Logger", "Log file cleared")
+            // Restart writer after clearing
+            if (root.writeToFile && root.logWriterReady) {
+                logWriter.running = true
+            }
+        }
+    }
+
     function clearFile() {
-        const proc = Qt.createQmlObject(
-            'import Quickshell.Io; Process { running: true }', root)
-        proc.command = ["bash", "-c", `> '${logFilePath}'`]
-        info("Logger", "Log file cleared")
+        // Stop writer before truncating to avoid race
+        logWriter.running = false
+        fileClearer.running = true
     }
 
     // Filter logs by level (for debug UI)
@@ -205,12 +249,24 @@ Singleton {
         return Object.keys(cats).sort()
     }
 
-    // Initialize - ensure log directory exists
-    Component.onCompleted: {
-        const initProc = Qt.createQmlObject(
-            'import Quickshell.Io; Process { running: true }', root)
-        initProc.command = ["bash", "-c", `mkdir -p "$(dirname '${logFilePath}')"`]
+    // Initialize log directory
+    Process {
+        id: dirInitializer
+        running: true
+        command: ["bash", "-c", `mkdir -p "$(dirname '${root.logFilePath}')"`]
+        onExited: (code, status) => {
+            if (code === 0) {
+                root.logWriterReady = true
+                // Flush any logs buffered during startup
+                Qt.callLater(root.flushPendingWrites)
+            } else {
+                console.error("Logger: Failed to create log directory")
+            }
+        }
+    }
 
+    // Initialize
+    Component.onCompleted: {
         info("Logger", `Logger initialized (level: ${levelName(logLevel)}, file: ${writeToFile})`)
     }
 }

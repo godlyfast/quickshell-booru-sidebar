@@ -22,6 +22,11 @@ Singleton {
     property bool firstLoad: true
 
     signal configLoaded()
+    signal configLoadFailed(string error)
+
+    // Write queue to prevent concurrent file writes
+    property bool writeInProgress: false
+    property string pendingWrite: ""
 
     function loadConfig() {
         configFileView.reload()
@@ -68,6 +73,7 @@ Singleton {
         } catch (e) {
             Logger.error("ConfigLoader", `Error reading file: ${e}`);
             Hyprland.dispatch(`exec notify-send "${qsTr("Shell configuration failed to load")}" "${root.filePath}"`)
+            root.configLoadFailed(String(e))
             return;
         }
     }
@@ -118,33 +124,35 @@ Singleton {
             stdinEnabled: true
             Component.onCompleted: {
                 Logger.debug("ConfigLoader", `Writer process created, target: ${targetPath}`);
-                Logger.debug("ConfigLoader", `Command: ${JSON.stringify(command)}`);
             }
             onStarted: {
                 Logger.debug("ConfigLoader", "Writer process started");
-                if (jsonContent.length > 0) {
-                    write(jsonContent);
-                    Logger.debug("ConfigLoader", `Wrote ${jsonContent.length} bytes, closing stdin`);
-                    stdinEnabled = false;  // Close stdin to signal EOF
-                }
+                // Always write and close stdin, even for empty content
+                write(jsonContent);
+                Logger.debug("ConfigLoader", `Wrote ${jsonContent.length} bytes, closing stdin`);
+                stdinEnabled = false;  // Close stdin to signal EOF
             }
             onExited: (code) => {
+                root.writeInProgress = false
                 if (code === 0) {
                     Logger.info("ConfigLoader", `Config saved successfully to: ${targetPath}`);
                 } else {
                     Logger.error("ConfigLoader", `Failed to save config, exit code: ${code}`);
+                }
+                // Check for pending write and process it
+                if (root.pendingWrite.length > 0) {
+                    const nextContent = root.pendingWrite
+                    root.pendingWrite = ""
+                    root.startWrite(nextContent)
                 }
                 this.destroy();
             }
         }
     }
 
-    function saveConfig() {
-        const plainConfig = ObjectUtils.toPlainObject(ConfigOptions);
-        const jsonContent = JSON.stringify(plainConfig, null, 2);
-        Logger.debug("ConfigLoader", `saveConfig called, path: ${root.filePath}`);
-        Logger.debug("ConfigLoader", `JSON content length: ${jsonContent.length}`);
-        // Create fresh Process for each save to avoid stdin closure issues
+    // Internal function to start a write operation
+    function startWrite(jsonContent) {
+        root.writeInProgress = true
         const writer = configWriterComponent.createObject(root, {
             jsonContent: jsonContent,
             targetPath: root.filePath,
@@ -152,7 +160,23 @@ Singleton {
         });
         if (!writer) {
             Logger.error("ConfigLoader", "Failed to create writer process");
+            root.writeInProgress = false
         }
+    }
+
+    function saveConfig() {
+        const plainConfig = ObjectUtils.toPlainObject(ConfigOptions);
+        const jsonContent = JSON.stringify(plainConfig, null, 2);
+        Logger.debug("ConfigLoader", `saveConfig called, path: ${root.filePath}`);
+
+        // Queue write if one is already in progress
+        if (root.writeInProgress) {
+            Logger.debug("ConfigLoader", "Write in progress, queueing...");
+            root.pendingWrite = jsonContent
+            return
+        }
+
+        root.startWrite(jsonContent)
     }
 
     Timer {

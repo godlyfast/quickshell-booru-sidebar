@@ -128,21 +128,21 @@ Button {
             Services.Logger.debug("BooruImage", `Hover enter: id=${root.imageData.id} isVideo=${root.isVideo}`)
             // Track video player for keyboard controls
             if (root.isVideo) {
-                Services.Booru.hoveredVideoPlayer = root.mediaPlayer
-                Services.Booru.hoveredAudioOutput = root.videoAudio
+                Services.HoverTracker.hoveredVideoPlayer = root.mediaPlayer
+                Services.HoverTracker.hoveredAudioOutput = root.videoAudio
             }
             // Track hovered image for TAB key preview toggle
-            Services.Booru.hoveredBooruImage = root
+            Services.HoverTracker.hoveredBooruImage = root
         } else {
             Services.Logger.debug("BooruImage", `Hover exit: id=${root.imageData.id}`)
             // Clear video player reference
-            if (Services.Booru.hoveredVideoPlayer === root.mediaPlayer) {
-                Services.Booru.hoveredVideoPlayer = null
-                Services.Booru.hoveredAudioOutput = null
+            if (Services.HoverTracker.hoveredVideoPlayer === root.mediaPlayer) {
+                Services.HoverTracker.hoveredVideoPlayer = null
+                Services.HoverTracker.hoveredAudioOutput = null
             }
             // Clear hovered image reference
-            if (Services.Booru.hoveredBooruImage === root) {
-                Services.Booru.hoveredBooruImage = null
+            if (Services.HoverTracker.hoveredBooruImage === root) {
+                Services.HoverTracker.hoveredBooruImage = null
             }
         }
     }
@@ -638,12 +638,20 @@ Button {
         id: ugoiraDownloader
         property bool downloading: false
         running: false
-        command: ["bash", "-c",
-            "mkdir -p \"$(dirname '" + root.ugoiraVideoPath + "')\" && " +
-            "curl -sL '" + root.ugoiraSampleUrl + "' " +
-            "-H 'User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36' " +
-            "-o '" + root.ugoiraVideoPath + "'"
-        ]
+
+        // Build command dynamically with proper shell escaping
+        function buildCommand() {
+            var path = shellEscape(root.ugoiraVideoPath)
+            var url = shellEscape(root.ugoiraSampleUrl)
+            return ["bash", "-c",
+                `mkdir -p "$(dirname '${path}')" && ` +
+                `curl -sL '${url}' ` +
+                `-H 'User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36' ` +
+                `-o '${path}'`
+            ]
+        }
+
+        command: buildCommand()
 
         onRunningChanged: {
             if (running) downloading = true
@@ -674,6 +682,8 @@ Button {
             // Guard against race condition - check flags inside handler
             if (root.ugoiraDownloading || ugoiraDownloader.downloading) return
             root.ugoiraDownloading = true
+            // Rebuild command with current URLs before starting
+            ugoiraDownloader.command = ugoiraDownloader.buildCommand()
             ugoiraDownloader.running = true
         }
     }

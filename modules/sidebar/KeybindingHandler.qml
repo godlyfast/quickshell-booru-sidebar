@@ -79,22 +79,22 @@ QtObject {
         }
 
         // === TAB: Toggle preview for hovered image ===
-        if (event.key === Qt.Key_Tab && Booru.hoveredBooruImage) {
+        if (event.key === Qt.Key_Tab && HoverTracker.hoveredBooruImage) {
             Logger.debug("Keybindings", "Tab: toggle preview for hovered image")
-            Booru.hoveredBooruImage.togglePreview()
+            HoverTracker.hoveredBooruImage.togglePreview()
             return true
         }
 
         // === W: Save hovered image as wallpaper (when not in preview) ===
-        if (event.key === Qt.Key_W && !sidebarState.previewActive && Booru.hoveredBooruImage) {
+        if (event.key === Qt.Key_W && !sidebarState.previewActive && HoverTracker.hoveredBooruImage) {
             Logger.debug("Keybindings", "W: save hovered image as wallpaper")
-            Booru.hoveredBooruImage.saveAsWallpaper()
+            HoverTracker.hoveredBooruImage.saveAsWallpaper()
             return true
         }
 
         // === Y: Copy hovered image URL to clipboard (when not in preview) ===
-        if (event.key === Qt.Key_Y && !sidebarState.previewActive && Booru.hoveredBooruImage) {
-            var hoveredData = Booru.hoveredBooruImage.imageData
+        if (event.key === Qt.Key_Y && !sidebarState.previewActive && HoverTracker.hoveredBooruImage) {
+            var hoveredData = HoverTracker.hoveredBooruImage.imageData
             if (hoveredData && hoveredData.file_url) {
                 Logger.debug("Keybindings", "Y: copy hovered image URL to clipboard")
                 DownloadManager.copyToClipboard(hoveredData.file_url)
@@ -106,7 +106,7 @@ QtObject {
         if (handleHoveredVideoControls(event)) return true
 
         // === BLOCK SPACE ON HOVERED NON-VIDEO IMAGES ===
-        if (event.key === Qt.Key_Space && Booru.hoveredBooruImage && !sidebarState.previewActive) {
+        if (event.key === Qt.Key_Space && HoverTracker.hoveredBooruImage && !sidebarState.previewActive) {
             return true
         }
 
@@ -148,13 +148,13 @@ QtObject {
     // --- Helper functions for organized key handling ---
 
     function handleHoveredVideoControls(event) {
-        const hoverPlayer = Booru.hoveredVideoPlayer
+        const hoverPlayer = HoverTracker.hoveredVideoPlayer
         const hasValidSource = hoverPlayer && hoverPlayer.source && hoverPlayer.source.toString().length > 0
         if (!hasValidSource) return false
 
-        if (event.key === Qt.Key_M && Booru.hoveredAudioOutput) {
-            Logger.debug("Keybindings", `M: toggle mute on hovered video (${!Booru.hoveredAudioOutput.muted})`)
-            Booru.hoveredAudioOutput.muted = !Booru.hoveredAudioOutput.muted
+        if (event.key === Qt.Key_M && HoverTracker.hoveredAudioOutput) {
+            Logger.debug("Keybindings", `M: toggle mute on hovered video (${!HoverTracker.hoveredAudioOutput.muted})`)
+            HoverTracker.hoveredAudioOutput.muted = !HoverTracker.hoveredAudioOutput.muted
             return true
         }
         if (event.key === Qt.Key_Right) {

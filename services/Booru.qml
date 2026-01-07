@@ -66,16 +66,14 @@ Singleton {
     signal providerUsageUpdated()
     signal stopAllVideos()
 
-    // Hovered video player tracking - for keyboard controls on grid videos
-    property var hoveredVideoPlayer: null
-    property var hoveredAudioOutput: null
-    // Hovered image tracking - for TAB key preview toggle
-    property var hoveredBooruImage: null
+    // Hover tracking moved to HoverTracker.qml singleton (reduces god-object size)
 
     property string failMessage: "That didn't work. Tips:\n- Check your tags and NSFW settings\n- If you don't have a tag in mind, type a page number"
     property var responses: []
     property int runningRequests: 0
     property var pendingXhrRequests: []  // Track XHR for abort on clear
+    property var pendingTimers: []  // Track timeout timers for cleanup
+    property int requestIdCounter: 0  // Monotonic counter for stale request detection
 
     // Pagination state (single page at a time)
     property int currentPage: 1
@@ -332,6 +330,22 @@ Singleton {
         // Stop all playing videos before clearing
         root.stopAllVideos()
 
+        // Increment request ID to invalidate any in-flight requests
+        root.requestIdCounter++
+
+        // Destroy all pending timeout timers first (before aborting XHR)
+        for (var t = 0; t < pendingTimers.length; t++) {
+            try {
+                if (pendingTimers[t]) {
+                    pendingTimers[t].stop()
+                    pendingTimers[t].destroy()
+                }
+            } catch (e) {
+                // Ignore destroy errors
+            }
+        }
+        pendingTimers = []
+
         // Abort all pending XHR requests to prevent stale updates
         for (var i = 0; i < pendingXhrRequests.length; i++) {
             try {
@@ -546,18 +560,19 @@ Singleton {
         currentPage = page
 
         const requestProvider = currentProvider  // Capture provider at request time
+        const requestId = root.requestIdCounter  // Capture ID to detect stale responses
 
         // Use Grabber for preferred providers (bypasses Cloudflare)
         if (shouldUseGrabber(requestProvider)) {
             Logger.info("Booru", `Using Grabber for ${requestProvider}`)
-            makeGrabberRequest(tags, nsfw, limit, page, requestProvider)
+            makeGrabberRequest(tags, nsfw, limit, page, requestProvider, requestId)
             return
         }
 
         // Use curl for providers that need User-Agent header
         if (ProviderRegistry.curlProviders.indexOf(requestProvider) !== -1) {
             Logger.info("Booru", `Using curl for ${requestProvider}`)
-            makeCurlRequest(tags, nsfw, limit, page, requestProvider)
+            makeCurlRequest(tags, nsfw, limit, page, requestProvider, requestId)
             return
         }
 
@@ -591,6 +606,15 @@ Singleton {
         // Bug 1.2: Timeout handling - create timer to abort stale requests
         let requestAborted = false
         const timeoutTimer = Qt.createQmlObject('import QtQuick; Timer { interval: 30000; running: true }', root)
+        root.pendingTimers.push(timeoutTimer)
+
+        // Helper to remove timer from tracking array
+        const removeTimerFromPending = () => {
+            const tidx = root.pendingTimers.indexOf(timeoutTimer)
+            if (tidx !== -1) {
+                root.pendingTimers.splice(tidx, 1)
+            }
+        }
 
         timeoutTimer.triggered.connect(() => {
             if (xhr.readyState !== XMLHttpRequest.DONE && !requestAborted) {
@@ -603,6 +627,7 @@ Singleton {
                 addResponse(newResponse)
                 root.responseFinished()
             }
+            removeTimerFromPending()
             timeoutTimer.destroy()
         })
 
@@ -623,6 +648,7 @@ Singleton {
             if (xhr.readyState === XMLHttpRequest.DONE) {
                 // Stop and cleanup timeout timer
                 if (timeoutTimer) {
+                    removeTimerFromPending()
                     timeoutTimer.stop()
                     timeoutTimer.destroy()
                 }
@@ -632,6 +658,13 @@ Singleton {
 
                 Logger.info("Booru", `${requestProvider} done - HTTP ${xhr.status}`)
                 removeFromPending()
+
+                // Check if request is stale (newer request was started)
+                if (requestId !== root.requestIdCounter) {
+                    Logger.warn("Booru", `Stale request detected (id ${requestId} vs ${root.requestIdCounter}), discarding`)
+                    root.runningRequests--
+                    return
+                }
 
                 // Bug 1.3: Verify provider hasn't changed during request
                 if (root.currentProvider !== requestProvider) {
@@ -702,7 +735,7 @@ Singleton {
     }
 
     // Make request using Grabber CLI (for providers that block direct API access)
-    function makeGrabberRequest(tags, nsfw, limit, page, requestProvider) {
+    function makeGrabberRequest(tags, nsfw, limit, page, requestProvider, requestId) {
         var newResponse = root.booruResponseDataComponent.createObject(null, {
             "provider": requestProvider,
             "tags": tags,
@@ -748,6 +781,14 @@ Singleton {
         grabberReq.finished.connect(function(images) {
             Logger.info("Booru", `Grabber returned ${images.length} images`)
 
+            // Check if request is stale (newer request was started)
+            if (requestId !== root.requestIdCounter) {
+                Logger.warn("Booru", `Stale Grabber request detected (id ${requestId} vs ${root.requestIdCounter}), discarding`)
+                root.runningRequests--
+                grabberReq.destroy()
+                return
+            }
+
             // Detailed logging for first 3 images to trace URL selection
             for (let i = 0; i < Math.min(3, images.length); i++) {
                 const img = images[i]
@@ -770,6 +811,13 @@ Singleton {
 
         grabberReq.failed.connect(function(error) {
             Logger.error("Booru", `Grabber failed: ${error}`)
+            // Check if request is stale
+            if (requestId !== root.requestIdCounter) {
+                Logger.warn("Booru", `Stale Grabber request (failed) detected, discarding`)
+                root.runningRequests--
+                grabberReq.destroy()
+                return
+            }
             newResponse.message = root.failMessage + "\n(Grabber: " + error + ")"
             root.runningRequests--
             root.responses = root.responses.concat([newResponse])
@@ -781,7 +829,7 @@ Singleton {
     }
 
     // Make request using curl (for providers that need User-Agent header)
-    function makeCurlRequest(tags, nsfw, limit, page, requestProvider) {
+    function makeCurlRequest(tags, nsfw, limit, page, requestProvider, requestId) {
         var newResponse = root.booruResponseDataComponent.createObject(null, {
             "provider": requestProvider,
             "tags": tags,
@@ -799,7 +847,8 @@ Singleton {
         var curlProcess = curlFetcherComponent.createObject(root, {
             "curlUrl": url,
             "requestProvider": requestProvider,
-            "responseObj": newResponse
+            "responseObj": newResponse,
+            "requestId": requestId
         })
         curlProcess.running = true
     }
@@ -812,6 +861,7 @@ Singleton {
             property string requestProvider: ""
             property var responseObj: null
             property string outputText: ""
+            property int requestId: -1  // For stale request detection
 
             // Use simple app UA for zerochan (blocks browser-like UAs), default for others
             property string userAgent: requestProvider === "zerochan" ? "QuickshellBooruSidebar/1.0" : root.defaultUserAgent
@@ -823,6 +873,15 @@ Singleton {
 
             onExited: (code, status) => {
                 Logger.debug("Booru", `curl ${requestProvider} exited with code ${code}`)
+
+                // Check if request is stale (newer request was started)
+                if (requestId !== root.requestIdCounter) {
+                    Logger.warn("Booru", `Stale curl request detected (id ${requestId} vs ${root.requestIdCounter}), discarding`)
+                    root.runningRequests--
+                    curlProc.destroy()
+                    return
+                }
+
                 if (code === 0 && curlProc.outputText.length > 0) {
                     try {
                         const response = JSON.parse(curlProc.outputText)
