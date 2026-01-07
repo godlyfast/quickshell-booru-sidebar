@@ -279,6 +279,31 @@ Button {
         return Services.CacheIndex.lookup(root.fileName)
     }
 
+    // Resolution tracking - what resolution are we actually displaying?
+    // 0=Unknown, 1=Preview (low-res), 2=Sample (mid-res), 3=HiRes (full-res)
+    readonly property int resUnknown: 0
+    readonly property int resPreview: 1
+    readonly property int resSample: 2
+    readonly property int resHiRes: 3
+    property int currentResolution: resUnknown
+    property string currentSourceType: ""  // "cache_hires", "cache_preview", "network_file", "local_hires", etc.
+    property int displayedWidth: 0
+    property int displayedHeight: 0
+
+    // Check if currently cached source is hi-res (has hires_ prefix)
+    property bool cachedIsHiRes: cachedImageSource.indexOf("/hires_") >= 0
+
+    // Log when cachedImageSource changes and track resolution
+    onCachedImageSourceChanged: {
+        if (cachedImageSource.length > 0) {
+            if (cachedIsHiRes) {
+                Services.Logger.info("BooruImage", `Cache HI-RES available: id=${root.imageData.id} path=${cachedImageSource.substring(cachedImageSource.lastIndexOf('/') + 1)}`)
+            } else {
+                Services.Logger.warn("BooruImage", `Cache PREVIEW only: id=${root.imageData.id} (no hires_ file)`)
+            }
+        }
+    }
+
     // Local dimension overrides - don't mutate shared model data
     property int localWidth: 0
     property int localHeight: 0
@@ -975,15 +1000,27 @@ Button {
                 id: highResImage
                 anchors.fill: parent
                 fillMode: Image.PreserveAspectCrop
+                // Pure source binding - no side effects
                 source: {
                     if (root.isVideo || root.isGif) return ""
-                    // Universal cache takes priority (any provider)
-                    if (root.cachedImageSource.length > 0) return root.cachedImageSource
-                    // Manual download providers use their own path
-                    if (root.manualDownload) return root.localHighResSource
-                    // Wait for cache check before loading from network
-                    if (!root.universalCacheChecked) return ""
-                    return modelData.file_url ? modelData.file_url : ""
+
+                    // 1. Universal cache takes priority (any provider)
+                    if (root.cachedImageSource.length > 0) {
+                        return root.cachedImageSource
+                    }
+
+                    // 2. Manual download providers use their own path
+                    if (root.manualDownload) {
+                        return root.localHighResSource || ""
+                    }
+
+                    // 3. Wait for cache check before loading from network
+                    if (!root.universalCacheChecked) {
+                        return ""
+                    }
+
+                    // 4. Network fallback - file_url is hi-res
+                    return modelData.file_url || ""
                 }
                 sourceSize.width: parent.width * 2
                 sourceSize.height: parent.height * 2
@@ -992,6 +1029,46 @@ Button {
 
                 opacity: status === Image.Ready ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 200 } }
+
+                // Track dimensions and log when image finishes loading
+                onStatusChanged: {
+                    if (status === Image.Ready) {
+                        root.displayedWidth = implicitWidth
+                        root.displayedHeight = implicitHeight
+
+                        // Determine source type and resolution from actual source URL
+                        var src = highResImage.source.toString()
+                        var sourceType = "unknown"
+                        var resolution = root.resUnknown
+
+                        if (src.indexOf("file://") === 0) {
+                            // Local file
+                            if (src.indexOf("/hires_") >= 0) {
+                                sourceType = "cache_hires"
+                                resolution = root.resHiRes
+                            } else if (src.indexOf("/.cache/") >= 0) {
+                                sourceType = "cache_preview"
+                                resolution = root.resPreview
+                            } else {
+                                sourceType = "local_hires"
+                                resolution = root.resHiRes
+                            }
+                        } else if (src.length > 0) {
+                            // Network URL - file_url is hi-res
+                            sourceType = "network_file"
+                            resolution = root.resHiRes
+                        }
+
+                        root.currentSourceType = sourceType
+                        root.currentResolution = resolution
+
+                        var resName = resolution === root.resHiRes ? "HI-RES" :
+                                      resolution === root.resPreview ? "PREVIEW" : "UNKNOWN"
+                        Services.Logger.info("BooruImage", `Rendered: id=${root.imageData.id} ${implicitWidth}x${implicitHeight} source=${sourceType} resolution=${resName}`)
+                    } else if (status === Image.Error) {
+                        Services.Logger.error("BooruImage", `RENDER FAILED: id=${root.imageData.id} src=${highResImage.source}`)
+                    }
+                }
             }
 
             // Blurred preview overlay (fades out when high-res ready)
@@ -1012,19 +1089,35 @@ Button {
                     id: previewImage
                     anchors.fill: parent
                     fillMode: Image.PreserveAspectCrop
+                    property string previewSourceType: ""
                     source: {
                         if (!blurOverlay.visible) return ""
                         if (root.isVideo || root.isGif) return ""
                         // For manual download providers, use local preview file
                         if (root.manualDownload) {
-                            return imageDownloader.downloadedPath ? "file://" + imageDownloader.downloadedPath : ""
+                            if (imageDownloader.downloadedPath) {
+                                previewSourceType = "local_preview"
+                                return "file://" + imageDownloader.downloadedPath
+                            }
+                            previewSourceType = "waiting"
+                            return ""
                         }
                         // Fallback chain: preview -> sample -> file_url
                         var url = ""
-                        if (modelData.preview_url) url = modelData.preview_url
-                        else if (modelData.sample_url) url = modelData.sample_url
-                        else if (modelData.file_url) url = modelData.file_url
-                        if (!url) return ""
+                        if (modelData.preview_url) {
+                            url = modelData.preview_url
+                            previewSourceType = "preview_url"
+                        } else if (modelData.sample_url) {
+                            url = modelData.sample_url
+                            previewSourceType = "sample_url"
+                        } else if (modelData.file_url) {
+                            url = modelData.file_url
+                            previewSourceType = "file_url"
+                        }
+                        if (!url) {
+                            previewSourceType = "none"
+                            return ""
+                        }
                         // Append cacheBust param to bypass Qt network cache when refreshing
                         if (Services.Booru.cacheBust > 0) {
                             url += (url.indexOf("?") >= 0 ? "&_cb=" : "?_cb=") + Services.Booru.cacheBust
@@ -1036,6 +1129,12 @@ Button {
                     asynchronous: true
                     cache: true
                     visible: false  // Only used as blur source
+
+                    onStatusChanged: {
+                        if (status === Image.Ready) {
+                            Services.Logger.debug("BooruImage", `Preview loaded: id=${root.imageData.id} ${implicitWidth}x${implicitHeight} source=${previewSourceType}`)
+                        }
+                    }
                 }
 
                 FastBlur {

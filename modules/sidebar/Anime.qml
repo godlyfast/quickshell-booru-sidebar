@@ -1146,6 +1146,114 @@ Item {
 
                     Item { Layout.fillWidth: true }
 
+                    // Pagination controls (only show when there are results)
+                    Row {
+                        visible: Booru.responses.length > 0
+                        spacing: 4
+
+                        // Previous page button
+                        RippleButton {
+                            implicitHeight: 24
+                            implicitWidth: 24
+                            buttonRadius: 4
+                            colBackground: Booru.currentPage > 1 ? Appearance.colors.colLayer1 : "transparent"
+                            enabled: Booru.currentPage > 1 && Booru.runningRequests === 0
+
+                            contentItem: MaterialSymbol {
+                                anchors.centerIn: parent
+                                iconSize: 14
+                                color: parent.enabled ? Appearance.m3colors.m3secondaryText : Appearance.colors.colLayer2
+                                text: "chevron_left"
+                            }
+
+                            onClicked: root.loadPrevPage()
+                        }
+
+                        // Page indicator (click to enter page number)
+                        Rectangle {
+                            id: pageIndicator
+                            implicitWidth: Math.max(pageInput.visible ? 40 : pageLabel.implicitWidth + 12, 28)
+                            implicitHeight: 24
+                            radius: 4
+                            color: Appearance.colors.colLayer1
+
+                            // Display mode
+                            StyledText {
+                                id: pageLabel
+                                visible: !pageInput.visible
+                                anchors.centerIn: parent
+                                font.pixelSize: 11
+                                color: Appearance.m3colors.m3secondaryText
+                                text: Booru.runningRequests > 0 ? "..." : Booru.currentPage.toString()
+                            }
+
+                            // Input mode
+                            TextInput {
+                                id: pageInput
+                                visible: false
+                                anchors.centerIn: parent
+                                width: 32
+                                font.pixelSize: 11
+                                color: Appearance.m3colors.m3primaryText
+                                horizontalAlignment: TextInput.AlignHCenter
+                                inputMethodHints: Qt.ImhDigitsOnly
+                                validator: IntValidator { bottom: 1 }
+
+                                onAccepted: {
+                                    var targetPage = parseInt(text)
+                                    if (!isNaN(targetPage) && targetPage >= 1) {
+                                        Logger.info("Anime", `Navigating to page ${targetPage}`)
+                                        Booru.makeRequest(Booru.currentTags, Booru.allowNsfw, Booru.limit, targetPage)
+                                    }
+                                    visible = false
+                                }
+
+                                onFocusChanged: {
+                                    if (!focus) visible = false
+                                }
+
+                                Keys.onEscapePressed: visible = false
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                visible: !pageInput.visible
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    pageInput.text = Booru.currentPage.toString()
+                                    pageInput.visible = true
+                                    pageInput.selectAll()
+                                    pageInput.forceActiveFocus()
+                                }
+                            }
+                        }
+
+                        // Next page button
+                        RippleButton {
+                            implicitHeight: 24
+                            implicitWidth: 24
+                            buttonRadius: 4
+                            colBackground: hasMoreResults ? Appearance.colors.colLayer1 : "transparent"
+                            enabled: hasMoreResults && Booru.runningRequests === 0
+
+                            // Check if current response has images (likely more pages available)
+                            property bool hasMoreResults: {
+                                if (Booru.responses.length === 0) return false
+                                var lastResp = Booru.responses[Booru.responses.length - 1]
+                                return lastResp && lastResp.images && lastResp.images.length > 0
+                            }
+
+                            contentItem: MaterialSymbol {
+                                anchors.centerIn: parent
+                                iconSize: 14
+                                color: parent.enabled ? Appearance.m3colors.m3secondaryText : Appearance.colors.colLayer2
+                                text: "chevron_right"
+                            }
+
+                            onClicked: root.loadNextPage()
+                        }
+                    }
+
                     // Settings button (toggles controls menu)
                     RippleButton {
                         implicitHeight: 24

@@ -60,7 +60,9 @@ Singleton {
         // Per-provider settings: { "provider": { sorting: "", ageFilter: "", nsfw: false } }
         property var providerSettings: ({})
         // Video player pool settings
-        property int maxSidebarPlayers: 10  // Max MediaPlayer instances in sidebar (0 = disabled)
-        property bool videoAutoplay: false  // Auto-play videos when visible
+        // Set to 0 to disable sidebar video playback entirely (saves resources)
+        // Videos will only play in the preview panel (single player instance)
+        property int maxSidebarPlayers: 0
+        property bool videoAutoplay: false
     }
 }

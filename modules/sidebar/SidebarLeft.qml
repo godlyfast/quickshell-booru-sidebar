@@ -9,7 +9,7 @@ import "../common"
 import "../common/widgets"
 import "../common/utils"
 import "../common/functions/file_utils.js" as FileUtils
-import "../../services"
+import "../../services" as Services
 
 /**
  * Left sidebar panel window containing the Booru browser.
@@ -20,12 +20,12 @@ Scope {
 
     // Handle sidebar open/close
     onSidebarOpenChanged: {
-        Logger.info("Sidebar", `Sidebar ${sidebarOpen ? "opened" : "closed"}`)
+        Services.Logger.info("Sidebar", `Sidebar ${sidebarOpen ? "opened" : "closed"}`)
         if (sidebarOpen) {
             // Ensure keyboard focus when sidebar opens (delayed to ensure component is ready)
             focusTimer.start()
         } else {
-            Booru.stopAllVideos()
+            Services.Booru.stopAllVideos()
         }
     }
 
@@ -54,7 +54,7 @@ Scope {
 
     // Called by BooruImage when clicked to show preview
     function showPreview(imageData, cachedSource, manualDownload, provider) {
-        Logger.info("Sidebar", `showPreview: id=${imageData ? imageData.id : 'null'} provider=${provider}`)
+        Services.Logger.info("Sidebar", `showPreview: id=${imageData ? imageData.id : 'null'} provider=${provider}`)
         // Deep copy to avoid reference issues when model changes
         var imageCopy = imageData ? JSON.parse(JSON.stringify(imageData)) : null
         root.previewImageData = imageCopy
@@ -68,7 +68,7 @@ Scope {
 
     // Called to hide preview (close button or clicking outside)
     function hidePreview() {
-        Logger.debug("Sidebar", "hidePreview called")
+        Services.Logger.debug("Sidebar", "hidePreview called")
         // Stop any playing video in preview before closing
         previewPanel.stopVideo()
         // Set flag BEFORE closing preview to prevent focus grab from closing sidebar
@@ -83,10 +83,10 @@ Scope {
     property bool closingPreviewIntentionally: false  // Flag to prevent focus grab clear from closing sidebar
 
     // Reactive computed properties for position indicator
-    // These re-evaluate when Booru.responses or previewImageData changes
+    // These re-evaluate when Services.Booru.responses or previewImageData changes
     property int imageCount: {
         var count = 0
-        var responses = Booru.responses  // Creates reactive dependency
+        var responses = Services.Booru.responses  // Creates reactive dependency
         for (var i = 0; i < responses.length; i++) {
             var resp = responses[i]
             if (resp && resp.images) {
@@ -98,7 +98,7 @@ Scope {
 
     property int currentImageIndex: {
         if (!previewImageData) return -1
-        var responses = Booru.responses  // Creates reactive dependency
+        var responses = Services.Booru.responses  // Creates reactive dependency
         var index = 0
         for (var i = 0; i < responses.length; i++) {
             var resp = responses[i]
@@ -115,7 +115,7 @@ Scope {
     // Get flat list of all images from all responses
     function getAllImages() {
         var images = []
-        var responses = Booru.responses
+        var responses = Services.Booru.responses
         for (var i = 0; i < responses.length; i++) {
             var resp = responses[i]
             if (resp && resp.images) {
@@ -140,7 +140,7 @@ Scope {
         return -1
     }
 
-    // Compute expected cache path for an image
+    // Compute expected cache path for an image using CacheIndex for proper hires prioritization
     property string cacheDir: Directories.cacheDir + "/booru/previews"
 
     function getCachedPath(imageData, provider) {
@@ -162,27 +162,32 @@ Scope {
         // Base identifier - md5 preferred (consistent), fallback to id
         var baseId = imageData.md5 ? imageData.md5 : imageData.id
 
-        // Determine cache path based on media type
-        var cachePath
+        // Handle ugoira/archives specially - they convert to WebM with ugoira_ prefix
         if (ext === "zip" || ext === "rar" || ext === "7z") {
-            // Ugoira/archives are cached as WebM videos with ugoira_ prefix
-            cachePath = cacheDir + "/ugoira_" + baseId + ".webm"
-        } else if (ext === "gif") {
-            // GIFs use gif_ prefix
-            cachePath = cacheDir + "/gif_" + fileName
-        } else if (ext === "mp4" || ext === "webm") {
-            // Videos use video_ prefix with md5/id
-            cachePath = cacheDir + "/video_" + baseId + "." + ext
-        } else {
-            // Images use hires_ prefix
-            cachePath = cacheDir + "/hires_" + fileName
-            // For danbooru, use md5/id based naming
-            if (provider === "danbooru") {
-                cachePath = cacheDir + "/hires_" + baseId + "." + ext
-            }
+            var ugoiraName = "ugoira_" + baseId + ".webm"
+            var ugoiraPath = Services.CacheIndex.lookup(ugoiraName)
+            if (ugoiraPath) return ugoiraPath
+            // Return constructed path for when cache hasn't been populated yet
+            return "file://" + cacheDir + "/" + ugoiraName
         }
 
-        return "file://" + cachePath
+        // Use CacheIndex.lookup() which properly prioritizes hires_ files
+        // This handles images, GIFs, and videos with proper prefix checking
+        var cachedPath = Services.CacheIndex.lookup(fileName)
+        if (cachedPath) return cachedPath
+
+        // Fallback: construct expected path for files not yet in cache
+        if (ext === "gif") {
+            return "file://" + cacheDir + "/gif_" + fileName
+        } else if (ext === "mp4" || ext === "webm") {
+            return "file://" + cacheDir + "/video_" + baseId + "." + ext
+        } else {
+            // Images use hires_ prefix
+            if (provider === "danbooru") {
+                return "file://" + cacheDir + "/hires_" + baseId + "." + ext
+            }
+            return "file://" + cacheDir + "/hires_" + fileName
+        }
     }
 
     // Navigate to prev/next image in preview (circular)
@@ -315,7 +320,7 @@ Scope {
                     }
 
                     onClicked: {
-                        Logger.info("Sidebar", `Pin button: ${!sidebarRoot.pinned ? "pinned" : "unpinned"}`)
+                        Services.Logger.info("Sidebar", `Pin button: ${!sidebarRoot.pinned ? "pinned" : "unpinned"}`)
                         sidebarRoot.pinned = !sidebarRoot.pinned
                     }
                 }
@@ -349,7 +354,7 @@ Scope {
                     z: 100
 
                     onProviderSelected: function(key) {
-                        Booru.setProvider(key)
+                        Services.Booru.setProvider(key)
                     }
 
                     onClosed: {
@@ -527,7 +532,7 @@ Scope {
         description: "Toggles Booru sidebar"
 
         onPressed: {
-            Logger.info("Sidebar", `GlobalShortcut: toggle → ${!root.sidebarOpen ? "open" : "close"}`)
+            Services.Logger.info("Sidebar", `GlobalShortcut: toggle → ${!root.sidebarOpen ? "open" : "close"}`)
             root.sidebarOpen = !root.sidebarOpen
         }
     }
