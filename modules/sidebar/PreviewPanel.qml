@@ -161,6 +161,8 @@ Scope {
             panY = 0
             imageCacheTriedAndFailed = false
             gifCacheTriedAndFailed = false
+            videoHasError = false
+            videoErrorMessage = ""
         } else {
             stableImageUrl = ""
             stableMediaType = "image"
@@ -222,6 +224,10 @@ Scope {
     // Track cache fallback state (reset on image change)
     property bool imageCacheTriedAndFailed: false
     property bool gifCacheTriedAndFailed: false
+
+    // Track video error state (reset on image change)
+    property bool videoHasError: false
+    property string videoErrorMessage: ""
 
     // DISABLED: onImageDataChanged causes issues with stale binding updates
     // All updates now go through setImageData() function
@@ -1044,13 +1050,16 @@ Scope {
 
                 onErrorOccurred: (error, errorString) => {
                     Logger.error("PreviewPanel", `MediaPlayer error ${error}: ${errorString}`)
-                    // Try to recover by stopping and restarting
+                    root.videoHasError = true
+                    root.videoErrorMessage = errorString || "Failed to load video"
                     stop()
                 }
 
                 onMediaStatusChanged: {
                     if (mediaStatus === MediaPlayer.InvalidMedia) {
                         Logger.error("PreviewPanel", `Invalid media: ${source}`)
+                        root.videoHasError = true
+                        root.videoErrorMessage = "Invalid or unsupported video format"
                     }
                 }
             }
@@ -1078,11 +1087,54 @@ Scope {
                 audio: audioOutput
             }
 
-            // Loading indicator
+            // Loading indicator - don't show if error occurred
             BusyIndicator {
                 anchors.centerIn: videoOutput
-                running: mediaPlayer.playbackState === MediaPlayer.StoppedState && mediaPlayer.source.toString().length > 0
+                running: !root.videoHasError &&
+                         mediaPlayer.playbackState === MediaPlayer.StoppedState &&
+                         mediaPlayer.source.toString().length > 0
                 visible: running
+            }
+
+            // Error message display
+            Rectangle {
+                anchors.centerIn: videoOutput
+                width: errorColumn.width + 32
+                height: errorColumn.height + 24
+                radius: Appearance.rounding.normal
+                color: Qt.rgba(0, 0, 0, 0.85)
+                visible: root.videoHasError
+
+                Column {
+                    id: errorColumn
+                    anchors.centerIn: parent
+                    spacing: 8
+
+                    MaterialSymbol {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "error"
+                        iconSize: 32
+                        color: Appearance.m3colors.m3error
+                    }
+
+                    StyledText {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "Video failed to load"
+                        font.pixelSize: Appearance.font.pixelSize.textMedium
+                        font.bold: true
+                        color: Appearance.m3colors.m3surfaceText
+                    }
+
+                    StyledText {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: root.videoErrorMessage
+                        font.pixelSize: Appearance.font.pixelSize.textSmall
+                        color: Appearance.m3colors.m3secondaryText
+                        wrapMode: Text.WordWrap
+                        horizontalAlignment: Text.AlignHCenter
+                        width: Math.min(implicitWidth, 280)
+                    }
+                }
             }
         }
     }
