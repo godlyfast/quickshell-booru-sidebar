@@ -63,6 +63,37 @@ Scope {
     property var currentMediaPlayer: null
     property var currentAudioOutput: null
 
+    // Seek throttling to prevent GStreamer crashes from rapid key repeat
+    property real lastSeekTime: 0
+    readonly property int seekThrottleMs: 100  // Minimum ms between seeks
+
+    // Seek recovery: reset video player after intensive seeking to clear corrupted GStreamer state
+    property int seekCount: 0
+    readonly property int seekResetThreshold: 15  // Reset after this many seeks in quick succession
+
+    Timer {
+        id: seekRecoveryTimer
+        interval: 2000  // Wait 2s after last seek before resetting
+        repeat: false
+        onTriggered: {
+            if (root.seekCount >= root.seekResetThreshold && root.currentMediaPlayer) {
+                Logger.info("PreviewPanel", `Resetting video after ${root.seekCount} seeks to clear GStreamer state`)
+                const pos = root.currentMediaPlayer.position
+                const src = root.currentMediaPlayer.source
+                root.currentMediaPlayer.stop()
+                root.currentMediaPlayer.source = ""
+                // Restore after brief pause to fully reset pipeline
+                Qt.callLater(() => {
+                    if (root.currentMediaPlayer) {
+                        root.currentMediaPlayer.source = src
+                        root.currentMediaPlayer.position = pos
+                    }
+                })
+            }
+            root.seekCount = 0
+        }
+    }
+
     // Helper to detect media type from extension or URL
     function detectMediaType(ext, url) {
         ext = ext ? ext.toLowerCase() : ""
@@ -253,7 +284,17 @@ Scope {
 
     function seekRelative(ms) {
         if (!root.isVideo || !root.currentMediaPlayer) return
-        var newPos = Math.max(0, Math.min(root.currentMediaPlayer.duration, root.currentMediaPlayer.position + ms))
+
+        // Throttle seeks to prevent GStreamer crash from rapid key repeat
+        const now = Date.now()
+        if (now - root.lastSeekTime < root.seekThrottleMs) return
+        root.lastSeekTime = now
+
+        // Track seeks for recovery mechanism
+        root.seekCount++
+        seekRecoveryTimer.restart()
+
+        const newPos = Math.max(0, Math.min(root.currentMediaPlayer.duration, root.currentMediaPlayer.position + ms))
         root.currentMediaPlayer.position = newPos
         Logger.debug("PreviewPanel", `Seek: ${ms > 0 ? '+' : ''}${ms}ms → ${Math.round(newPos/1000)}s`)
     }
@@ -998,6 +1039,18 @@ Scope {
                 onSourceChanged: {
                     if (source.toString().length > 0) {
                         play()
+                    }
+                }
+
+                onErrorOccurred: (error, errorString) => {
+                    Logger.error("PreviewPanel", `MediaPlayer error ${error}: ${errorString}`)
+                    // Try to recover by stopping and restarting
+                    stop()
+                }
+
+                onMediaStatusChanged: {
+                    if (mediaStatus === MediaPlayer.InvalidMedia) {
+                        Logger.error("PreviewPanel", `Invalid media: ${source}`)
                     }
                 }
             }

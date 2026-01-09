@@ -1461,6 +1461,10 @@ Button {
                     muted: !root.isHovered
                 }
                 videoOutput: videoOutput
+
+                onErrorOccurred: (error, errorString) => {
+                    Logger.error("BooruImage", `Video error id=${root.imageData?.id}: ${error} - ${errorString}`)
+                }
             }
 
             VideoOutput {

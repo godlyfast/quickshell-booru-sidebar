@@ -22,6 +22,10 @@ QtObject {
     // Multi-key sequence state
     property string pendingKey: ""
 
+    // Seek throttling for hovered videos to prevent GStreamer crashes
+    property real lastHoverSeekTime: 0
+    readonly property int seekThrottleMs: 100  // Minimum ms between seeks
+
     /**
      * Handle a key press event.
      * @returns true if the event was handled
@@ -158,11 +162,19 @@ QtObject {
             return true
         }
         if (event.key === Qt.Key_Right) {
+            // Throttle to prevent GStreamer crash from rapid key repeat
+            const now = Date.now()
+            if (now - root.lastHoverSeekTime < root.seekThrottleMs) return true
+            root.lastHoverSeekTime = now
             Logger.debug("Keybindings", "→: seek +5s on hovered video")
             hoverPlayer.position = Math.min(hoverPlayer.duration, hoverPlayer.position + 5000)
             return true
         }
         if (event.key === Qt.Key_Left) {
+            // Throttle to prevent GStreamer crash from rapid key repeat
+            const now = Date.now()
+            if (now - root.lastHoverSeekTime < root.seekThrottleMs) return true
+            root.lastHoverSeekTime = now
             Logger.debug("Keybindings", "←: seek -5s on hovered video")
             hoverPlayer.position = Math.max(0, hoverPlayer.position - 5000)
             return true
