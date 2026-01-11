@@ -488,7 +488,8 @@ Scope {
                             StyledText { text: "Toggles"; font.bold: true; color: Appearance.m3colors.m3primary }
                             StyledText { text: "P      Pin sidebar"; color: "#ffffff" }
                             StyledText { text: "x      Toggle NSFW"; color: "#ffffff" }
-                            StyledText { text: "i      Focus input"; color: "#ffffff" }
+                            StyledText { text: "i      Focus search"; color: "#ffffff" }
+                            StyledText { text: "z      Focus page"; color: "#ffffff" }
                             StyledText { text: "p      Provider picker"; color: "#ffffff" }
                             StyledText { text: "1-9    Favorite providers"; color: "#ffffff" }
                             StyledText { text: "r      Reload page"; color: "#ffffff" }

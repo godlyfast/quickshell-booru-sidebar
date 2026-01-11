@@ -383,6 +383,11 @@ QtObject {
             Booru.allowNsfw = !Booru.allowNsfw
             return true
         }
+        if (event.key === Qt.Key_Z) {
+            Logger.debug("Keybindings", "Z: focus page input")
+            animeContent.focusPageInput()
+            return true
+        }
         if (event.key === Qt.Key_I) {
             Logger.debug("Keybindings", "I: focus input")
             animeContent.focusInput()

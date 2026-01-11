@@ -82,6 +82,14 @@ Item {
         if (root.inputField) root.inputField.forceActiveFocus()
     }
 
+    // Focus the page input field
+    function focusPageInput() {
+        pageInput.text = Booru.currentPage.toString()
+        pageInput.visible = true
+        pageInput.selectAll()
+        pageInput.forceActiveFocus()
+    }
+
     // Clean cache for current page items and reload
     function cleanCacheAndReload() {
         Logger.info("Anime", "Cleaning cache and reloading")
@@ -199,6 +207,8 @@ Item {
         { name: "res", description: "Set Wallhaven resolution" },
         { name: "clear", description: "Clear image list" },
         { name: "next", description: "Get next page" },
+        { name: "page", description: "Jump to page (e.g. /page 5)" },
+        { name: "p", description: "Jump to page (alias for /page)" },
         { name: "safe", description: "Disable NSFW" },
         { name: "lewd", description: "Allow NSFW" }
     ]
@@ -226,6 +236,13 @@ Item {
                     Logger.info("Anime", `Loading prev page: ${Booru.currentPage - 1}`)
                     Booru.makeRequest(Booru.currentTags, Booru.allowNsfw, Booru.limit, Booru.currentPage - 1)
                 }
+            } else if (command === "page" || command === "p") {
+                var targetPage = args.length > 0 ? parseInt(args[0], 10) : 1
+                if (isNaN(targetPage) || targetPage < 1) targetPage = 1
+                Logger.info("Anime", `Jumping to page ${targetPage}`)
+                // Use current tags if we have results, otherwise empty search
+                var tags = Booru.responses.length > 0 ? Booru.currentTags : []
+                Booru.makeRequest(tags, Booru.allowNsfw, Booru.limit, targetPage)
             } else if (command === "safe") {
                 Logger.info("Anime", "NSFW disabled")
                 Booru.allowNsfw = false;
@@ -360,6 +377,12 @@ Item {
             }
         } else if (inputText.trim() === "+") {
             root.handleInput(root.commandPrefix + "next")
+        } else if (/^:\d+$/.test(inputText.trim())) {
+            // Vim-style :<number> to jump to page
+            var pageNum = parseInt(inputText.trim().substring(1), 10)
+            Logger.info("Anime", `Vim-style page jump: ${pageNum}`)
+            var tags = Booru.responses.length > 0 ? Booru.currentTags : []
+            Booru.makeRequest(tags, Booru.allowNsfw, Booru.limit, pageNum)
         } else {
             var tagList = inputText.split(/\s+/).filter(function(tag) { return tag.length > 0 })
             var pageIndex = 1
@@ -1146,13 +1169,13 @@ Item {
 
                     Item { Layout.fillWidth: true }
 
-                    // Pagination controls (only show when there are results)
+                    // Pagination controls (always visible - works in empty state too)
                     Row {
-                        visible: Booru.responses.length > 0
                         spacing: 4
 
-                        // Previous page button
+                        // Previous page button (hidden in empty state)
                         RippleButton {
+                            visible: Booru.responses.length > 0
                             implicitHeight: 24
                             implicitWidth: 24
                             buttonRadius: 4
@@ -1169,7 +1192,7 @@ Item {
                             onClicked: root.loadPrevPage()
                         }
 
-                        // Page indicator (click to enter page number)
+                        // Page indicator (click to enter page number) - always visible
                         Rectangle {
                             id: pageIndicator
                             implicitWidth: Math.max(pageInput.visible ? 40 : pageLabel.implicitWidth + 12, 28)
@@ -1184,7 +1207,7 @@ Item {
                                 anchors.centerIn: parent
                                 font.pixelSize: 11
                                 color: Appearance.m3colors.m3secondaryText
-                                text: Booru.runningRequests > 0 ? "..." : Booru.currentPage.toString()
+                                text: Booru.runningRequests > 0 ? "..." : (Booru.responses.length > 0 ? Booru.currentPage.toString() : "1")
                             }
 
                             // Input mode
@@ -1203,7 +1226,8 @@ Item {
                                     var targetPage = parseInt(text)
                                     if (!isNaN(targetPage) && targetPage >= 1) {
                                         Logger.info("Anime", `Navigating to page ${targetPage}`)
-                                        Booru.makeRequest(Booru.currentTags, Booru.allowNsfw, Booru.limit, targetPage)
+                                        var tags = Booru.responses.length > 0 ? Booru.currentTags : []
+                                        Booru.makeRequest(tags, Booru.allowNsfw, Booru.limit, targetPage)
                                     }
                                     visible = false
                                 }
@@ -1228,8 +1252,9 @@ Item {
                             }
                         }
 
-                        // Next page button
+                        // Next page button (hidden in empty state)
                         RippleButton {
+                            visible: Booru.responses.length > 0
                             implicitHeight: 24
                             implicitWidth: 24
                             buttonRadius: 4

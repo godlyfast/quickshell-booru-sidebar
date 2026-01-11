@@ -232,7 +232,7 @@ Scope {
     property real panX: 0
     property real panY: 0
     property real minZoom: 1.0
-    property real maxZoom: 5.0
+    property real maxZoom: 10.0
 
     // Track cache fallback state (reset on image change)
     property bool imageCacheTriedAndFailed: false
