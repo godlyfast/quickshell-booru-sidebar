@@ -119,10 +119,18 @@ Scope {
 
     // Explicit update function to avoid binding-related issues
     function setImageData(newImageData, newCachedSource) {
-        // Stop any playing video before switching to new content
+        // Stop any playing video before switching content
         if (root.currentMediaPlayer) {
             root.currentMediaPlayer.stop()
         }
+
+        // Clear URL and media type - this forces the Loader to destroy the component
+        // Creating a fresh MediaPlayer is the cleanest way to reset GStreamer state
+        stableImageUrl = ""
+        stableMediaType = ""
+        contentReloadCounter++
+        Logger.debug("PreviewPanel", `setImageData: counter=${contentReloadCounter}`)
+
         // Store in STABLE property, not the externally-bound one
         stableImageData = newImageData
         // Force update of stable values
@@ -213,6 +221,11 @@ Scope {
     // Stable URL cache - only updates when image actually changes
     property string stableImageUrl: ""
     property string stableMediaType: "image"  // "image", "gif", or "video"
+    property int contentReloadCounter: 0  // Incremented to force video component reload
+
+    onStableImageUrlChanged: {
+        Logger.debug("PreviewPanel", `stableImageUrl changed to: ${stableImageUrl.substring(0, 80)}`)
+    }
 
     // Zoom/pan state for image preview
     property real zoomLevel: 1.0
@@ -561,7 +574,6 @@ Scope {
                         anchors.fill: parent
                         anchors.margins: 8
 
-                        // Use stable media type to prevent unnecessary reloads
                         sourceComponent: {
                             if (root.stableMediaType === "video") return videoPreviewComponent
                             if (root.stableMediaType === "gif") return gifPreviewComponent
@@ -1042,17 +1054,15 @@ Scope {
                 videoOutput: videoOutput
                 loops: MediaPlayer.Infinite
 
+                // Auto-play when source is set and valid
                 onSourceChanged: {
-                    if (source.toString().length > 0) {
+                    Logger.debug("PreviewPanel", `MediaPlayer source: ${source.toString().substring(0, 60)}`)
+                    if (source && source.toString().length > 0) {
+                        root.videoHasError = false
+                        root.videoErrorMessage = ""
+                        // Start playback immediately when source is ready
                         play()
                     }
-                }
-
-                onErrorOccurred: (error, errorString) => {
-                    Logger.error("PreviewPanel", `MediaPlayer error ${error}: ${errorString}`)
-                    root.videoHasError = true
-                    root.videoErrorMessage = errorString || "Failed to load video"
-                    stop()
                 }
 
                 onMediaStatusChanged: {
@@ -1061,6 +1071,12 @@ Scope {
                         root.videoHasError = true
                         root.videoErrorMessage = "Invalid or unsupported video format"
                     }
+                }
+
+                onErrorOccurred: (error, errorString) => {
+                    Logger.error("PreviewPanel", `MediaPlayer error ${error}: ${errorString}`)
+                    root.videoHasError = true
+                    root.videoErrorMessage = errorString || "Failed to load video"
                 }
             }
 

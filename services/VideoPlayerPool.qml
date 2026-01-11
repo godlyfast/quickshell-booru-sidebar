@@ -27,6 +27,9 @@ Singleton {
     // Activation slots - just track image IDs and timestamps
     property var activeSlots: []  // Array of {imageId, lastUsed}
 
+    // Signal emitted when a slot is evicted - BooruImage listens to clear its poolEntry
+    signal slotEvicted(string evictedImageId)
+
     /**
      * Request an activation slot for an image.
      * Returns an activation object or null.
@@ -90,6 +93,12 @@ Singleton {
         }
 
         var evictedId = activeSlots[lruIndex].imageId
+
+        // CRITICAL: Emit signal BEFORE mutating slot object
+        // This allows the evicted BooruImage to clear its poolEntry reference
+        // and stop MediaPlayer before the slot is reassigned
+        root.slotEvicted(evictedId)
+
         activeSlots[lruIndex].imageId = imageId
         activeSlots[lruIndex].lastUsed = Date.now()
 

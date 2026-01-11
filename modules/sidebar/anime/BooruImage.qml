@@ -42,6 +42,10 @@ Button {
     signal hidePreview()
     signal updatePreviewSource(string cachedSource)  // Emitted when download completes while preview is active
 
+    // Destruction guard - prevents signal handlers from accessing destroyed properties
+    // Set at the start of Component.onDestruction, checked by all signal handlers
+    property bool destroying: false
+
     // Pool activation entry (controls whether local MediaPlayer has source)
     property var poolEntry: null
     // Local player references (MediaPlayer is local, pool just controls activation)
@@ -52,8 +56,28 @@ Button {
     Connections {
         target: Services.Booru
         function onStopAllVideos() {
+            // Guard: skip if component is being destroyed (prevents SIGSEGV)
+            if (root.destroying) return
             if (root.isVideo && root.mediaPlayer) {
                 root.mediaPlayer.stop()
+            }
+        }
+    }
+
+    // Handle pool slot eviction - clear poolEntry to trigger MediaPlayer cleanup
+    // This fixes crash caused by QML not detecting slot object mutation
+    Connections {
+        target: Services.VideoPlayerPool
+        function onSlotEvicted(evictedImageId) {
+            // Guard: skip if component is being destroyed (prevents SIGSEGV)
+            if (root.destroying) return
+
+            // Check if this image was evicted
+            if (root.isVideo && root.imageData && String(root.imageData.id) === evictedImageId) {
+                // Clear poolEntry BEFORE slot object is mutated
+                // This triggers the MediaPlayer source binding to clear
+                root.poolEntry = null
+                cleanupMediaPlayer()
             }
         }
     }
@@ -68,6 +92,9 @@ Button {
 
     // Bug 1.6: Monitor pool entry changes to cleanup on eviction
     onPoolEntryChanged: {
+        // Guard: skip if component is being destroyed (prevents SIGSEGV)
+        if (root.destroying) return
+
         // If pool entry was taken away (eviction) or no longer matches this image, cleanup
         if (!poolEntry || (poolEntry && poolEntry.imageId !== root.imageData.id)) {
             cleanupMediaPlayer()
@@ -81,6 +108,9 @@ Button {
         // Targeted file registration - only update this image if the file matches
         // This avoids the N^2 problem where ALL images re-evaluate on ANY registration
         function onFileRegistered(baseName, fullPath) {
+            // Guard: skip if component is being destroyed (prevents SIGSEGV)
+            if (root.destroying) return
+
             // Check if registered file matches any of our possible cache names
             if (baseName === root.fileName ||
                 baseName === root.gifFileName ||
@@ -97,6 +127,9 @@ Button {
         // Reset all cache state when cache is cleared
         // This fixes the "stuck low graphics" bug for Danbooru and other manual providers
         function onCacheCleared() {
+            // Guard: skip if component is being destroyed (prevents SIGSEGV)
+            if (root.destroying) return
+
             Services.Logger.info("BooruImage", `Cache cleared signal: id=${root.imageData.id}`)
 
             // Reset cache check flags - allows downloaders to re-run
@@ -124,6 +157,9 @@ Button {
     // Track hover via explicit MouseArea since Button.hovered doesn't work in layer shell
     property bool isHovered: hoverArea.containsMouse
     onIsHoveredChanged: {
+        // Guard: skip if component is being destroyed (prevents SIGSEGV)
+        if (root.destroying) return
+
         if (isHovered) {
             Services.Logger.debug("BooruImage", `Hover enter: id=${root.imageData.id} isVideo=${root.isVideo}`)
             // Track video player for keyboard controls
@@ -197,7 +233,21 @@ Button {
 
     // Release pool player and cleanup MediaPlayer when component is destroyed
     Component.onDestruction: {
-        // Bug 1.6: Cleanup MediaPlayer resources first
+        // CRITICAL: Set destruction flag first to prevent signal handlers from accessing
+        // destroyed properties. This fixes SIGSEGV crashes during rapid scrolling.
+        root.destroying = true
+
+        // Clear HoverTracker references to prevent dangling pointer crashes
+        // Must be done before object destruction completes
+        if (Services.HoverTracker.hoveredBooruImage === root) {
+            Services.HoverTracker.hoveredBooruImage = null
+        }
+        if (Services.HoverTracker.hoveredVideoPlayer === root.mediaPlayer) {
+            Services.HoverTracker.hoveredVideoPlayer = null
+            Services.HoverTracker.hoveredAudioOutput = null
+        }
+
+        // Bug 1.6: Cleanup MediaPlayer resources
         cleanupMediaPlayer()
         if (root.poolEntry) {
             Services.VideoPlayerPool.releasePlayer(root.imageData.id)
@@ -335,6 +385,9 @@ Button {
 
     // Log when cachedImageSource changes and track resolution
     onCachedImageSourceChanged: {
+        // Guard: skip if component is being destroyed (prevents SIGSEGV)
+        if (root.destroying) return
+
         var wasHiRes = previousCachedSource.indexOf("/hires_") >= 0
         var nowHiRes = cachedIsHiRes
 
@@ -423,6 +476,9 @@ Button {
             }
         }
         onExited: function(code, status) {
+            // Guard: skip if component is being destroyed (prevents SIGSEGV)
+            if (root.destroying) return
+
             root.highResCacheChecked = true
             if (code === 0) {
                 // File exists - use it immediately
@@ -684,6 +740,10 @@ Button {
 
         onExited: (code, status) => {
             downloading = false
+
+            // Guard: skip if component is being destroyed (prevents SIGSEGV)
+            if (root.destroying) return
+
             root.ugoiraDownloading = false
             if (code === 0) {
                 var cachedPath = "file://" + root.ugoiraVideoPath
@@ -704,6 +764,8 @@ Button {
         repeat: false
         running: root.isArchive && root.ugoiraCacheChecked && root.localUgoiraSource === "" && root.ugoiraSampleUrl.length > 0
         onTriggered: {
+            // Guard: skip if component is being destroyed (prevents SIGSEGV)
+            if (root.destroying) return
             // Guard against race condition - check flags inside handler
             if (root.ugoiraDownloading || ugoiraDownloader.downloading) return
             root.ugoiraDownloading = true
@@ -867,6 +929,13 @@ Button {
 
         onExited: function(code, status) {
             videoProgressTimer.stop()
+
+            // Guard: skip if component is being destroyed (prevents SIGSEGV)
+            if (root.destroying) {
+                downloading = false
+                return
+            }
+
             if (code === 0) {
                 downloading = false
                 retryCount = 0
@@ -929,6 +998,8 @@ Button {
         interval: root.retryDelay
         repeat: false
         onTriggered: {
+            // Guard: skip if component is being destroyed (prevents SIGSEGV)
+            if (root.destroying) return
             universalVideoDownloader.command = universalVideoDownloader.buildCommand()
             universalVideoDownloader.running = true
         }
@@ -942,6 +1013,8 @@ Button {
                  && root.imageData.file_url && root.imageData.file_url.length > 0
                  && !universalVideoDownloader.downloading
         onTriggered: {
+            // Guard: skip if component is being destroyed (prevents SIGSEGV)
+            if (root.destroying) return
             if (!universalVideoDownloader.downloading) {
                 universalVideoDownloader.command = universalVideoDownloader.buildCommand()
                 universalVideoDownloader.running = true
@@ -1390,6 +1463,9 @@ Button {
             // Request/release pool slot based on visibility
             // Pool entry controls whether local MediaPlayer has source (via binding)
             onVisibleChanged: {
+                // Guard: skip if component is being destroyed (prevents SIGSEGV)
+                if (root.destroying) return
+
                 if (visible && root.isVideo && videoContainer.videoSource.length > 0) {
                     root.poolEntry = Services.VideoPlayerPool.requestPlayer(root.imageData.id)
                     if (root.poolEntry && Services.VideoPlayerPool.autoplay) {
@@ -1403,6 +1479,9 @@ Button {
 
             // Also request pool slot when video source becomes available
             onVideoSourceChanged: {
+                // Guard: skip if component is being destroyed (prevents SIGSEGV)
+                if (root.destroying) return
+
                 if (visible && root.isVideo && videoSource.length > 0 && !root.poolEntry) {
                     root.poolEntry = Services.VideoPlayerPool.requestPlayer(root.imageData.id)
                     if (root.poolEntry && Services.VideoPlayerPool.autoplay) {
