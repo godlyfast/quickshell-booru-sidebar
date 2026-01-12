@@ -434,6 +434,7 @@ Button {
         sourceUrl: root.imageData.preview_url ? root.imageData.preview_url : ""
         property string downloadedPath: ""
         onDone: (path, width, height) => {
+            if (root.destroying) return
             downloadedPath = path
             // Store dimensions locally instead of mutating shared model
             if (!root.imageData.width || !root.imageData.height) {
@@ -471,6 +472,7 @@ Button {
         running: root.manualDownload && !root.isGif && !root.isVideo && !root.isArchive && root.effectiveHighResPath.length > 0 && !root.highResCacheChecked
         command: ["test", "-f", root.effectiveHighResPath]
         onRunningChanged: {
+            if (root.destroying) return
             if (running) {
                 Services.Logger.debug("BooruImage", `highResCacheCheck STARTING: id=${root.imageData.id}`)
             }
@@ -505,6 +507,7 @@ Button {
         fallbackUrls: root.imageData.file_url_fallbacks ? root.imageData.file_url_fallbacks : []
 
         onDone: function(path, width, height) {
+            if (root.destroying) return
             if (path.length > 0) {
                 Services.Logger.debug("BooruImage", `Hi-res downloaded: id=${root.imageData.id} ${width}x${height}`)
                 var cachedPath = "file://" + path
@@ -527,6 +530,7 @@ Button {
         sourceUrl: root.imageData.file_url ? root.imageData.file_url : ""
         fallbackUrls: root.imageData.file_url_fallbacks ? root.imageData.file_url_fallbacks : []
         onDone: (path, width, height) => {
+            if (root.destroying) return
             if (path.length > 0) {
                 var cachedPath = "file://" + path
                 root.localHighResSource = cachedPath
@@ -550,11 +554,13 @@ Button {
         user: Services.Booru.danbooruLogin
         password: Services.Booru.danbooruApiKey
         onDownloadingChanged: {
+            if (root.destroying) return
             if (downloading) {
                 Services.Logger.info("BooruImage", `Grabber DOWNLOADING: id=${root.imageData.id}`)
             }
         }
         onDone: (success, message) => {
+            if (root.destroying) return
             if (success) {
                 Services.Logger.info("BooruImage", `Grabber SUCCESS: id=${root.imageData.id}`)
                 var fullPath = root.grabberHighResPath
@@ -586,11 +592,13 @@ Button {
         interval: root.triggerDelay
         running: root.manualDownload && root.provider === "danbooru" && !root.isGif && !root.isVideo && !root.isArchive && imageDownloader.downloadedPath.length > 0 && !grabberHighResDownloader.downloading && root.localHighResSource === "" && root.highResCacheChecked
         onRunningChanged: {
+            if (root.destroying) return
             if (running) {
                 Services.Logger.debug("BooruImage", `grabberTrigger ARMED: id=${root.imageData.id} delay=${root.triggerDelay}ms`)
             }
         }
         onTriggered: {
+            if (root.destroying) return
             Services.Logger.info("BooruImage", `grabberTrigger FIRED: id=${root.imageData.id}`)
             grabberHighResDownloader.startDownload()
         }
@@ -625,6 +633,7 @@ Button {
         filePath: root.gifFilePath
         sourceUrl: modelData.file_url ? modelData.file_url : ""
         onDone: function(path, width, height) {
+            if (root.destroying) return
             if (path.length > 0) {
                 root.localGifSource = "file://" + path
             } else {
@@ -645,6 +654,7 @@ Button {
         user: Services.Booru.danbooruLogin
         password: Services.Booru.danbooruApiKey
         onDone: (success, message) => {
+            if (root.destroying) return
             if (success) {
                 var cachedPath = "file://" + root.grabberGifPath
                 root.localGifSource = cachedPath
@@ -667,7 +677,10 @@ Button {
         interval: root.triggerDelay
         running: root.manualDownload && root.provider === "danbooru" && root.isGif
                  && root.localGifSource === "" && !grabberGifDownloader.downloading
-        onTriggered: grabberGifDownloader.startDownload()
+        onTriggered: {
+            if (root.destroying) return
+            grabberGifDownloader.startDownload()
+        }
     }
 
     // Download GIF to cache for non-manual providers
@@ -678,6 +691,7 @@ Button {
         filePath: root.gifFilePath
         sourceUrl: root.imageData.file_url ? root.imageData.file_url : ""
         onDone: function(path, width, height) {
+            if (root.destroying) return
             if (path.length > 0) {
                 var cachedPath = "file://" + path
                 // Register in CacheIndex - this triggers generation++ which causes
@@ -706,6 +720,7 @@ Button {
         running: root.isArchive && root.ugoiraVideoPath.length > 0 && !root.ugoiraCacheChecked
         command: ["test", "-f", root.ugoiraVideoPath]
         onExited: (code, status) => {
+            if (root.destroying) return
             root.ugoiraCacheChecked = true
             if (code === 0) {
                 root.localUgoiraSource = "file://" + root.ugoiraVideoPath
@@ -808,6 +823,7 @@ Button {
         running: root.isVideo && root.manualDownload && !root.videoPreviewCacheChecked && root.videoPreviewPath.length > 0
         command: ["test", "-s", root.videoPreviewPath]
         onExited: function(code, status) {
+            if (root.destroying) return
             root.videoPreviewCacheChecked = true
             if (code === 0) {
                 root.localVideoPreview = "file://" + root.videoPreviewPath
@@ -856,6 +872,7 @@ Button {
 
         onExited: function(code, status) {
             downloading = false
+            if (root.destroying) return
             if (code === 0) {
                 root.localVideoPreview = "file://" + root.videoPreviewPath
             } else {
@@ -874,6 +891,7 @@ Button {
                  && (root.imageData.preview_url || root.imageData.sample_url)
                  && !videoPreviewDownloader.downloading
         onTriggered: {
+            if (root.destroying) return
             if (!videoPreviewDownloader.downloading) {
                 videoPreviewDownloader.command = videoPreviewDownloader.buildCommand()
                 videoPreviewDownloader.running = true
@@ -922,6 +940,7 @@ Button {
         onRunningChanged: {
             if (running) {
                 downloading = true
+                if (root.destroying) return
                 root.videoDownloadProgress = 0
                 videoProgressTimer.start()
             }
@@ -976,7 +995,10 @@ Button {
         interval: root.progressCheckInterval
         repeat: true
         running: false
-        onTriggered: videoProgressChecker.running = true
+        onTriggered: {
+            if (root.destroying) return
+            videoProgressChecker.running = true
+        }
     }
 
     Process {
@@ -985,6 +1007,7 @@ Button {
         command: ["stat", "-c", "%s", root.videoFilePath]
         stdout: StdioCollector {
             onStreamFinished: {
+                if (root.destroying) return
                 var currentSize = parseInt(text.trim()) || 0
                 if (root.videoFileSize > 0 && currentSize > 0) {
                     root.videoDownloadProgress = Math.min(99, Math.round((currentSize / root.videoFileSize) * 100))
@@ -1034,6 +1057,7 @@ Button {
         filenameTemplate: Services.Booru.filenameTemplate
 
         onDone: (success, message) => {
+            if (root.destroying) return
             if (success) {
                 Quickshell.execDetached(["notify-send", "Download complete", message, "-a", "Booru"])
             } else {
@@ -1057,6 +1081,7 @@ Button {
         filenameTemplate: Services.Booru.filenameTemplate
 
         onDone: (success, message) => {
+            if (root.destroying) return
             if (success) {
                 Quickshell.execDetached(["notify-send", "Wallpaper saved", message, "-a", "Booru"])
             } else {
@@ -1080,6 +1105,7 @@ Button {
         interval: root.triggerDelay
         running: root.fileName.length > 0 && root.downloadPath.length > 0
         onTriggered: {
+            if (root.destroying) return
             // Build command dynamically when timer fires to ensure paths are set
             fileChecker.command = ["bash", "-c",
                 "SAVED=0; WP=0; " +
@@ -1102,7 +1128,7 @@ Button {
 
         stdout: StdioCollector {
             onStreamFinished: {
-                if (fileChecker.handled) return
+                if (root.destroying || fileChecker.handled) return
                 fileChecker.handled = true
                 var parts = text.trim().split(" ")
                 if (parts.length >= 2) {
@@ -1113,6 +1139,7 @@ Button {
         }
 
         onExited: (code, status) => {
+            if (root.destroying) return
             // Fallback if stdout didn't fire
             if (!fileChecker.handled) {
                 fileChecker.handled = true
@@ -1198,6 +1225,7 @@ Button {
 
                 // Track dimensions and log when image finishes loading
                 onStatusChanged: {
+                    if (root.destroying) return
                     if (status === Image.Ready) {
                         root.displayedWidth = implicitWidth
                         root.displayedHeight = implicitHeight
@@ -1297,6 +1325,7 @@ Button {
                     visible: false  // Only used as blur source
 
                     onStatusChanged: {
+                        if (root.destroying) return
                         if (status === Image.Ready) {
                             Services.Logger.debug("BooruImage", `Preview loaded: id=${root.imageData.id} ${implicitWidth}x${implicitHeight} source=${previewSourceType}`)
                         }
@@ -1542,6 +1571,7 @@ Button {
                 videoOutput: videoOutput
 
                 onErrorOccurred: (error, errorString) => {
+                    if (root.destroying) return
                     Logger.error("BooruImage", `Video error id=${root.imageData?.id}: ${error} - ${errorString}`)
                 }
             }
