@@ -79,7 +79,13 @@ Item {
 
     // Focus the input field
     function focusInput() {
-        if (root.inputField) root.inputField.forceActiveFocus()
+        if (root.inputField) {
+            // Pre-fill with current tags if input is empty and we have saved tags
+            if (root.inputField.text.length === 0 && Booru.currentTags.length > 0) {
+                root.inputField.text = Booru.currentTags.join(" ") + " "
+            }
+            root.inputField.forceActiveFocus()
+        }
     }
 
     // Focus the page input field
@@ -383,7 +389,8 @@ Item {
             Booru.makeRequest(tags, Booru.allowNsfw, Booru.limit, pageNum)
         } else {
             var tagList = inputText.split(/\s+/).filter(function(tag) { return tag.length > 0 })
-            var pageIndex = 1
+            // Default to current page, allow override via number in input
+            var pageIndex = Booru.currentPage
             for (var i = 0; i < tagList.length; ++i) {
                 if (/^\d+$/.test(tagList[i])) {
                     pageIndex = parseInt(tagList[i], 10);
@@ -487,10 +494,10 @@ Item {
             }
         }
 
-        // Tag suggestions
+        // Tag suggestions (only shown when input is focused)
         Flow {
             id: tagSuggestions
-            visible: root.suggestionList.length > 0 && tagInputField.text.length > 0
+            visible: root.suggestionList.length > 0 && tagInputField.text.length > 0 && tagInputField.activeFocus
             Layout.fillWidth: true
             spacing: 4
 
@@ -1291,8 +1298,12 @@ Item {
                                 onAccepted: {
                                     var targetPage = parseInt(text)
                                     if (!isNaN(targetPage) && targetPage >= 1) {
-                                        Logger.info("Anime", `Navigating to page ${targetPage}`)
-                                        var tags = Booru.responses.length > 0 ? Booru.currentTags : []
+                                        // Prefer tags from search input, fallback to current tags
+                                        var inputTags = tagInputField.text.trim()
+                                        var tags = inputTags.length > 0
+                                            ? inputTags.split(/\s+/).filter(t => t.length > 0)
+                                            : (Booru.currentTags.length > 0 ? Booru.currentTags : [])
+                                        Logger.info("Anime", `Navigating to page ${targetPage} with tags: ${tags.join(", ")}`)
                                         Booru.makeRequest(tags, Booru.allowNsfw, Booru.limit, targetPage)
                                     }
                                     visible = false
