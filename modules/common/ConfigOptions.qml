@@ -66,5 +66,8 @@ Singleton {
         // Videos will only play in the preview panel (single player instance)
         property int maxSidebarPlayers: 0
         property bool videoAutoplay: false
+        // Auto-exit timeout when sidebar is hidden (in minutes)
+        // Set to 0 to disable auto-exit
+        property int idleExitMinutes: 3
     }
 }

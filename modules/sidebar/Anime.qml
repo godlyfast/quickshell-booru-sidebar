@@ -84,9 +84,7 @@ Item {
 
     // Focus the page input field
     function focusPageInput() {
-        pageInput.text = Booru.currentPage.toString()
         pageInput.visible = true
-        pageInput.selectAll()
         pageInput.forceActiveFocus()
     }
 
@@ -762,8 +760,7 @@ Item {
                         onAccepted: {
                             root.handleInput(text);
                             text = "";
-                            tagInputField.focus = false;
-                            root.focusReleased();  // Signal sidebar to grab focus
+                            root.focusReleased();  // Signal sidebar to restore focus
                         }
 
                         Component.onCompleted: root.inputField = tagInputField
@@ -787,8 +784,7 @@ Item {
                         onClicked: {
                             root.handleInput(tagInputField.text);
                             tagInputField.text = "";
-                            tagInputField.focus = false;
-                            root.focusReleased();
+                            root.focusReleased();  // Signal sidebar to restore focus
                         }
                     }
                 }
@@ -1207,7 +1203,7 @@ Item {
                                 anchors.centerIn: parent
                                 font.pixelSize: 11
                                 color: Appearance.m3colors.m3secondaryText
-                                text: Booru.runningRequests > 0 ? "..." : (Booru.responses.length > 0 ? Booru.currentPage.toString() : "1")
+                                text: Booru.runningRequests > 0 ? "..." : Booru.currentPage.toString()
                             }
 
                             // Input mode
@@ -1221,6 +1217,14 @@ Item {
                                 horizontalAlignment: TextInput.AlignHCenter
                                 inputMethodHints: Qt.ImhDigitsOnly
                                 validator: IntValidator { bottom: 1 }
+
+                                // Pre-fill with current page when shown
+                                onVisibleChanged: {
+                                    if (visible) {
+                                        text = Booru.currentPage.toString()
+                                        selectAll()
+                                    }
+                                }
 
                                 onAccepted: {
                                     var targetPage = parseInt(text)
@@ -1244,9 +1248,7 @@ Item {
                                 visible: !pageInput.visible
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    pageInput.text = Booru.currentPage.toString()
                                     pageInput.visible = true
-                                    pageInput.selectAll()
                                     pageInput.forceActiveFocus()
                                 }
                             }

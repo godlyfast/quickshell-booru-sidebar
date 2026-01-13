@@ -150,6 +150,12 @@ Singleton {
         }
     }
 
+    onCurrentPageChanged: {
+        if (configReady && !loadingSettings && currentProvider.length > 0) {
+            settingsSaveTimer.restart()
+        }
+    }
+
     // Get sort options for current provider (data from ProviderRegistry)
     function getSortOptions() {
         return ProviderRegistry.getSortOptionsForProvider(currentProvider)
@@ -406,7 +412,7 @@ Singleton {
         }
     }
 
-    // Save current provider settings (sorting, ageFilter, nsfw)
+    // Save current provider settings (sorting, ageFilter, nsfw, page)
     function saveProviderSettings() {
         const settings = ConfigOptions.booru.providerSettings || {}
         // Create new object to trigger property change
@@ -414,7 +420,8 @@ Singleton {
         newSettings[currentProvider] = {
             sorting: currentSorting,
             ageFilter: ageFilter,
-            nsfw: allowNsfw
+            nsfw: allowNsfw,
+            page: currentPage
         }
         ConfigOptions.booru.providerSettings = newSettings
         Logger.debug("Booru", `Saved settings for ${currentProvider}: ${JSON.stringify(newSettings[currentProvider])}`)
@@ -429,11 +436,13 @@ Singleton {
             if (s.sorting !== undefined) currentSorting = s.sorting
             if (s.ageFilter !== undefined) ageFilter = s.ageFilter
             if (s.nsfw !== undefined) allowNsfw = s.nsfw
+            if (s.page !== undefined && s.page >= 1) currentPage = s.page
             Logger.debug("Booru", `Loaded settings for ${provider}: ${JSON.stringify(s)}`)
         } else {
             // Reset to defaults for new provider
             currentSorting = ""
             ageFilter = "1month"
+            currentPage = 1
             // Keep allowNsfw as-is or reset based on provider type
             Logger.debug("Booru", `No saved settings for ${provider}, using defaults`)
         }

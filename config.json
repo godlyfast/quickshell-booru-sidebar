@@ -11,7 +11,8 @@
     "danbooruLogin": "",
     "danbooruApiKey": "",
     "maxSidebarPlayers": 10,
-    "videoAutoplay": false
+    "videoAutoplay": false,
+    "idleExitMinutes": 3
   },
   "appearance": {
     "transparency": 0.5,

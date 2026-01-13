@@ -41,6 +41,18 @@ Scope {
         }
     }
 
+    // Delayed focus restore after input field releases
+    // Uses 200ms delay to wait for UI re-render after clearResponses()
+    Timer {
+        id: focusRestoreTimer
+        interval: 200
+        onTriggered: {
+            if (sidebarLoader.item && sidebarLoader.item.restoreFocus) {
+                sidebarLoader.item.restoreFocus()
+            }
+        }
+    }
+
     // Preview panel reference (alias for access from within Loader components)
     property alias previewPanelRef: previewPanel
 
@@ -218,6 +230,16 @@ Scope {
                 root.sidebarOpen = false
             }
 
+            // Force focus back to sidebar after input field releases
+            function restoreFocus() {
+                // First clear any lingering focus from input
+                if (animeContent.inputField) {
+                    animeContent.inputField.focus = false
+                }
+                // Then force focus to sidebar background
+                sidebarBackground.forceActiveFocus()
+            }
+
             exclusionMode: ExclusionMode.Normal
             exclusiveZone: 0
             implicitWidth: sidebarWidth + 20
@@ -241,7 +263,8 @@ Scope {
                 id: grab
                 // Include preview panel in focus grab so clicking it doesn't close sidebar
                 windows: previewPanel.panelWindow ? [sidebarRoot, previewPanel.panelWindow] : [sidebarRoot]
-                active: sidebarRoot.visible && !sidebarRoot.pinned
+                // Keep focus grab active when visible (even when pinned) to receive keyboard events
+                active: sidebarRoot.visible
                 onActiveChanged: {
                     if (active) {
                         sidebarBackground.forceActiveFocus()
@@ -255,6 +278,7 @@ Scope {
                         sidebarBackground.forceActiveFocus()
                         return
                     }
+                    // Only auto-close when not pinned
                     if (!sidebarRoot.pinned) sidebarRoot.hide()
                 }
             }
@@ -284,6 +308,16 @@ Scope {
                 border.width: 1
                 border.color: Appearance.m3colors.m3borderSecondary
                 radius: Appearance.rounding.large
+
+                // Click anywhere on sidebar to recover keyboard focus
+                MouseArea {
+                    anchors.fill: parent
+                    propagateComposedEvents: true
+                    onPressed: (mouse) => {
+                        sidebarBackground.forceActiveFocus()
+                        mouse.accepted = false  // Let clicks through to children
+                    }
+                }
 
                 // Keyboard handler (delegates all key events)
                 KeybindingHandler {
@@ -341,9 +375,24 @@ Scope {
                         // Also notify PreviewPanel directly to update its display
                         previewPanel.updateCachedSource(cachedSource)
                     }
-                    onFocusReleased: sidebarBackground.forceActiveFocus()  // Restore keyboard focus after search
+                    onFocusReleased: root.focusRestoreTimer.restart()  // Delayed focus restore after search
                     // Use onInputFieldChanged to catch when Anime sets its inputField property
                     onInputFieldChanged: root.tagInputFieldRef = inputField
+                }
+
+                // Restore focus when API response finishes (ensures focus after UI re-renders)
+                Connections {
+                    target: Services.Booru
+                    function onResponseFinished() {
+                        // Small delay to let UI settle after response data is rendered
+                        responseSettleTimer.restart()
+                    }
+                }
+
+                Timer {
+                    id: responseSettleTimer
+                    interval: 50
+                    onTriggered: sidebarBackground.forceActiveFocus()
                 }
 
                 // Provider picker overlay (inside sidebarBackground for proper z-order)
