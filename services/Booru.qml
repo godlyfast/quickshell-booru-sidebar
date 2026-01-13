@@ -156,6 +156,12 @@ Singleton {
         }
     }
 
+    onCurrentTagsChanged: {
+        if (configReady && !loadingSettings && currentProvider.length > 0) {
+            settingsSaveTimer.restart()
+        }
+    }
+
     // Get sort options for current provider (data from ProviderRegistry)
     function getSortOptions() {
         return ProviderRegistry.getSortOptionsForProvider(currentProvider)
@@ -371,6 +377,10 @@ Singleton {
         }
         responses = []
 
+        // Reset search state
+        currentTags = []
+        currentPage = 1
+
         // Force JavaScript garbage collection to free memory
         gc()
     }
@@ -412,7 +422,7 @@ Singleton {
         }
     }
 
-    // Save current provider settings (sorting, ageFilter, nsfw, page)
+    // Save current provider settings (sorting, ageFilter, nsfw, page, tags)
     function saveProviderSettings() {
         const settings = ConfigOptions.booru.providerSettings || {}
         // Create new object to trigger property change
@@ -421,7 +431,8 @@ Singleton {
             sorting: currentSorting,
             ageFilter: ageFilter,
             nsfw: allowNsfw,
-            page: currentPage
+            page: currentPage,
+            tags: currentTags
         }
         ConfigOptions.booru.providerSettings = newSettings
         Logger.debug("Booru", `Saved settings for ${currentProvider}: ${JSON.stringify(newSettings[currentProvider])}`)
@@ -437,12 +448,14 @@ Singleton {
             if (s.ageFilter !== undefined) ageFilter = s.ageFilter
             if (s.nsfw !== undefined) allowNsfw = s.nsfw
             if (s.page !== undefined && s.page >= 1) currentPage = s.page
+            if (s.tags !== undefined && Array.isArray(s.tags)) currentTags = s.tags
             Logger.debug("Booru", `Loaded settings for ${provider}: ${JSON.stringify(s)}`)
         } else {
             // Reset to defaults for new provider
             currentSorting = ""
             ageFilter = "1month"
             currentPage = 1
+            currentTags = []
             // Keep allowNsfw as-is or reset based on provider type
             Logger.debug("Booru", `No saved settings for ${provider}, using defaults`)
         }

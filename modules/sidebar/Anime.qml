@@ -552,6 +552,68 @@ Item {
                 anchors.margins: 8
                 spacing: 8
 
+                // Current search tags display (clickable to re-search)
+                Flow {
+                    id: currentTagsDisplay
+                    visible: Booru.currentTags.length > 0
+                    Layout.fillWidth: true
+                    spacing: 4
+
+                    StyledText {
+                        text: "Search:"
+                        font.pixelSize: Appearance.font.pixelSize.textSmall
+                        color: Appearance.m3colors.m3secondaryText
+                    }
+
+                    Repeater {
+                        model: Booru.currentTags
+
+                        RippleButton {
+                            implicitHeight: 22
+                            implicitWidth: tagLabel.implicitWidth + 16
+                            buttonRadius: Appearance.rounding.small
+                            colBackground: Appearance.colors.colLayer1
+
+                            contentItem: StyledText {
+                                id: tagLabel
+                                anchors.centerIn: parent
+                                text: modelData
+                                font.pixelSize: Appearance.font.pixelSize.textSmall
+                                color: Appearance.m3colors.m3primary
+                            }
+
+                            onClicked: {
+                                // Click tag to add to search input
+                                if (tagInputField.text.length > 0 && !tagInputField.text.endsWith(" ")) {
+                                    tagInputField.text += " "
+                                }
+                                tagInputField.text += modelData + " "
+                                tagInputField.forceActiveFocus()
+                            }
+                        }
+                    }
+
+                    // Clear search button
+                    RippleButton {
+                        implicitHeight: 22
+                        implicitWidth: 22
+                        buttonRadius: Appearance.rounding.full
+                        colBackground: Appearance.colors.colLayer1
+                        colBackgroundHover: Appearance.colors.colLayer1Hover
+
+                        MaterialSymbol {
+                            anchors.centerIn: parent
+                            iconSize: 14
+                            text: "close"
+                            color: Appearance.m3colors.m3secondaryText
+                        }
+
+                        onClicked: {
+                            Booru.clearResponses()
+                        }
+                    }
+                }
+
                 // Text input row
                 RowLayout {
                     Layout.fillWidth: true
