@@ -10,7 +10,7 @@ import Quickshell.Io
  *
  * The response maps Grabber's JSON format to our normalized image schema.
  */
-Process {
+Item {
     id: root
 
     // Required properties
@@ -28,11 +28,26 @@ Process {
     // Status
     property bool loading: false
     property string lastError: ""
+    property bool responseHandled: false  // Prevent double signal emission
+    property int timeoutMs: 60000  // Kill process after 60s (Grabber with --load-details can be slow)
 
     signal finished(var images)
     signal failed(string error)
 
-    running: false
+    // Timeout timer to kill hanging processes
+    Timer {
+        id: processTimeout
+        interval: root.timeoutMs
+        running: grabberProcess.running
+        onTriggered: {
+            if (grabberProcess.running) {
+                root.lastError = "Request timed out"
+                root.responseHandled = true
+                grabberProcess.kill()
+                root.failed(root.lastError)
+            }
+        }
+    }
 
     function startRequest() {
         if (source.length === 0) {
@@ -70,10 +85,11 @@ Process {
             args.push("-w", password)
         }
 
-        command = args
+        grabberProcess.command = args
         loading = true
         lastError = ""
-        running = true
+        responseHandled = false
+        grabberProcess.running = true
     }
 
     // Map Grabber response to our normalized image schema
@@ -119,43 +135,55 @@ Process {
         return result
     }
 
-    stdout: StdioCollector {
-        onStreamFinished: {
-            var output = text.trim()
-            if (output.length === 0) {
-                root.lastError = "Empty response from Grabber"
-                root.failed(root.lastError)
-                return
-            }
+    Process {
+        id: grabberProcess
+        running: false
 
-            try {
-                var items = JSON.parse(output)
-                if (!Array.isArray(items)) {
-                    items = [items]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var output = text.trim()
+                if (output.length === 0) {
+                    root.lastError = "Empty response from Grabber"
+                    root.responseHandled = true
+                    root.failed(root.lastError)
+                    return
                 }
-                var mappedImages = root.mapGrabberResponse(items)
-                root.finished(mappedImages)
-            } catch (e) {
-                root.lastError = "Failed to parse Grabber response: " + e
+
+                try {
+                    var items = JSON.parse(output)
+                    if (!Array.isArray(items)) {
+                        items = [items]
+                    }
+                    var mappedImages = root.mapGrabberResponse(items)
+                    root.responseHandled = true
+                    root.finished(mappedImages)
+                } catch (e) {
+                    root.lastError = "Failed to parse Grabber response: " + e
+                    root.responseHandled = true
+                    root.failed(root.lastError)
+                }
+            }
+        }
+
+        stderr: StdioCollector {
+            onStreamFinished: {
+                var errText = text.trim()
+                if (errText.length > 0 && errText.indexOf("Error") >= 0) {
+                    root.lastError = errText
+                }
+            }
+        }
+
+        onExited: (code, status) => {
+            root.loading = false
+            // Only emit failed if not already handled by stdout parser
+            if (code !== 0 && !root.responseHandled) {
+                if (root.lastError.length === 0) {
+                    root.lastError = "Grabber exited with code " + code
+                }
+                root.responseHandled = true
                 root.failed(root.lastError)
             }
-        }
-    }
-
-    stderr: StdioCollector {
-        onStreamFinished: {
-            var errText = text.trim()
-            if (errText.length > 0 && errText.indexOf("Error") >= 0) {
-                root.lastError = errText
-            }
-        }
-    }
-
-    onExited: (code, status) => {
-        loading = false
-        if (code !== 0 && lastError.length === 0) {
-            lastError = "Grabber exited with code " + code
-            failed(lastError)
         }
     }
 }

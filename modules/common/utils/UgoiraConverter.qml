@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "../../../services"
+import "../functions/shell_utils.js" as ShellUtils
 
 /**
  * Converts ugoira ZIP archives to WebM video for playback.
@@ -56,13 +57,16 @@ Process {
         // 2. Extract ZIP
         // 3. Convert to WebM with ffmpeg
         // 4. Clean up temp directory
+        // Note: shellEscape prevents command injection from malicious filenames
+        var escapedZipPath = ShellUtils.shellEscape(zipPath)
+        var escapedOutputPath = ShellUtils.shellEscape(outputPath)
         var script = [
             "set -e",
             "TMPDIR=$(mktemp -d)",
             "trap 'rm -rf \"$TMPDIR\"' EXIT",
-            "unzip -q '" + zipPath + "' -d \"$TMPDIR\"",
+            "unzip -q '" + escapedZipPath + "' -d \"$TMPDIR\"",
             "cd \"$TMPDIR\"",
-            "ffmpeg -y -framerate " + framerate + " -i %06d.jpg -c:v libvpx-vp9 -pix_fmt yuv420p -crf " + crf + " -b:v 0 '" + outputPath + "' 2>/dev/null",
+            "ffmpeg -y -framerate " + framerate + " -i %06d.jpg -c:v libvpx-vp9 -pix_fmt yuv420p -crf " + crf + " -b:v 0 '" + escapedOutputPath + "' 2>/dev/null",
             "echo 'SUCCESS'"
         ].join(" && ")
 

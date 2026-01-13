@@ -5,7 +5,6 @@ import "./functions/file_utils.js" as FileUtils
 import Qt.labs.platform
 import QtQuick
 import Quickshell
-import Quickshell.Hyprland
 
 Singleton {
     // XDG Dirs, with "file://"

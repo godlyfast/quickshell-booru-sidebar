@@ -189,11 +189,16 @@ Singleton {
         }
     }
 
-	FileView { 
+	FileView {
         id: configFileView
         path: Qt.resolvedUrl(root.filePath)
         watchChanges: true
         onFileChanged: {
+            // Skip reload if we're the ones writing (prevents race condition)
+            if (root.writeInProgress) {
+                Logger.debug("ConfigLoader", "File changed during write, ignoring...")
+                return
+            }
             Logger.info("ConfigLoader", "File changed, reloading...")
             this.reload()
             delayedFileRead.start()

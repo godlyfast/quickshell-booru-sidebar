@@ -197,6 +197,55 @@ Singleton {
     }
 
     /**
+     * Batch register multiple files at once.
+     * More efficient than calling register() in a loop (single clone).
+     * @param entries - Array of {filename, fullPath} objects
+     */
+    function batchRegister(entries) {
+        if (!entries || entries.length === 0) return
+
+        // Mutex: queue if currently mutating
+        if (root.mutating) {
+            Qt.callLater(() => batchRegister(entries))
+            return
+        }
+        root.mutating = true
+
+        // Single deep clone for all entries
+        var newIndex = JSON.parse(JSON.stringify(root.index))
+        var newFiles = []
+
+        for (var i = 0; i < entries.length; i++) {
+            var entry = entries[i]
+            if (!entry.filename || !entry.fullPath) continue
+
+            var base = extractBaseName(entry.filename)
+            if (!base) continue
+
+            var slot = getSlot(entry.filename)
+
+            if (!newIndex[base]) {
+                newIndex[base] = {}
+            }
+            var isNew = !newIndex[base][slot]
+            newIndex[base][slot] = entry.fullPath
+
+            if (isNew) {
+                newFiles.push({ filename: entry.filename, fullPath: entry.fullPath })
+            }
+        }
+
+        root.index = newIndex
+        root.generation++
+        root.mutating = false
+
+        // Emit signals for new files
+        for (var j = 0; j < newFiles.length; j++) {
+            root.fileRegistered(newFiles[j].filename, newFiles[j].fullPath)
+        }
+    }
+
+    /**
      * Remove a file from the cache index.
      * Called when cache files are deleted.
      */

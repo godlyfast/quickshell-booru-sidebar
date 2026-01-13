@@ -219,7 +219,7 @@ Rectangle {
                         rowHeight: imageRow.rowHeight
                         imageRadius: Appearance.rounding.small
                         provider: root.responseData.provider
-                        manualDownload: ["danbooru", "waifu.im", "e621", "e926", "sankaku", "idol_sankaku"].includes(root.responseData.provider)
+                        manualDownload: Booru.providerRequiresManualDownload(root.responseData.provider)
                         previewDownloadPath: root.previewDownloadPath
                         downloadPath: root.downloadPath
                         nsfwPath: root.nsfwPath

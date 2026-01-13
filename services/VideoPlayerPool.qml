@@ -118,7 +118,10 @@ Singleton {
                     lruIndex = i
                 }
             }
-            Logger.debug("VideoPlayerPool", `Shrinking: removed slot for: ${activeSlots[lruIndex].imageId}`)
+            // Emit signal so MediaPlayer gets stopped before removal
+            var evictedId = activeSlots[lruIndex].imageId
+            root.slotEvicted(evictedId)
+            Logger.debug("VideoPlayerPool", `Shrinking: removed slot for: ${evictedId}`)
             activeSlots.splice(lruIndex, 1)
         }
     }

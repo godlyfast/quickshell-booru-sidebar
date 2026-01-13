@@ -7,6 +7,7 @@ import Quickshell.Wayland
 import Quickshell.Hyprland
 import "../common"
 import "../common/widgets"
+import "../common/behaviors"
 import "./preview"
 import "../../services"
 
@@ -80,13 +81,15 @@ Scope {
                 Logger.info("PreviewPanel", `Resetting video after ${root.seekCount} seeks to clear GStreamer state`)
                 const pos = root.currentMediaPlayer.position
                 const src = root.currentMediaPlayer.source
-                root.currentMediaPlayer.stop()
-                root.currentMediaPlayer.source = ""
+                const player = root.currentMediaPlayer  // Capture reference to this specific player
+                player.stop()
+                player.source = ""
                 // Restore after brief pause to fully reset pipeline
                 Qt.callLater(() => {
-                    if (root.currentMediaPlayer) {
-                        root.currentMediaPlayer.source = src
-                        root.currentMediaPlayer.position = pos
+                    // Only restore if this is still the active player (not switched to different content)
+                    if (player && player === root.currentMediaPlayer) {
+                        player.source = src
+                        player.position = pos
                     }
                 })
             }
@@ -232,7 +235,39 @@ Scope {
     property real panX: 0
     property real panY: 0
     property real minZoom: 1.0
-    property real maxZoom: 10.0
+    property real baseMaxZoom: 10.0  // Default max zoom when image fits well
+
+    // Dynamic max zoom - allows zooming to 1:1 pixel ratio for extreme aspect ratios
+    // For super long vertical images, 1000% may not be enough to see details
+    property real maxZoom: {
+        if (!stableImageData) return baseMaxZoom
+
+        // Get original image dimensions
+        var imgWidth = stableImageData.width || 0
+        var imgHeight = stableImageData.height || 0
+        if (imgWidth <= 0 || imgHeight <= 0) return baseMaxZoom
+
+        // Get preview container dimensions (approximate - contentLoader fills previewBackground minus margins)
+        // Using panel dimensions since contentLoader may not be loaded yet
+        var containerWidth = panelWindow ? panelWindow.panelWidth - 16 : 800
+        var containerHeight = panelWindow ? panelWindow.panelHeight - 80 : 600  // Account for toolbar/margins
+
+        if (containerWidth <= 0 || containerHeight <= 0) return baseMaxZoom
+
+        // Calculate the display scale when PreserveAspectFit is applied
+        var scaleW = containerWidth / imgWidth
+        var scaleH = containerHeight / imgHeight
+        var displayScale = Math.min(scaleW, scaleH)
+
+        // Zoom needed to reach 1:1 pixel ratio (100% of original size)
+        var zoomFor1to1 = displayScale > 0 ? (1.0 / displayScale) : baseMaxZoom
+
+        // Allow 2x beyond 1:1 for extra detail inspection, but cap at reasonable limit
+        var calculatedMax = Math.min(zoomFor1to1 * 2.0, 50.0)
+
+        // Return at least baseMaxZoom, or more if needed
+        return Math.max(baseMaxZoom, calculatedMax)
+    }
 
     // Track cache fallback state (reset on image change)
     property bool imageCacheTriedAndFailed: false
@@ -746,7 +781,7 @@ Scope {
         id: imagePreviewComponent
 
         Item {
-            id: zoomContainer
+            id: imageContainer
 
             Image {
                 id: imagePreview
@@ -772,109 +807,20 @@ Scope {
                     }
                 }
 
-                transform: [
-                    Scale {
-                        xScale: root.zoomLevel
-                        yScale: root.zoomLevel
-                        origin.x: imagePreview.width / 2
-                        origin.y: imagePreview.height / 2
-                    },
-                    Translate {
-                        x: root.panX
-                        y: root.panY
-                    }
-                ]
-
-                Behavior on scale {
-                    NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
-                }
+                transform: imageZoomBehavior.targetTransform
             }
 
-            MouseArea {
-                anchors.fill: parent
-                acceptedButtons: Qt.LeftButton
-
-                property real startX: 0
-                property real startY: 0
-                property real startPanX: 0
-                property real startPanY: 0
-
-                cursorShape: root.zoomLevel > 1.0 ? Qt.OpenHandCursor : Qt.ArrowCursor
-
-                onPressed: function(mouse) {
-                    startX = mouse.x
-                    startY = mouse.y
-                    startPanX = root.panX
-                    startPanY = root.panY
-                    if (root.zoomLevel > 1.0) cursorShape = Qt.ClosedHandCursor
-                }
-
-                onReleased: {
-                    if (root.zoomLevel > 1.0) cursorShape = Qt.OpenHandCursor
-                }
-
-                onPositionChanged: function(mouse) {
-                    if (pressed && root.zoomLevel > 1.0) {
-                        root.panX = startPanX + (mouse.x - startX)
-                        root.panY = startPanY + (mouse.y - startY)
-                    }
-                }
-
-                onWheel: function(wheel) {
-                    var zoomDelta = wheel.angleDelta.y > 0 ? 1.15 : 0.87
-                    var newZoom = Math.max(root.minZoom, Math.min(root.maxZoom, root.zoomLevel * zoomDelta))
-                    root.zoomLevel = newZoom
-                    // Reset pan when zooming back to 1.0
-                    if (newZoom <= 1.0) {
-                        root.panX = 0
-                        root.panY = 0
-                    }
-                    zoomIndicator.show()
-                }
-
-                onDoubleClicked: {
-                    root.zoomLevel = 1.0
-                    root.panX = 0
-                    root.panY = 0
-                    zoomIndicator.show()
-                }
-            }
-
-            // Zoom percentage indicator
-            Rectangle {
-                id: zoomIndicator
-                anchors.left: parent.left
-                anchors.bottom: parent.bottom
-                anchors.margins: 16
-                width: zoomText.implicitWidth + 16
-                height: zoomText.implicitHeight + 8
-                radius: Appearance.rounding.small
-                color: Qt.rgba(0, 0, 0, 0.6)
-                opacity: 0
-                visible: opacity > 0
-
-                function show() {
-                    opacity = 1
-                    hideTimer.restart()
-                }
-
-                Timer {
-                    id: hideTimer
-                    interval: 1000
-                    onTriggered: zoomIndicator.opacity = 0
-                }
-
-                Behavior on opacity {
-                    NumberAnimation { duration: 150 }
-                }
-
-                StyledText {
-                    id: zoomText
-                    anchors.centerIn: parent
-                    text: Math.round(root.zoomLevel * 100) + "%"
-                    font.pixelSize: Appearance.font.pixelSize.textSmall
-                    color: "#ffffff"
-                }
+            ZoomPanBehavior {
+                id: imageZoomBehavior
+                target: imagePreview
+                zoomLevel: root.zoomLevel
+                panX: root.panX
+                panY: root.panY
+                minZoom: root.minZoom
+                maxZoom: root.maxZoom
+                onZoomLevelChanged: root.zoomLevel = zoomLevel
+                onPanXChanged: root.panX = panX
+                onPanYChanged: root.panY = panY
             }
 
             BusyIndicator {
@@ -890,7 +836,7 @@ Scope {
         id: gifPreviewComponent
 
         Item {
-            id: gifZoomContainer
+            id: gifContainer
 
             AnimatedImage {
                 id: gifPreview
@@ -917,104 +863,20 @@ Scope {
                     }
                 }
 
-                transform: [
-                    Scale {
-                        xScale: root.zoomLevel
-                        yScale: root.zoomLevel
-                        origin.x: gifPreview.width / 2
-                        origin.y: gifPreview.height / 2
-                    },
-                    Translate {
-                        x: root.panX
-                        y: root.panY
-                    }
-                ]
+                transform: gifZoomBehavior.targetTransform
             }
 
-            MouseArea {
-                anchors.fill: parent
-                acceptedButtons: Qt.LeftButton
-
-                property real startX: 0
-                property real startY: 0
-                property real startPanX: 0
-                property real startPanY: 0
-
-                cursorShape: root.zoomLevel > 1.0 ? Qt.OpenHandCursor : Qt.ArrowCursor
-
-                onPressed: function(mouse) {
-                    startX = mouse.x
-                    startY = mouse.y
-                    startPanX = root.panX
-                    startPanY = root.panY
-                    if (root.zoomLevel > 1.0) cursorShape = Qt.ClosedHandCursor
-                }
-
-                onReleased: {
-                    if (root.zoomLevel > 1.0) cursorShape = Qt.OpenHandCursor
-                }
-
-                onPositionChanged: function(mouse) {
-                    if (pressed && root.zoomLevel > 1.0) {
-                        root.panX = startPanX + (mouse.x - startX)
-                        root.panY = startPanY + (mouse.y - startY)
-                    }
-                }
-
-                onWheel: function(wheel) {
-                    var zoomDelta = wheel.angleDelta.y > 0 ? 1.15 : 0.87
-                    var newZoom = Math.max(root.minZoom, Math.min(root.maxZoom, root.zoomLevel * zoomDelta))
-                    root.zoomLevel = newZoom
-                    if (newZoom <= 1.0) {
-                        root.panX = 0
-                        root.panY = 0
-                    }
-                    gifZoomIndicator.show()
-                }
-
-                onDoubleClicked: {
-                    root.zoomLevel = 1.0
-                    root.panX = 0
-                    root.panY = 0
-                    gifZoomIndicator.show()
-                }
-            }
-
-            // Zoom percentage indicator
-            Rectangle {
-                id: gifZoomIndicator
-                anchors.left: parent.left
-                anchors.bottom: parent.bottom
-                anchors.margins: 16
-                width: gifZoomText.implicitWidth + 16
-                height: gifZoomText.implicitHeight + 8
-                radius: Appearance.rounding.small
-                color: Qt.rgba(0, 0, 0, 0.6)
-                opacity: 0
-                visible: opacity > 0
-
-                function show() {
-                    opacity = 1
-                    gifHideTimer.restart()
-                }
-
-                Timer {
-                    id: gifHideTimer
-                    interval: 1000
-                    onTriggered: gifZoomIndicator.opacity = 0
-                }
-
-                Behavior on opacity {
-                    NumberAnimation { duration: 150 }
-                }
-
-                StyledText {
-                    id: gifZoomText
-                    anchors.centerIn: parent
-                    text: Math.round(root.zoomLevel * 100) + "%"
-                    font.pixelSize: Appearance.font.pixelSize.textSmall
-                    color: "#ffffff"
-                }
+            ZoomPanBehavior {
+                id: gifZoomBehavior
+                target: gifPreview
+                zoomLevel: root.zoomLevel
+                panX: root.panX
+                panY: root.panY
+                minZoom: root.minZoom
+                maxZoom: root.maxZoom
+                onZoomLevelChanged: root.zoomLevel = zoomLevel
+                onPanXChanged: root.panX = panX
+                onPanYChanged: root.panY = panY
             }
 
             BusyIndicator {

@@ -599,6 +599,8 @@ Button {
         }
         onTriggered: {
             if (root.destroying) return
+            // Guard against race condition - check flag inside handler
+            if (grabberHighResDownloader.downloading || root.localHighResSource !== "") return
             Services.Logger.info("BooruImage", `grabberTrigger FIRED: id=${root.imageData.id}`)
             grabberHighResDownloader.startDownload()
         }
@@ -679,6 +681,8 @@ Button {
                  && root.localGifSource === "" && !grabberGifDownloader.downloading
         onTriggered: {
             if (root.destroying) return
+            // Guard against race condition - check flag inside handler
+            if (grabberGifDownloader.downloading || root.localGifSource !== "") return
             grabberGifDownloader.startDownload()
         }
     }
@@ -1023,6 +1027,8 @@ Button {
         onTriggered: {
             // Guard: skip if component is being destroyed (prevents SIGSEGV)
             if (root.destroying) return
+            // Guard against race condition - check flag inside handler
+            if (universalVideoDownloader.downloading) return
             universalVideoDownloader.command = universalVideoDownloader.buildCommand()
             universalVideoDownloader.running = true
         }

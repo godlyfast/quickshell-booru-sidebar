@@ -49,6 +49,14 @@ Singleton {
     // Providers that prefer Grabber over direct API (bypasses User-Agent/Cloudflare issues)
     readonly property var grabberPreferredProviders: ["danbooru"]
 
+    // Providers that require manual download (Cloudflare blocks, CDN restrictions, or User-Agent required)
+    // These providers cannot load images directly in QML Image components via network URL
+    readonly property var manualDownloadProviders: ["danbooru", "waifu.im", "e621", "sankaku", "idol_sankaku"]
+
+    // Providers that require User-Agent header for API requests (XHR setRequestHeader)
+    // Note: e621 covers both e621.net and e926.net mirrors
+    readonly property var requiresUserAgentProviders: ["danbooru", "e621", "sankaku", "idol_sankaku"]
+
     // =========================================================================
     // Grabber Source Mappings
     // =========================================================================
@@ -453,6 +461,16 @@ Singleton {
     // Check if provider requires curl
     function providerRequiresCurl(provider) {
         return curlProviders.indexOf(provider) !== -1
+    }
+
+    // Check if provider requires manual download (can't load images directly via network URL)
+    function providerRequiresManualDownload(provider) {
+        return manualDownloadProviders.indexOf(provider) !== -1
+    }
+
+    // Check if provider requires User-Agent header for API requests
+    function providerRequiresUserAgent(provider) {
+        return requiresUserAgentProviders.indexOf(provider) !== -1
     }
 
     // Get Grabber source name for provider

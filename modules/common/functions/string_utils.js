@@ -31,17 +31,7 @@ function getBaseUrl(url) {
     return match ? match[1] : null;
 }
 
-/**
- * Escapes single quotes in shell commands
- * @param { string } str
- * @returns { string }
- */
-function shellSingleQuoteEscape(str) {
-    //  escape single quotes
-    return String(str)
-        // .replace(/\\/g, '\\\\')
-        .replace(/'/g, "'\\''");
-}
+// NOTE: shellSingleQuoteEscape removed - use shell_utils.js shellEscape() instead
 
 function escapeHtml(str) {
     if (typeof str !== 'string') return str;

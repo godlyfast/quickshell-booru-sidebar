@@ -41,6 +41,8 @@ Singleton {
     function getProviderTagMapFunc(providerKey) { return ProviderRegistry.getProviderTagMapFunc(providerKey) }
     function getPostUrl(provider, imageId) { return ProviderRegistry.getPostUrl(provider, imageId) }
     function getWorkingImageSource(url) { return ProviderRegistry.getWorkingImageSource(url) }
+    function providerRequiresManualDownload(provider) { return ProviderRegistry.providerRequiresManualDownload(provider) }
+    function providerRequiresUserAgent(provider) { return ProviderRegistry.providerRequiresUserAgent(provider) }
 
     // Restore provider settings after config is loaded
     Connections {
@@ -74,6 +76,33 @@ Singleton {
     property var pendingXhrRequests: []  // Track XHR for abort on clear
     property var pendingTimers: []  // Track timeout timers for cleanup
     property int requestIdCounter: 0  // Monotonic counter for stale request detection
+    property int maxResponses: 50  // Cap responses to prevent memory bloat
+
+    // Safe decrement helper to prevent negative runningRequests from race conditions
+    function decrementRunningRequests() {
+        runningRequests = Math.max(0, runningRequests - 1)
+    }
+
+    // Set responses with proper cleanup of old BooruResponseData objects
+    function setResponses(newResponses) {
+        // Destroy old response objects to prevent memory leaks
+        for (var i = 0; i < responses.length; i++) {
+            if (responses[i] && responses[i].destroy) {
+                responses[i].destroy()
+            }
+        }
+        // Trim to maxResponses limit (oldest first)
+        while (newResponses.length > maxResponses) {
+            var old = newResponses.shift()
+            if (old && old.destroy) old.destroy()
+        }
+        responses = newResponses
+    }
+
+    // Add a single response (single-page mode - replaces existing)
+    function setSingleResponse(resp) {
+        setResponses([resp])
+    }
 
     // Pagination state (single page at a time)
     property int currentPage: 1
@@ -386,13 +415,22 @@ Singleton {
     }
 
     function addSystemMessage(message) {
-        responses = responses.concat([root.booruResponseDataComponent.createObject(null, {
+        var newResp = root.booruResponseDataComponent.createObject(null, {
             "provider": "system",
             "tags": [],
             "page": -1,
             "images": [],
             "message": message
-        })])
+        })
+        // Append system message (don't destroy existing responses)
+        var allResponses = responses.slice()  // Copy array
+        allResponses.push(newResp)
+        // Trim oldest if over limit
+        while (allResponses.length > maxResponses) {
+            var old = allResponses.shift()
+            if (old && old.destroy) old.destroy()
+        }
+        responses = allResponses
     }
 
     /**
@@ -643,9 +681,8 @@ Singleton {
 
         const xhr = new XMLHttpRequest()
         xhr.open("GET", url)
-        // Danbooru/e621/e926/Sankaku need User-Agent or API blocks them
-        if (requestProvider == "danbooru" || requestProvider == "e621" || requestProvider == "e926" ||
-            requestProvider == "sankaku" || requestProvider == "idol_sankaku") {
+        // Some providers need User-Agent header or API blocks them
+        if (ProviderRegistry.providerRequiresUserAgent(requestProvider)) {
             try {
                 xhr.setRequestHeader("User-Agent", "Mozilla/5.0 BooruSidebar/1.0")
             } catch (e) {
@@ -673,7 +710,7 @@ Singleton {
                 try { xhr.abort() } catch (e) { /* ignore abort errors */ }
                 removeFromPending()
                 newResponse.message = root.formatErrorMessage("http", "timeout")
-                root.runningRequests--
+                root.decrementRunningRequests()
                 addResponse(newResponse)
                 root.responseFinished()
             }
@@ -691,7 +728,7 @@ Singleton {
 
         // Helper to add response (single page, already cleared)
         const addResponse = (resp) => {
-            root.responses = [resp]
+            root.setSingleResponse(resp)
         }
 
         xhr.onreadystatechange = () => {
@@ -712,14 +749,14 @@ Singleton {
                 // Check if request is stale (newer request was started)
                 if (requestId !== root.requestIdCounter) {
                     Logger.warn("Booru", `Stale request detected (id ${requestId} vs ${root.requestIdCounter}), discarding`)
-                    root.runningRequests--
+                    root.decrementRunningRequests()
                     return
                 }
 
                 // Bug 1.3: Verify provider hasn't changed during request
                 if (root.currentProvider !== requestProvider) {
                     Logger.warn("Booru", `Provider changed during request, discarding stale response from ${requestProvider}`)
-                    root.runningRequests--
+                    root.decrementRunningRequests()
                     return
                 }
             }
@@ -740,7 +777,7 @@ Singleton {
                     if (!mapFunc) {
                         Logger.error("Booru", `No mapFunc for provider: ${requestProvider}`)
                         newResponse.message = `${root.failMessage}\n(Provider not configured)`
-                        root.runningRequests--
+                        root.decrementRunningRequests()
                         addResponse(newResponse)
                         return
                     }
@@ -757,14 +794,14 @@ Singleton {
                     Logger.error("Booru", `Failed to parse ${requestProvider}: ${e}`)
                     newResponse.message = root.formatErrorMessage("http", "parse error")
                 } finally {
-                    root.runningRequests--
+                    root.decrementRunningRequests()
                     addResponse(newResponse)
                 }
             } else if (xhr.readyState === XMLHttpRequest.DONE) {
                 Logger.error("Booru", `${requestProvider} failed - HTTP ${xhr.status}`)
                 if (xhr.responseText) Logger.debug("Booru", `Response: ${xhr.responseText.substring(0, 200)}`)
                 newResponse.message = root.formatErrorMessage("http", xhr.status)
-                root.runningRequests--
+                root.decrementRunningRequests()
                 addResponse(newResponse)
             }
             root.responseFinished()
@@ -825,7 +862,7 @@ Singleton {
             // Check if request is stale (newer request was started)
             if (requestId !== root.requestIdCounter) {
                 Logger.warn("Booru", `Stale Grabber request detected (id ${requestId} vs ${root.requestIdCounter}), discarding`)
-                root.runningRequests--
+                root.decrementRunningRequests()
                 grabberReq.destroy()
                 return
             }
@@ -836,8 +873,8 @@ Singleton {
             newResponse.message = images.length > 0 ? "" : root.failMessage
             // Pre-populate cache index for instant lookups
             preBatchCacheCheck(images)
-            root.runningRequests--
-            root.responses = root.responses.concat([newResponse])
+            root.decrementRunningRequests()
+            root.setSingleResponse(newResponse)
             root.responseFinished()
             grabberReq.destroy()
         })
@@ -847,13 +884,13 @@ Singleton {
             // Check if request is stale
             if (requestId !== root.requestIdCounter) {
                 Logger.warn("Booru", `Stale Grabber request (failed) detected, discarding`)
-                root.runningRequests--
+                root.decrementRunningRequests()
                 grabberReq.destroy()
                 return
             }
             newResponse.message = root.formatErrorMessage("grabber", error)
-            root.runningRequests--
-            root.responses = root.responses.concat([newResponse])
+            root.decrementRunningRequests()
+            root.setSingleResponse(newResponse)
             root.responseFinished()
             grabberReq.destroy()
         })
@@ -910,7 +947,7 @@ Singleton {
                 // Check if request is stale (newer request was started)
                 if (requestId !== root.requestIdCounter) {
                     Logger.warn("Booru", `Stale curl request detected (id ${requestId} vs ${root.requestIdCounter}), discarding`)
-                    root.runningRequests--
+                    root.decrementRunningRequests()
                     curlProc.destroy()
                     return
                 }
@@ -923,8 +960,8 @@ Singleton {
                         if (!mapFunc) {
                             Logger.error("Booru", `No mapFunc for curl provider: ${requestProvider}`)
                             responseObj.message = `${root.failMessage}\n(Provider not configured)`
-                            root.runningRequests--
-                            root.responses = [responseObj]
+                            root.decrementRunningRequests()
+                            root.setSingleResponse(responseObj)
                             root.responseFinished()
                             curlProc.destroy()
                             return
@@ -942,8 +979,8 @@ Singleton {
                     Logger.error("Booru", "curl failed or empty response")
                     responseObj.message = root.formatErrorMessage("curl", "no response")
                 }
-                root.runningRequests--
-                root.responses = [responseObj]
+                root.decrementRunningRequests()
+                root.setSingleResponse(responseObj)
                 root.responseFinished()
                 curlProc.destroy()
             }
@@ -993,9 +1030,8 @@ Singleton {
         const xhr = new XMLHttpRequest()
         currentTagRequest = xhr
         xhr.open("GET", url)
-        // Danbooru/e621/e926/Sankaku need User-Agent or API blocks them
-        if (currentProvider == "danbooru" || currentProvider == "e621" || currentProvider == "e926" ||
-            currentProvider == "sankaku" || currentProvider == "idol_sankaku") {
+        // Some providers need User-Agent header or API blocks them
+        if (ProviderRegistry.providerRequiresUserAgent(currentProvider)) {
             try {
                 xhr.setRequestHeader("User-Agent", "Mozilla/5.0 BooruSidebar/1.0")
             } catch (e) {

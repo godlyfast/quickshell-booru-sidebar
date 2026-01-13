@@ -6,8 +6,6 @@ import ".."
  */
 ListView {
     id: root
-    property real touchpadScrollFactor: 1.0
-    property real mouseScrollFactor: 1.0
 
     clip: true
     boundsBehavior: Flickable.DragAndOvershootBounds

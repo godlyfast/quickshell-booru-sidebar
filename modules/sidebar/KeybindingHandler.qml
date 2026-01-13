@@ -113,17 +113,18 @@ QtObject {
             return true
         }
 
-        // === HOVERED VIDEO CONTROLS ===
+        // === PREVIEW MODE CONTROLS (priority over hovered video) ===
+        // When preview is active, arrow keys should pan/control the preview, not hovered grid videos
+        if (sidebarState.previewActive) {
+            if (handlePreviewControls(event)) return true
+        }
+
+        // === HOVERED VIDEO CONTROLS (only when preview not active for arrow keys) ===
         if (handleHoveredVideoControls(event)) return true
 
         // === BLOCK SPACE ON HOVERED NON-VIDEO IMAGES ===
         if (event.key === Qt.Key_Space && HoverTracker.hoveredBooruImage && !sidebarState.previewActive) {
             return true
-        }
-
-        // === PREVIEW MODE CONTROLS ===
-        if (sidebarState.previewActive) {
-            if (handlePreviewControls(event)) return true
         }
 
         // === h/l: Navigate images (when preview not active) ===

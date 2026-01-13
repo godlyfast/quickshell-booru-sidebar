@@ -2,6 +2,7 @@ import ".."
 import "./"
 import "../../../services"
 import "../functions/string_utils.js" as StringUtils
+import "../functions/shell_utils.js" as ShellUtils
 import "../functions/file_utils.js" as FileUtils
 import Qt5Compat.GraphicalEffects
 import Qt.labs.platform
@@ -57,8 +58,8 @@ Rectangle {
 
     Process {
         id: decodeImageProcess
-        command: ["bash", "-c", 
-            `[ -f ${imageDecodeFilePath} ] || echo '${StringUtils.shellSingleQuoteEscape(root.entry)}' | cliphist decode > '${imageDecodeFilePath}'`
+        command: ["bash", "-c",
+            `[ -f ${imageDecodeFilePath} ] || echo '${ShellUtils.shellEscape(root.entry)}' | cliphist decode > '${imageDecodeFilePath}'`
         ]
         onExited: (exitCode, exitStatus) => {
             if (exitCode === 0) {
