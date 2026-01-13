@@ -19,9 +19,13 @@ SIDEBAR_DIR="$CONFIG_DIR/booru-sidebar"
 
 echo "=== Booru Sidebar Deploy ==="
 
-# 1. Kill running sidebar instance
+# 1. Kill running sidebar instance (both -c booru-sidebar and --path variants)
 echo "[1/3] Stopping running instance..."
-pkill -f "qs.*-c.*booru-sidebar" 2>/dev/null && echo "  Killed qs sidebar process" || echo "  No running instance found"
+killed=0
+pkill -f "qs.*-c.*booru-sidebar" 2>/dev/null && { echo "  Killed qs -c booru-sidebar"; killed=1; }
+pkill -f "qs.*--path.*/quickshell-booru-sidebar" 2>/dev/null && { echo "  Killed qs --path instance"; killed=1; }
+pkill -f "qs.*--path \." 2>/dev/null && { echo "  Killed qs --path . instance"; killed=1; }
+[ $killed -eq 0 ] && echo "  No running instance found"
 sleep 0.5
 
 # 2. Copy fresh assets

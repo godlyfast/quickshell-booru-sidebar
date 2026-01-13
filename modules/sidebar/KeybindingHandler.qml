@@ -64,6 +64,13 @@ QtObject {
             return true
         }
 
+        // === QUIT APPLICATION (Shift+Q) ===
+        if (event.key === Qt.Key_Q && (event.modifiers & Qt.ShiftModifier)) {
+            Logger.info("Keybindings", "Shift+Q: quitting application")
+            Qt.quit()
+            return true
+        }
+
         // === CLOSE/QUIT ===
         if (event.key === Qt.Key_Q || event.key === Qt.Key_Escape) {
             if (sidebarState.showDebugPanel) {
