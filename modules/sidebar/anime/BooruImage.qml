@@ -10,6 +10,7 @@ import "../../common"
 import "../../common/widgets"
 import "../../common/utils"
 import "../../common/functions/shell_utils.js" as ShellUtils
+import "../../common/functions/file_utils.js" as FileUtils
 import "../../../services" as Services
 
 /**
@@ -444,7 +445,7 @@ Button {
             }
             // If preview is already full-res (e.g., Sankaku), use it directly
             if (root.previewIsFullRes && path.length > 0) {
-                root.localHighResSource = "file://" + path
+                root.localHighResSource = FileUtils.toFileUrl(path)
             }
         }
     }
@@ -486,7 +487,7 @@ Button {
                 // File exists - use it immediately
                 Services.Logger.cacheHit("BooruImage")
                 Services.Logger.debug("BooruImage", `Cache hit (hi-res): id=${root.imageData.id}`)
-                root.localHighResSource = "file://" + root.effectiveHighResPath
+                root.localHighResSource = FileUtils.toFileUrl(root.effectiveHighResPath)
             } else {
                 Services.Logger.cacheMiss("BooruImage")
                 Services.Logger.debug("BooruImage", `highResCacheCheck MISS: id=${root.imageData.id} - downloader should trigger`)
@@ -510,7 +511,7 @@ Button {
             if (root.destroying) return
             if (path.length > 0) {
                 Services.Logger.debug("BooruImage", `Hi-res downloaded: id=${root.imageData.id} ${width}x${height}`)
-                var cachedPath = "file://" + path
+                var cachedPath = FileUtils.toFileUrl(path)
                 // Register in CacheIndex - this triggers generation++ which causes
                 // cachedImageSource binding to re-evaluate. DO NOT directly assign!
                 Services.CacheIndex.register(root.highResFileName, path)
@@ -532,7 +533,7 @@ Button {
         onDone: (path, width, height) => {
             if (root.destroying) return
             if (path.length > 0) {
-                var cachedPath = "file://" + path
+                var cachedPath = FileUtils.toFileUrl(path)
                 root.localHighResSource = cachedPath
                 // Update preview if it's showing this image
                 if (root.isPreviewActive) {
@@ -540,7 +541,7 @@ Button {
                 }
             } else {
                 // High-res blocked - use preview as fallback
-                root.localHighResSource = "file://" + imageDownloader.downloadedPath
+                root.localHighResSource = FileUtils.toFileUrl(imageDownloader.downloadedPath)
             }
         }
     }
@@ -564,7 +565,7 @@ Button {
             if (success) {
                 Services.Logger.info("BooruImage", `Grabber SUCCESS: id=${root.imageData.id}`)
                 var fullPath = root.grabberHighResPath
-                var cachedPath = "file://" + fullPath
+                var cachedPath = FileUtils.toFileUrl(fullPath)
                 root.localHighResSource = cachedPath
 
                 // CRITICAL: Register hi-res file in CacheIndex!
@@ -581,7 +582,7 @@ Button {
             } else {
                 Services.Logger.error("BooruImage", `Grabber FAILED: id=${root.imageData.id} msg=${message}`)
                 // Fallback to preview
-                root.localHighResSource = "file://" + imageDownloader.downloadedPath
+                root.localHighResSource = FileUtils.toFileUrl(imageDownloader.downloadedPath)
             }
         }
     }
@@ -637,7 +638,7 @@ Button {
         onDone: function(path, width, height) {
             if (root.destroying) return
             if (path.length > 0) {
-                root.localGifSource = "file://" + path
+                root.localGifSource = FileUtils.toFileUrl(path)
             } else {
                 // GIF blocked - use preview as static fallback
                 root.localGifSource = modelData.preview_url ? modelData.preview_url : ""
@@ -658,7 +659,7 @@ Button {
         onDone: (success, message) => {
             if (root.destroying) return
             if (success) {
-                var cachedPath = "file://" + root.grabberGifPath
+                var cachedPath = FileUtils.toFileUrl(root.grabberGifPath)
                 root.localGifSource = cachedPath
                 Services.Logger.info("BooruImage", `Grabber GIF downloaded: ${root.imageData.id}`)
                 // Update preview if it's showing this GIF
@@ -697,7 +698,7 @@ Button {
         onDone: function(path, width, height) {
             if (root.destroying) return
             if (path.length > 0) {
-                var cachedPath = "file://" + path
+                var cachedPath = FileUtils.toFileUrl(path)
                 // Register in CacheIndex - this triggers generation++ which causes
                 // cachedGifSource binding to re-evaluate. DO NOT directly assign!
                 Services.CacheIndex.register("gif_" + root.gifFileName, path)
@@ -727,7 +728,7 @@ Button {
             if (root.destroying) return
             root.ugoiraCacheChecked = true
             if (code === 0) {
-                root.localUgoiraSource = "file://" + root.ugoiraVideoPath
+                root.localUgoiraSource = FileUtils.toFileUrl(root.ugoiraVideoPath)
             }
         }
     }
@@ -765,7 +766,7 @@ Button {
 
             root.ugoiraDownloading = false
             if (code === 0) {
-                var cachedPath = "file://" + root.ugoiraVideoPath
+                var cachedPath = FileUtils.toFileUrl(root.ugoiraVideoPath)
                 root.localUgoiraSource = cachedPath
                 // Update preview if it's showing this ugoira
                 if (root.isPreviewActive) {
@@ -830,7 +831,7 @@ Button {
             if (root.destroying) return
             root.videoPreviewCacheChecked = true
             if (code === 0) {
-                root.localVideoPreview = "file://" + root.videoPreviewPath
+                root.localVideoPreview = FileUtils.toFileUrl(root.videoPreviewPath)
             }
         }
     }
@@ -878,7 +879,7 @@ Button {
             downloading = false
             if (root.destroying) return
             if (code === 0) {
-                root.localVideoPreview = "file://" + root.videoPreviewPath
+                root.localVideoPreview = FileUtils.toFileUrl(root.videoPreviewPath)
             } else {
                 Services.Logger.warn("BooruImage", `Video preview download/conversion failed: ${root.imageData.preview_url}`)
             }
@@ -964,7 +965,7 @@ Button {
                 retryCount = 0
                 root.videoDownloadFailed = false
                 root.videoDownloadProgress = 100
-                var cachedPath = "file://" + root.videoFilePath
+                var cachedPath = FileUtils.toFileUrl(root.videoFilePath)
                 // Register in CacheIndex - this triggers generation++ which causes
                 // cachedVideoSource binding to re-evaluate. DO NOT directly assign!
                 var videoName = "video_" + root.videoBaseName
@@ -1297,7 +1298,7 @@ Button {
                         if (root.manualDownload) {
                             if (imageDownloader.downloadedPath) {
                                 previewSourceType = "local_preview"
-                                return "file://" + imageDownloader.downloadedPath
+                                return FileUtils.toFileUrl(imageDownloader.downloadedPath)
                             }
                             previewSourceType = "waiting"
                             return ""

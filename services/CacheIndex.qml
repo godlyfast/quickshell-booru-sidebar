@@ -350,7 +350,21 @@ Singleton {
             // Step 1: Clean up stale .tmp files (interrupted downloads older than 5 min)
             "CLEANED=$(find '" + root.previewDir + "' -maxdepth 1 -name '*.tmp' -mmin +5 -print -delete 2>/dev/null | wc -l); " +
             "[ \"$CLEANED\" -gt 0 ] && echo \"CLEANUP:$CLEANED\" >&2; " +
-            // Step 2: Scan all cache directories
+            // Step 2: Validate and clean corrupted hi-res files (HTML pages, truncated images)
+            "CORRUPT=0; " +
+            "while IFS= read -r -d '' f; do " +
+            "  FTYPE=$(file -b \"$f\" 2>/dev/null); " +
+            // Remove HTML error pages (Cloudflare blocks, etc.)
+            "  if echo \"$FTYPE\" | grep -qiE 'HTML|ASCII|text'; then " +
+            "    rm -f \"$f\"; CORRUPT=$((CORRUPT+1)); continue; " +
+            "  fi; " +
+            // Use identify to validate actual image integrity (catches truncated files)
+            "  if ! identify -regard-warnings \"$f\" >/dev/null 2>&1; then " +
+            "    rm -f \"$f\"; CORRUPT=$((CORRUPT+1)); " +
+            "  fi; " +
+            "done < <(find '" + root.previewDir + "' -maxdepth 1 -name 'hires_*' -type f -print0 2>/dev/null); " +
+            "[ \"$CORRUPT\" -gt 0 ] && echo \"CORRUPT:$CORRUPT\" >&2; " +
+            // Step 3: Scan all cache directories
             "for dir in '" + root.previewDir + "' '" + root.downloadDir + "' '" +
             root.nsfwDir + "' '" + root.wallpaperDir + "'; do " +
             "  [ -d \"$dir\" ] && find \"$dir\" -maxdepth 1 -type f -printf '%f\\t%p\\n' 2>/dev/null; " +
@@ -360,8 +374,12 @@ Singleton {
         stderr: StdioCollector {
             onStreamFinished: {
                 if (text.indexOf("CLEANUP:") >= 0) {
-                    var count = text.split("CLEANUP:")[1].trim()
-                    Logger.info("CacheIndex", `Cleaned up ${count} stale .tmp file(s) from incomplete downloads`)
+                    var match = text.match(/CLEANUP:(\d+)/)
+                    if (match) Logger.info("CacheIndex", `Cleaned up ${match[1]} stale .tmp file(s)`)
+                }
+                if (text.indexOf("CORRUPT:") >= 0) {
+                    var match = text.match(/CORRUPT:(\d+)/)
+                    if (match) Logger.warn("CacheIndex", `Removed ${match[1]} corrupted/incomplete image(s)`)
                 }
             }
         }
