@@ -342,15 +342,29 @@ Singleton {
     }
 
     // Process for initial directory scan
+    // Also cleans up stale .tmp files (incomplete downloads older than 5 minutes)
     Process {
         id: initialScanner
         running: false
         command: ["bash", "-c",
+            // Step 1: Clean up stale .tmp files (interrupted downloads older than 5 min)
+            "CLEANED=$(find '" + root.previewDir + "' -maxdepth 1 -name '*.tmp' -mmin +5 -print -delete 2>/dev/null | wc -l); " +
+            "[ \"$CLEANED\" -gt 0 ] && echo \"CLEANUP:$CLEANED\" >&2; " +
+            // Step 2: Scan all cache directories
             "for dir in '" + root.previewDir + "' '" + root.downloadDir + "' '" +
             root.nsfwDir + "' '" + root.wallpaperDir + "'; do " +
             "  [ -d \"$dir\" ] && find \"$dir\" -maxdepth 1 -type f -printf '%f\\t%p\\n' 2>/dev/null; " +
             "done"
         ]
+
+        stderr: StdioCollector {
+            onStreamFinished: {
+                if (text.indexOf("CLEANUP:") >= 0) {
+                    var count = text.split("CLEANUP:")[1].trim()
+                    Logger.info("CacheIndex", `Cleaned up ${count} stale .tmp file(s) from incomplete downloads`)
+                }
+            }
+        }
 
         stdout: StdioCollector {
             onStreamFinished: {
