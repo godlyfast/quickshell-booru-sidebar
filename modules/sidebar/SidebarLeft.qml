@@ -207,9 +207,14 @@ Scope {
         var images = getAllImages()
         if (images.length === 0) return
         var idx = getCurrentImageIndex()
-        if (idx < 0) idx = 0
-        // Circular wrap-around
-        var newIdx = (idx + delta + images.length) % images.length
+        var newIdx
+        if (idx < 0) {
+            // No current selection: 'l' starts at first, 'h' starts at last
+            newIdx = delta > 0 ? 0 : images.length - 1
+        } else {
+            // Circular wrap-around from current position
+            newIdx = (idx + delta + images.length) % images.length
+        }
         var img = images[newIdx]
         var cachedPath = getCachedPath(img.data, img.provider)
         showPreview(img.data, cachedPath, false, img.provider)
