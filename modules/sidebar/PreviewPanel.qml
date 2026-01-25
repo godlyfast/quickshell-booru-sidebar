@@ -377,8 +377,8 @@ Scope {
             id: previewWindow
             visible: root.panelVisible
 
-            // Panel dimensions - take up remaining screen width
-            property real panelWidth: Math.min(screen.width - root.sidebarWidth - root.sidebarX - 24, 800)
+            // Panel dimensions - take up all remaining screen width
+            property real panelWidth: screen.width - root.sidebarWidth - root.sidebarX - 24
             property real panelHeight: screen.height - 16
 
             // Left margin to position right of sidebar (no overlap)
