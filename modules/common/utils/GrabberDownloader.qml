@@ -45,6 +45,9 @@ Process {
         }
     }
 
+    // Shell-escape for single-quoted bash strings
+    function esc(s) { return s.replace(/'/g, "'\\''") }
+
     function startDownload() {
         if (source.length === 0 || imageId.length === 0 || outputPath.length === 0) {
             lastError = "Missing required properties"
@@ -52,7 +55,7 @@ Process {
             return
         }
 
-        var args = [
+        var grabberArgs = [
             "/usr/bin/Grabber",
             "-c",                       // CLI mode (no GUI)
             "-s", source,               // Source website
@@ -64,18 +67,38 @@ Process {
         ]
 
         if (noDuplicates) {
-            args.push("-n")             // Skip duplicates
+            grabberArgs.push("-n")      // Skip duplicates
         }
 
         // Add authentication if provided
         if (user && user.length > 0) {
-            args.push("-u", user)
+            grabberArgs.push("-u", user)
         }
         if (password && password.length > 0) {
-            args.push("-w", password)
+            grabberArgs.push("-w", password)
         }
 
-        command = args
+        // Wrap in bash to verify file creation.
+        // Grabber reports "Downloaded images successfully." with exit code 0 even when
+        // 0 files are downloaded (e.g., provider doesn't support id: search).
+        // The wrapper creates the output dir, counts files before/after, and exits 1
+        // if no new file appeared - allowing callers to fall back to curl.
+        var quoted = grabberArgs.map(function(a) { return "'" + esc(a) + "'" }).join(" ")
+        var ep = esc(outputPath)
+        var script =
+            "mkdir -p '" + ep + "' && " +
+            "BEFORE=$(find '" + ep + "' -maxdepth 1 -type f | wc -l) && " +
+            quoted + "; GRC=$?; " +
+            "AFTER=$(find '" + ep + "' -maxdepth 1 -type f | wc -l); " +
+            "if [ $GRC -ne 0 ]; then exit $GRC; fi; " +
+            "if [ \"$AFTER\" -gt \"$BEFORE\" ]; then " +
+            "  NEWFILE=$(ls -1t '" + ep + "' | head -1); " +
+            "  echo \"Downloaded to '${NEWFILE}'\"; " +
+            "else " +
+            "  echo 'No files downloaded (provider may not support id: search)' >&2; exit 1; " +
+            "fi"
+
+        command = ["bash", "-c", script]
         running = true
     }
 
