@@ -92,6 +92,7 @@ Scope {
     property bool showKeybindingsHelp: false
     property bool showPickerDialog: false
     property bool showDebugPanel: false
+    property bool showApiKeysPanel: false
     property bool closingPreviewIntentionally: false  // Flag to prevent focus grab clear from closing sidebar
 
     // Reactive computed properties for position indicator
@@ -380,6 +381,7 @@ Scope {
                         // Also notify PreviewPanel directly to update its display
                         previewPanel.updateCachedSource(cachedSource)
                     }
+                    onRequestShowApiKeys: root.showApiKeysPanel = true
                     onFocusReleased: root.focusRestoreTimer.restart()  // Delayed focus restore after search
                     // Use onInputFieldChanged to catch when Anime sets its inputField property
                     onInputFieldChanged: root.tagInputFieldRef = inputField
@@ -426,6 +428,18 @@ Scope {
 
                     onClosed: {
                         root.showDebugPanel = false
+                        sidebarBackground.forceActiveFocus()
+                    }
+                }
+
+                // API Keys panel overlay
+                ApiKeysPanel {
+                    visible: root.showApiKeysPanel && root.sidebarOpen
+                    anchors.fill: parent
+                    z: ZOrder.overlay
+
+                    onClosed: {
+                        root.showApiKeysPanel = false
                         sidebarBackground.forceActiveFocus()
                     }
                 }
@@ -548,6 +562,7 @@ Scope {
                             StyledText { text: "1-9    Favorite providers"; color: "#ffffff" }
                             StyledText { text: "r      Reload page"; color: "#ffffff" }
                             StyledText { text: "R      Refresh cache"; color: "#ffffff" }
+                            StyledText { text: "A      API keys"; color: "#ffffff" }
                             StyledText { text: ""; color: "transparent" }
                             StyledText { text: "General"; font.bold: true; color: Appearance.m3colors.m3primary }
                             StyledText { text: "q/Esc  Close"; color: "#ffffff" }

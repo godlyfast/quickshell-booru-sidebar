@@ -43,15 +43,16 @@ Singleton {
     // NSFW-only providers - rating filter doesn't apply (all content is NSFW)
     readonly property var nsfwOnlyProviders: ["rule34", "xbooru", "tbib", "paheal", "hypnohub"]
 
-    // Providers that require curl (User-Agent header needed, XHR can't set it)
-    readonly property var curlProviders: ["zerochan"]
+    // Providers that require curl (User-Agent header needed, or XML response parsing issues)
+    // paheal: QML's XMLHttpRequest.responseXML doesn't work - need manual XML parsing
+    readonly property var curlProviders: ["zerochan", "paheal"]
 
     // Providers that prefer Grabber over direct API (bypasses User-Agent/Cloudflare issues)
     readonly property var grabberPreferredProviders: ["danbooru"]
 
     // Providers that require manual download (Cloudflare blocks, CDN restrictions, or User-Agent required)
     // These providers cannot load images directly in QML Image components via network URL
-    readonly property var manualDownloadProviders: ["danbooru", "waifu.im", "e621", "sankaku", "idol_sankaku"]
+    readonly property var manualDownloadProviders: ["danbooru", "gelbooru", "waifu.im", "e621", "sankaku", "idol_sankaku"]
 
     // Providers that require User-Agent header for API requests (XHR setRequestHeader)
     // Note: e621 covers both e621.net and e926.net mirrors

@@ -923,7 +923,51 @@ Singleton {
         curlProcess.running = true
     }
 
-    // Component for curl-based fetching (providers that need User-Agent)
+    // Manual XML parsing for Paheal (QML's XMLHttpRequest.responseXML doesn't work properly)
+    function parsePahealXml(xmlText) {
+        const result = []
+        // Match all <tag ... > or <tag ... /> elements
+        const tagMatches = xmlText.match(/<tag\s+[^>]+>/g) || []
+
+        for (let i = 0; i < tagMatches.length; i++) {
+            const attrs = tagMatches[i]
+
+            // Extract attribute using regex
+            const getAttr = (name) => {
+                const re = new RegExp(name + "=['\"]([^'\"]*)['\"]")
+                const m = attrs.match(re)
+                return m ? m[1] : ""
+            }
+
+            const previewPath = getAttr("preview_url")
+            const previewUrl = (previewPath && previewPath.indexOf("http") === 0)
+                ? previewPath
+                : "https://rule34.paheal.net" + previewPath
+            const fileUrl = getAttr("file_url")
+            const fileName = getAttr("file_name") || "unknown.jpg"
+            const width = parseInt(getAttr("width")) || 800
+            const height = parseInt(getAttr("height")) || 600
+
+            result.push({
+                id: parseInt(getAttr("id")) || 0,
+                width: width,
+                height: height,
+                aspect_ratio: width / height,
+                tags: getAttr("tags"),
+                rating: "e",
+                is_nsfw: true,
+                md5: getAttr("md5"),
+                preview_url: previewUrl,
+                sample_url: fileUrl,
+                file_url: fileUrl,
+                file_ext: fileName.split('.').pop(),
+                source: fileUrl
+            })
+        }
+        return result
+    }
+
+    // Component for curl-based fetching (providers that need User-Agent or XML parsing)
     property Component curlFetcherComponent: Component {
         Process {
             id: curlProc
@@ -954,20 +998,28 @@ Singleton {
 
                 if (code === 0 && curlProc.outputText.length > 0) {
                     try {
-                        const response = JSON.parse(curlProc.outputText)
-                        // Bug 1.4: Validate mapFunc before calling
-                        const mapFunc = root.getProviderMapFunc(requestProvider)
-                        if (!mapFunc) {
-                            Logger.error("Booru", `No mapFunc for curl provider: ${requestProvider}`)
-                            responseObj.message = `${root.failMessage}\n(Provider not configured)`
-                            root.decrementRunningRequests()
-                            root.setSingleResponse(responseObj)
-                            root.responseFinished()
-                            curlProc.destroy()
-                            return
+                        let images
+                        // Paheal returns XML - use manual parsing
+                        if (requestProvider === "paheal") {
+                            images = root.parsePahealXml(curlProc.outputText)
+                            Logger.info("Booru", `curl ${requestProvider} XML parsed ${images.length} images`)
+                        } else {
+                            // JSON providers
+                            const response = JSON.parse(curlProc.outputText)
+                            // Bug 1.4: Validate mapFunc before calling
+                            const mapFunc = root.getProviderMapFunc(requestProvider)
+                            if (!mapFunc) {
+                                Logger.error("Booru", `No mapFunc for curl provider: ${requestProvider}`)
+                                responseObj.message = `${root.failMessage}\n(Provider not configured)`
+                                root.decrementRunningRequests()
+                                root.setSingleResponse(responseObj)
+                                root.responseFinished()
+                                curlProc.destroy()
+                                return
+                            }
+                            images = mapFunc(response, root.providers[requestProvider])
+                            Logger.info("Booru", `curl ${requestProvider} mapped ${images.length} images`)
                         }
-                        const images = mapFunc(response, root.providers[requestProvider])
-                        Logger.info("Booru", `curl ${requestProvider} mapped ${images.length} images`)
                         responseObj.images = images
                         responseObj.message = images.length > 0 ? "" : root.failMessage
                         root.preBatchCacheCheck(images)

@@ -169,6 +169,15 @@ property int logLevel: Logger.Level.INFO  // Change to DEBUG for verbose output
 - `/next` or `+` - Load next page
 - `/safe` / `/lewd` - Toggle NSFW
 
+**sidebar/ApiKeysPanel.qml** - Overlay panel for managing API keys:
+- Providers: Gelbooru, Rule34, Wallhaven, Danbooru (login + key)
+- Status dots: green (all keys set), yellow (partial), grey (empty)
+- Password-masked fields with auto-reveal on focus + eye toggle
+- Clickable URL hints to provider settings pages
+- Debounced auto-save (500ms) via `ConfigLoader.saveConfig()`
+- Open via `A` keybinding or "API Keys" chip in controls menu
+- Inline components: `StatusDot`, `ApiKeyField`, `ProviderKeySection`
+
 **sidebar/anime/BooruImage.qml** - Image card with:
 - Static images, GIFs (`AnimatedImage`), videos (`MediaPlayer`)
 - Context menu: open link, download, save as wallpaper, go to source

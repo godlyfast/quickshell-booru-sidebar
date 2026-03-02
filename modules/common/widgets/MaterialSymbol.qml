@@ -53,7 +53,8 @@ Text {
         "filter": "\ue3d3",
         "sort": "\ue164",
         "fullscreen": "\ue5d0",
-        "fullscreen_exit": "\ue5d1"
+        "fullscreen_exit": "\ue5d1",
+        "vpn_key": "\ue73c"
     })
 
     function resolveIcon(name) {

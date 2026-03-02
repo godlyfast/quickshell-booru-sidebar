@@ -20,6 +20,7 @@ Item {
     signal hidePreview()
     signal updatePreviewSource(string cachedSource)
     signal focusReleased()  // Emitted when input focus should return to sidebar
+    signal requestShowApiKeys()
 
     // Currently previewed image ID (passed from SidebarLeft)
     property var previewImageId: null
@@ -1178,6 +1179,39 @@ Item {
 
                         onClicked: {
                             root.cleanCacheAndReload();
+                            root.showControlsMenu = false;
+                        }
+                    }
+
+                    // API Keys chip
+                    RippleButton {
+                        implicitHeight: 26
+                        implicitWidth: apiKeysChipContent.implicitWidth + 14
+                        buttonRadius: Appearance.rounding.full
+                        colBackground: Appearance.colors.colLayer1
+
+                        contentItem: Row {
+                            id: apiKeysChipContent
+                            anchors.centerIn: parent
+                            spacing: 4
+
+                            MaterialSymbol {
+                                anchors.verticalCenter: parent.verticalCenter
+                                iconSize: 13
+                                color: Appearance.m3colors.m3secondaryText
+                                text: "vpn_key"
+                            }
+
+                            StyledText {
+                                anchors.verticalCenter: parent.verticalCenter
+                                font.pixelSize: 11
+                                color: Appearance.m3colors.m3surfaceText
+                                text: "API Keys"
+                            }
+                        }
+
+                        onClicked: {
+                            root.requestShowApiKeys();
                             root.showControlsMenu = false;
                         }
                     }

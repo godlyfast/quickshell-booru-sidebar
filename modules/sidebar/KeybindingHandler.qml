@@ -41,6 +41,11 @@ QtObject {
             return false
         }
 
+        // Skip all keybindings when API keys panel is open (it handles its own keys)
+        if (sidebarState.showApiKeysPanel) {
+            return false
+        }
+
         // Multi-key sequences (gg)
         if (pendingKey === "g") {
             pendingKey = ""
@@ -399,6 +404,11 @@ QtObject {
         if (event.key === Qt.Key_I) {
             Logger.debug("Keybindings", "I: focus input")
             animeContent.focusInput()
+            return true
+        }
+        if (event.key === Qt.Key_A) {
+            Logger.debug("Keybindings", "A: open API keys panel")
+            sidebarState.showApiKeysPanel = true
             return true
         }
         return false
