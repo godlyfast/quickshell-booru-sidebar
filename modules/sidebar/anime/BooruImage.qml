@@ -22,6 +22,8 @@ Button {
     property real rowHeight
     property bool manualDownload: false
     property string provider: ""
+    // Gelbooru CDN requires Referer header to bypass hotlink protection
+    readonly property string providerReferer: root.provider === "gelbooru" ? "https://gelbooru.com/" : ""
     property string previewDownloadPath
     property string downloadPath
     property string nsfwPath
@@ -433,6 +435,7 @@ Button {
         enabled: root.manualDownload && !root.isGif && !root.isVideo
         filePath: root.filePath
         sourceUrl: root.imageData.preview_url ? root.imageData.preview_url : ""
+        referer: root.providerReferer
         property string downloadedPath: ""
         onDone: (path, width, height) => {
             if (root.destroying) return
@@ -504,6 +507,7 @@ Button {
                  && root.imageData.file_url && root.imageData.file_url.length > 0
         filePath: root.highResFilePath
         sourceUrl: root.imageData.file_url ? root.imageData.file_url : ""
+        referer: root.providerReferer
         // Zerochan provides extension fallbacks (.png, .jpeg, .webp) since API doesn't specify extension
         fallbackUrls: root.imageData.file_url_fallbacks ? root.imageData.file_url_fallbacks : []
 
@@ -530,6 +534,7 @@ Button {
         filePath: root.highResFilePath
         sourceUrl: root.imageData.file_url ? root.imageData.file_url : ""
         fallbackUrls: root.imageData.file_url_fallbacks ? root.imageData.file_url_fallbacks : []
+        referer: root.providerReferer
         onDone: (path, width, height) => {
             if (root.destroying) return
             if (path.length > 0) {
@@ -635,6 +640,7 @@ Button {
         enabled: root.manualDownload && root.isGif && root.provider !== "danbooru"
         filePath: root.gifFilePath
         sourceUrl: modelData.file_url ? modelData.file_url : ""
+        referer: root.providerReferer
         onDone: function(path, width, height) {
             if (root.destroying) return
             if (path.length > 0) {
@@ -695,6 +701,7 @@ Button {
                  && root.cachedGifSource === "" && root.imageData.file_url
         filePath: root.gifFilePath
         sourceUrl: root.imageData.file_url ? root.imageData.file_url : ""
+        referer: root.providerReferer
         onDone: function(path, width, height) {
             if (root.destroying) return
             if (path.length > 0) {
@@ -846,6 +853,7 @@ Button {
             var url = shellEscape(previewUrl)
             var jpgPath = shellEscape(root.videoPreviewPath)
             var avifPath = shellEscape(root.videoPreviewPath.replace(".jpg", ".avif"))
+            var refOpt = root.providerReferer ? `-e '${shellEscape(root.providerReferer)}' ` : ""
 
             // Check if preview URL is AVIF (Sankaku videos use AVIF previews)
             // If so, download AVIF and convert to JPEG using avifdec
@@ -853,7 +861,7 @@ Button {
             if (previewUrl.indexOf(".avif") >= 0) {
                 return ["bash", "-c",
                     `mkdir -p "$(dirname '${jpgPath}')" && ` +
-                    `curl -fsSL ${curlOpts} -A 'Mozilla/5.0 BooruSidebar/1.0' '${url}' -o '${avifPath}' && ` +
+                    `curl -fsSL ${curlOpts} ${refOpt}-A 'Mozilla/5.0 BooruSidebar/1.0' '${url}' -o '${avifPath}' && ` +
                     `[ -s '${avifPath}' ] && ` +
                     `avifdec '${avifPath}' '${jpgPath}' >/dev/null 2>&1 && ` +
                     `rm -f '${avifPath}' && ` +
@@ -863,7 +871,7 @@ Button {
                 // Non-AVIF preview, download directly
                 return ["bash", "-c",
                     `mkdir -p "$(dirname '${jpgPath}')" && ` +
-                    `curl -fsSL ${curlOpts} -A 'Mozilla/5.0 BooruSidebar/1.0' '${url}' -o '${jpgPath}' && ` +
+                    `curl -fsSL ${curlOpts} ${refOpt}-A 'Mozilla/5.0 BooruSidebar/1.0' '${url}' -o '${jpgPath}' && ` +
                     `[ -s '${jpgPath}' ]`
                 ]
             }
@@ -928,12 +936,13 @@ Button {
             var path = shellEscape(root.videoFilePath)
             // Danbooru blocks custom User-Agent, Sankaku requires it
             var userAgent = root.provider === "danbooru" ? "" : "-A 'Mozilla/5.0 BooruSidebar/1.0' "
+            var refOpt = root.providerReferer ? `-e '${shellEscape(root.providerReferer)}' ` : ""
             var curlOpts = `--connect-timeout ${root.connectTimeout} --max-time ${root.videoMaxTime}`
             // Validate downloaded file is actually a video, not an HTML error page
             // Sankaku CDN returns 403 HTML with HTTP 200 status on expired tokens
             return ["bash", "-c",
                 `mkdir -p "$(dirname '${path}')" && ` +
-                `curl -fSL ${curlOpts} ${userAgent}'${url}' -o '${path}' && ` +
+                `curl -fSL ${curlOpts} ${refOpt}${userAgent}'${url}' -o '${path}' && ` +
                 `[ -s '${path}' ] && ` +  // File exists and non-empty
                 `file -b '${path}' | grep -qiE 'video|MP4|WebM|ISO Media' || ` +  // Must be video
                 `{ rm -f '${path}'; exit 1; }`  // Delete HTML error page, fail
