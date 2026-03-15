@@ -419,10 +419,12 @@ var wallhaven = {
 // =============================================================================
 var waifuIm = {
     mapFunc: function(response) {
-        if (!response || !response.images || !Array.isArray(response.images)) return []
+        // v2 API uses "items" wrapper instead of "images"
+        var items = (response && response.items) ? response.items : (response && response.images) ? response.images : null
+        if (!items || !Array.isArray(items)) return []
         var result = []
-        for (var i = 0; i < response.images.length; i++) {
-            var item = response.images[i]
+        for (var i = 0; i < items.length; i++) {
+            var item = items[i]
             if (!item.url) continue
             // Extract tag names
             var tagNames = ""
@@ -433,26 +435,38 @@ var waifuIm = {
                 }
                 tagNames = names.join(" ")
             }
+            // v2 API uses "id" directly, extension includes dot prefix
+            var ext = item.extension || ".jpg"
+            if (ext.charAt(0) === ".") ext = ext.substring(1)
             result.push({
-                id: item.image_id || i,
+                id: item.id || item.image_id || i,
                 width: item.width || 0,
                 height: item.height || 0,
                 aspect_ratio: (item.width && item.height) ? item.width / item.height : 1,
                 tags: tagNames,
-                rating: item.is_nsfw ? "e" : "s",
-                is_nsfw: item.is_nsfw || false,
-                md5: item.md5 || "",
+                rating: item.isNsfw ? "e" : (item.is_nsfw ? "e" : "s"),
+                is_nsfw: item.isNsfw || item.is_nsfw || false,
+                md5: item.perceptualHash || item.md5 || "",
                 preview_url: item.sample_url || item.url,
                 sample_url: item.url,
                 file_url: item.url,
-                file_ext: item.extension || "jpg",
+                file_ext: ext,
                 source: getWorkingImageSource(item.source) || item.url
             })
         }
         return result
     },
     tagMapFunc: function(response) {
-        // waifu.im returns versatile and nsfw tag arrays
+        // v2 API uses "items" wrapper with tag objects
+        if (response && response.items && Array.isArray(response.items)) {
+            var result = []
+            for (var i = 0; i < response.items.length; i++) {
+                var tag = response.items[i]
+                result.push({ name: tag.name || tag.slug || "", count: tag.imageCount || 0 })
+            }
+            return result
+        }
+        // Legacy: v1 API returned versatile and nsfw tag arrays
         var result = []
         if (response && response.versatile && Array.isArray(response.versatile)) {
             for (var i = 0; i < response.versatile.length; i++) {

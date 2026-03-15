@@ -212,7 +212,7 @@ Singleton {
         "waifu.im": {
             "name": "waifu.im",
             "url": "https://waifu.im",
-            "api": "https://api.waifu.im/search",
+            "api": "https://api.waifu.im/images",
             "apiType": "waifuIm",
             "description": "Waifus only | Excellent quality, limited quantity",
             "tagSearchTemplate": "https://api.waifu.im/tags"

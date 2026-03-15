@@ -25,7 +25,7 @@ Item {
     // Note: e621 works with curl for image tests, danbooru has stricter protections
     // paheal uses XML which QML XMLHttpRequest.responseXML doesn't handle well
     // zerochan requires User-Agent header
-    property var curlProviders: ["e621", "paheal", "zerochan"]
+    property var curlProviders: ["e621", "paheal", "zerochan", "konachan", "aibooru"]
 
     // Providers that cannot be tested due to Cloudflare JS challenges or API blocks
     // danbooru: strict Cloudflare JS challenge
@@ -49,8 +49,8 @@ Item {
     // Providers that support tag autocomplete
     // Note: e621/e926 excluded - autocomplete endpoint has strict Cloudflare protection
     // Note: konachan_com removed - now a mirror of konachan
-    property var autocompleteProviders: ["yandere", "konachan", "danbooru", "gelbooru", "safebooru",
-                                          "aibooru"]
+    // Note: aibooru excluded - tag endpoint blocks/returns empty responses
+    property var autocompleteProviders: ["yandere", "konachan", "danbooru", "gelbooru", "safebooru"]
 
     // Sorting test counters
     property int sortingPassedCount: 0
@@ -239,8 +239,25 @@ Item {
             return
         }
 
+        // Skip providers that require API keys when none configured
+        if (providerKey === "gelbooru" && (!Booru.gelbooruApiKey || !Booru.gelbooruUserId)) {
+            console.log("  Image search... SKIP (no API key configured)")
+            skippedCount++
+            scheduleNextTest(isEdgeCase)
+            return
+        }
+        if (providerKey === "rule34" && (!Booru.rule34ApiKey || !Booru.rule34UserId)) {
+            console.log("  Image search... SKIP (no API key configured)")
+            skippedCount++
+            scheduleNextTest(isEdgeCase)
+            return
+        }
+
         // Set current provider and build test URL
         Booru.currentProvider = providerKey
+        // Reset filters for tests (ConfigLoader may restore saved settings async)
+        Booru.ageFilter = "any"
+        Booru.currentSorting = ""
         var testTags = [testTag]
         var url = Booru.constructRequestUrl(testTags, false, 5, 1)
         console.log("  URL: " + url)
@@ -425,6 +442,14 @@ Item {
         // Skip Cloudflare-protected providers
         if (cloudflareProviders.indexOf(providerKey) !== -1) {
             console.log("Testing autocomplete: " + providerKey + "... SKIP (Cloudflare)")
+            autocompleteIndex++
+            autocompleteDelayTimer.start()
+            return
+        }
+
+        // Skip providers requiring API keys when none configured
+        if (providerKey === "gelbooru" && (!Booru.gelbooruApiKey || !Booru.gelbooruUserId)) {
+            console.log("Testing autocomplete: " + providerKey + "... SKIP (no API key)")
             autocompleteIndex++
             autocompleteDelayTimer.start()
             return
