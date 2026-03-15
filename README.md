@@ -234,8 +234,7 @@ Edit `config.json` to customize:
     "danbooruLogin": "",
     "danbooruApiKey": "",
     "maxSidebarPlayers": 10,
-    "videoAutoplay": false,
-    "idleExitMinutes": 3
+    "videoAutoplay": false
   },
   "appearance": {
     "transparency": 0.5,
