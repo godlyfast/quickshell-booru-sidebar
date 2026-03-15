@@ -1125,9 +1125,9 @@ Button {
             // Build command dynamically when timer fires to ensure paths are set
             fileChecker.command = ["bash", "-c",
                 "SAVED=0; WP=0; " +
-                "[ -f '" + root.savedFilePath + "' ] && SAVED=1; " +
-                "[ -f '" + root.savedNsfwFilePath + "' ] && SAVED=1; " +
-                "[ -f '" + root.wallpaperFilePath + "' ] && WP=1; " +
+                "[ -f '" + ShellUtils.shellEscape(root.savedFilePath) + "' ] && SAVED=1; " +
+                "[ -f '" + ShellUtils.shellEscape(root.savedNsfwFilePath) + "' ] && SAVED=1; " +
+                "[ -f '" + ShellUtils.shellEscape(root.wallpaperFilePath) + "' ] && WP=1; " +
                 "echo $SAVED $WP"
             ]
             fileChecker.running = true
