@@ -75,7 +75,9 @@ Singleton {
     property int runningRequests: 0
     property var pendingXhrRequests: []  // Track XHR for abort on clear
     property var pendingTimers: []  // Track timeout timers for cleanup
+    property var pendingProcesses: []  // Track curl/Grabber processes for cleanup
     property int requestIdCounter: 0  // Monotonic counter for stale request detection
+    property int tagRequestCounter: 0  // Monotonic counter for stale tag autocomplete detection
     property int maxResponses: 50  // Cap responses to prevent memory bloat
 
     // Safe decrement helper to prevent negative runningRequests from race conditions
@@ -287,6 +289,12 @@ Singleton {
         return p.tagSearchTemplate ? p.tagSearchTemplate.split("?")[0] : ""
     }
 
+    // Strip API credentials from URLs before logging to prevent key leakage
+    function sanitizeUrlForLogging(url) {
+        if (!url) return ""
+        return url.replace(/([?&])(api_key|apikey|user_id|login)=[^&]*/gi, "$1$2=***")
+    }
+
     // Check if current mirror is SFW-only
     function currentMirrorIsSfwOnly(provider) {
         if (!providerHasMirrors(provider)) return false
@@ -397,6 +405,30 @@ Singleton {
             }
         }
         pendingXhrRequests = []
+
+        // Kill pending curl/Grabber processes to stop bandwidth waste
+        for (var p = 0; p < pendingProcesses.length; p++) {
+            try {
+                if (pendingProcesses[p]) {
+                    if (pendingProcesses[p].running !== undefined) {
+                        pendingProcesses[p].running = false
+                    }
+                    pendingProcesses[p].destroy()
+                }
+            } catch (e) {
+                // Ignore destroy errors on already-completed processes
+            }
+        }
+        pendingProcesses = []
+
+        // Reset running request count (processes killed above may not fire onExited)
+        runningRequests = 0
+
+        // Abort any pending tag search
+        if (currentTagRequest) {
+            try { currentTagRequest.abort() } catch (e) { /* ignore */ }
+            currentTagRequest = null
+        }
 
         // Destroy response objects to release references
         for (var j = 0; j < responses.length; j++) {
@@ -665,7 +697,7 @@ Singleton {
         }
 
         const url = constructRequestUrl(tags, nsfw, limit, page)
-        Logger.info("Booru", `${currentProvider} request: ${url}`)
+        Logger.info("Booru", `${currentProvider} request: ${sanitizeUrlForLogging(url)}`)
         if (currentProvider == "rule34") {
             // Only log whether credentials are set, not their values (security)
             Logger.debug("Booru", `Rule34 credentials: ${rule34ApiKey && rule34UserId ? "configured" : "NOT SET"}`)
@@ -863,6 +895,8 @@ Singleton {
             if (requestId !== root.requestIdCounter) {
                 Logger.warn("Booru", `Stale Grabber request detected (id ${requestId} vs ${root.requestIdCounter}), discarding`)
                 root.decrementRunningRequests()
+                const pidx1 = root.pendingProcesses.indexOf(grabberReq)
+                if (pidx1 !== -1) root.pendingProcesses.splice(pidx1, 1)
                 grabberReq.destroy()
                 return
             }
@@ -876,6 +910,8 @@ Singleton {
             root.decrementRunningRequests()
             root.setSingleResponse(newResponse)
             root.responseFinished()
+            const pidx2 = root.pendingProcesses.indexOf(grabberReq)
+            if (pidx2 !== -1) root.pendingProcesses.splice(pidx2, 1)
             grabberReq.destroy()
         })
 
@@ -885,6 +921,8 @@ Singleton {
             if (requestId !== root.requestIdCounter) {
                 Logger.warn("Booru", `Stale Grabber request (failed) detected, discarding`)
                 root.decrementRunningRequests()
+                const pidx3 = root.pendingProcesses.indexOf(grabberReq)
+                if (pidx3 !== -1) root.pendingProcesses.splice(pidx3, 1)
                 grabberReq.destroy()
                 return
             }
@@ -892,9 +930,12 @@ Singleton {
             root.decrementRunningRequests()
             root.setSingleResponse(newResponse)
             root.responseFinished()
+            const pidx4 = root.pendingProcesses.indexOf(grabberReq)
+            if (pidx4 !== -1) root.pendingProcesses.splice(pidx4, 1)
             grabberReq.destroy()
         })
 
+        root.pendingProcesses.push(grabberReq)
         grabberReq.startRequest()
     }
 
@@ -909,7 +950,7 @@ Singleton {
         })
 
         var url = constructRequestUrl(tags, nsfw, limit, page)
-        Logger.info("Booru", `curl request: ${url}`)
+        Logger.info("Booru", `curl request: ${sanitizeUrlForLogging(url)}`)
 
         root.runningRequests++
 
@@ -920,6 +961,7 @@ Singleton {
             "responseObj": newResponse,
             "requestId": requestId
         })
+        root.pendingProcesses.push(curlProcess)
         curlProcess.running = true
     }
 
@@ -992,6 +1034,8 @@ Singleton {
                 if (requestId !== root.requestIdCounter) {
                     Logger.warn("Booru", `Stale curl request detected (id ${requestId} vs ${root.requestIdCounter}), discarding`)
                     root.decrementRunningRequests()
+                    const pidx5 = root.pendingProcesses.indexOf(curlProc)
+                    if (pidx5 !== -1) root.pendingProcesses.splice(pidx5, 1)
                     curlProc.destroy()
                     return
                 }
@@ -1014,6 +1058,8 @@ Singleton {
                                 root.decrementRunningRequests()
                                 root.setSingleResponse(responseObj)
                                 root.responseFinished()
+                                const pidx6 = root.pendingProcesses.indexOf(curlProc)
+                                if (pidx6 !== -1) root.pendingProcesses.splice(pidx6, 1)
                                 curlProc.destroy()
                                 return
                             }
@@ -1034,6 +1080,8 @@ Singleton {
                 root.decrementRunningRequests()
                 root.setSingleResponse(responseObj)
                 root.responseFinished()
+                const pidx7 = root.pendingProcesses.indexOf(curlProc)
+                if (pidx7 !== -1) root.pendingProcesses.splice(pidx7, 1)
                 curlProc.destroy()
             }
         }
@@ -1049,6 +1097,9 @@ Singleton {
                 // Ignore abort errors on race condition
             }
         }
+
+        root.tagRequestCounter++
+        const tagRequestId = root.tagRequestCounter
 
         const provider = providers[currentProvider]
         if (!provider.tagSearchTemplate) return
@@ -1094,6 +1145,11 @@ Singleton {
         xhr.onreadystatechange = () => {
             if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
                 currentTagRequest = null
+                // Discard stale tag responses (user typed more since this request)
+                if (tagRequestId !== root.tagRequestCounter) {
+                    Logger.debug("Booru", `Stale tag response discarded (id ${tagRequestId} vs ${root.tagRequestCounter})`)
+                    return
+                }
                 try {
                     let response = JSON.parse(xhr.responseText)
                     // Use helper function to get tagMapFunc (supports apiType family mappers)
