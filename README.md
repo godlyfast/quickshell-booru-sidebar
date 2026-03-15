@@ -150,14 +150,16 @@ Each provider supports different sort options. Use `/sort <option>` or click the
 | **e621** | `score`, `favcount`, `random`, `id`, `id_asc`, `comment_count`, `tagcount`, `mpixels`, `filesize`, `landscape`, `portrait` |
 | **Gelbooru** (gelbooru, safebooru, rule34, xbooru) | `score`, `score:asc`, `score:desc`, `id`, `id:asc`, `updated`, `random` |
 | **Wallhaven** | `toplist`, `random`, `date_added`, `relevance`, `views`, `favorites`, `hot` |
-| **Derpibooru** | `score`, `wilson_score`, `relevance`, `random`, `created_at`, `updated_at`, `width`, `height` |
+| **Derpibooru** | `score`, `wilson_score`, `relevance`, `random`, `created_at`, `updated_at`, `first_seen_at`, `width`, `height`, `comment_count`, `tag_count` |
+| **Sankaku** (sankaku, idol_sankaku) | `popularity`, `date`, `quality`, `score`, `random`, `id`, `id_asc`, `recently_favorited`, `recently_voted` |
+| **Zerochan** | `id`, `fav` |
 
 ### Age Filter
 
 For providers with large datasets, an age filter prevents search timeouts when sorting by score or favorites.
 
-- **Providers**: yandere, konachan, sakugabooru, 3dbooru, danbooru, aibooru
-- **Options**: 1d, 1w, 1M, 3M, 1y, All (click the clock chip to cycle)
+- **Providers**: danbooru, aibooru, yandere, konachan
+- **Options**: 1day, 1week, 1month, 3months, 1year, any (click the clock chip to cycle)
 
 ## Supported Providers
 
@@ -168,7 +170,7 @@ For providers with large datasets, an age filter prevents search timeouts when s
 | yande.re | `yandere` | Moebooru | Yes | No |
 | Konachan | `konachan` | Moebooru | Mirror | No |
 | Danbooru | `danbooru` | Danbooru | Yes | No |
-| Gelbooru | `gelbooru` | Gelbooru | Yes | **Yes** |
+| Gelbooru | `gelbooru` | Gelbooru | Yes | Recommended |
 | Safebooru | `safebooru` | Gelbooru | SFW only | No |
 | Rule34 | `rule34` | Gelbooru | NSFW only | **Yes** |
 | e621 | `e621` | e621 | Mirror | No |
@@ -198,7 +200,7 @@ For providers with large datasets, an age filter prevents search timeouts when s
 | TBIB | `tbib` | 8M+ images aggregator |
 | Paheal | `paheal` | Rule34 Shimmie |
 | Hypnohub | `hypnohub` | Niche themed (returns XML) |
-| Zerochan | `zerochan` | High-quality art (API blocked) |
+| Zerochan | `zerochan` | High-quality art (requires User-Agent) |
 | Sankaku | `sankaku` | Anime art (API requires auth) |
 | Idol Sankaku | `idol_sankaku` | Japanese idols (API requires auth) |
 
@@ -227,7 +229,13 @@ Edit `config.json` to customize:
     "gelbooruUserId": "",
     "rule34ApiKey": "",
     "rule34UserId": "",
-    "wallhavenApiKey": ""
+    "wallhavenApiKey": "",
+    "wallhavenResolution": "3840x2160",
+    "danbooruLogin": "",
+    "danbooruApiKey": "",
+    "maxSidebarPlayers": 10,
+    "videoAutoplay": false,
+    "idleExitMinutes": 3
   },
   "appearance": {
     "transparency": 0.5,
@@ -235,9 +243,9 @@ Edit `config.json` to customize:
   },
   "font": {
     "family": {
-      "uiFont": "Open Sans",
+      "uiFont": "Noto Sans",
       "iconFont": "Material Symbols Rounded",
-      "codeFont": "JetBrains Mono NF"
+      "codeFont": "JetBrainsMono Nerd Font Mono"
     }
   }
 }
@@ -298,6 +306,18 @@ See [imgbrd-grabber documentation](https://bionus.github.io/imgbrd-grabber/docs/
 "wallhavenApiKey": "your_api_key"
 ```
 
+### Danbooru (for higher rate limits)
+
+1. Create an account at [danbooru.donmai.us](https://danbooru.donmai.us)
+2. Go to your [Profile](https://danbooru.donmai.us/profile) and find the API Key section
+3. Copy your **Login** (username) and **API Key**
+4. Add to `config.json`:
+
+```json
+"danbooruLogin": "your_username",
+"danbooruApiKey": "your_api_key"
+```
+
 ## IPC Commands
 
 ```bash
@@ -333,20 +353,37 @@ The cache is stored in `~/.cache/quickshell/booru/previews/` and can be cleared 
 quickshell-booru-sidebar/
 ├── shell.qml                 # Entry point
 ├── config.json               # Configuration
+├── deploy.sh                 # Development deploy script
 ├── modules/
 │   ├── sidebar/
-│   │   ├── SidebarLeft.qml   # Main panel window
-│   │   ├── Anime.qml         # Browser UI
+│   │   ├── SidebarLeft.qml       # Main panel window
+│   │   ├── Anime.qml             # Browser UI
+│   │   ├── ApiKeysPanel.qml      # API key management overlay
+│   │   ├── PreviewPanel.qml      # Full-size image preview
+│   │   ├── KeybindingHandler.qml # Keyboard shortcuts
+│   │   ├── PickerDialog.qml      # Provider picker
 │   │   └── anime/
 │   │       ├── BooruImage.qml    # Image card
 │   │       └── BooruResponse.qml # Image grid
 │   └── common/
 │       ├── Appearance.qml    # Theme/styling
+│       ├── ConfigOptions.qml # Runtime configuration state
 │       ├── widgets/          # Reusable UI components
-│       └── utils/            # Utility components
-└── services/
-    ├── Booru.qml             # API service
-    └── BooruResponseData.qml # Data model
+│       ├── utils/            # Utility components (Grabber, downloaders)
+│       └── functions/        # JS utilities (shell escape, color, fuzzy search)
+├── services/
+│   ├── Booru.qml             # API service (requests, providers, state)
+│   ├── BooruApiTypes.js      # API family mapper functions
+│   ├── BooruResponseData.qml # Response data model
+│   ├── ConfigLoader.qml      # Config file loader/watcher
+│   ├── Logger.qml            # Logging service
+│   ├── CacheIndex.qml        # O(1) local file lookup cache
+│   ├── VideoPlayerPool.qml   # MediaPlayer resource pool
+│   └── providers/
+│       └── ProviderRegistry.qml # Static provider definitions
+└── tests/
+    ├── shell.qml             # Test runner entry point
+    └── ProviderTests.qml     # Provider integration tests
 ```
 
 ## Development

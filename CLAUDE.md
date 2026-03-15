@@ -50,7 +50,7 @@ Deploys repo files to the quickshell config directory. Preserves user's config.j
 | Safebooru | `safebooru` | Gelbooru | `sort:X` | SFW-only |
 | Rule34 | `rule34` | Gelbooru | `sort:X` | NSFW-only, requires API key (warns if missing) |
 | Xbooru | `xbooru` | Gelbooru | `sort:X` | NSFW focused |
-| TBIB | `tbib` | Gelbooru | `sort:X` | 8M+ images aggregator |
+| TBIB | `tbib` | Gelbooru* | `sort:X` | 8M+ images aggregator (inline mapFunc) |
 | Hypnohub | `hypnohub` | Gelbooru | `sort:X` | Niche themed (connection issues) |
 | **e621** |||||
 | e621 | `e621` | e621 | `order:X` | Furry, has e926.net SFW mirror |
@@ -71,7 +71,7 @@ Deploys repo files to the quickshell config directory. Preserves user's config.j
 
 **SFW-only providers** (NSFW toggle hidden): `safebooru`, `nekos_best`, `zerochan`
 **NSFW-only providers**: `rule34`, `xbooru`, `tbib`, `paheal`, `hypnohub`
-**Mirror providers**: `e621` has e926.net (SFW), `konachan` has .com (NSFW) and .net (SFW)
+**Mirror providers**: `e621` has e926.net (SFW), `konachan` has .com (NSFW) and .net (SFW), `danbooru` has safebooru.donmai.us (SFW)
 
 ## Architecture
 
@@ -91,9 +91,10 @@ Key Methods:
 - `constructRequestUrl(tags, nsfw, limit, page)` - Build provider-specific URL
 - `clearResponses()` - Clear all results
 - `addSystemMessage(message)` - Add system message to results
+- `sanitizeUrlForLogging(url)` - Strip API credentials from URLs before logging
 
 Key Properties:
-- `currentProvider` - Active provider key (default: "yandere")
+- `currentProvider` - Active provider key (default: "wallhaven")
 - `allowNsfw` - NSFW filter toggle
 - `currentSorting` - Active sort method (empty = provider default)
 - `limit` - Results per page (default: 20)
@@ -101,10 +102,16 @@ Key Properties:
 - `responses` - Array of BooruResponseData objects
 - `providerList` - Array of valid provider keys
 - `providerSupportsNsfw` / `providerSupportsSorting` - UI state booleans
+- `pendingProcesses` - Array tracking curl/Grabber processes for cleanup
+- `pendingTimers` - Array tracking timeout timers for cleanup
+- `requestIdCounter` - Monotonic counter for stale request detection
+- `tagRequestCounter` - Monotonic counter for stale tag autocomplete detection
 
 Signals:
 - `tagSuggestion(query, suggestions)` - Emitted when autocomplete completes
 - `responseFinished()` - Emitted when API response processed
+- `providerUsageUpdated()` - Emitted when provider usage stats change
+- `stopAllVideos()` - Emitted to stop all playing videos
 
 **BooruResponseData.qml** - Response data model:
 ```javascript
@@ -130,7 +137,7 @@ Log Levels:
 Key Methods:
 - `debug(category, message)` / `info()` / `warn()` / `error()` - Log at level
 - `startTiming(id)` / `endTiming(id, success, category)` - Performance tracking
-- `cacheHit(category)` / `cacheMiss(category)` - Cache metrics
+- `cacheHit()` / `cacheMiss()` - Cache metrics
 
 Output:
 - Console (with colors)
@@ -152,7 +159,7 @@ Log Categories:
 Configuration:
 ```javascript
 // services/Logger.qml line 25
-property int logLevel: Logger.Level.INFO  // Change to DEBUG for verbose output
+property int logLevel: Logger.Level.DEBUG  // Change to INFO for less verbose output
 ```
 
 ### UI Components (`modules/`)
@@ -225,6 +232,7 @@ Shared mapper functions by API family to eliminate code duplication. Providers r
 | `waifuIm` | waifu.im | waifu.im REST API |
 | `nekosBest` | nekos_best | nekos.best REST API |
 | `zerochan` | zerochan | Zerochan REST API |
+| `tbib` | tbib | TBIB (inline mapFunc, no apiType) |
 
 **Usage:**
 ```javascript
@@ -303,9 +311,12 @@ command: ["bash", "-c", "curl -sL '" + shellEscape(url) + "' -o '" + shellEscape
 
 ### API Resilience
 
-**XHR Request Management** (`Booru.qml`):
+**Request Lifecycle Management** (`Booru.qml`):
 - `pendingXhrRequests: []` - Tracks all active XHR objects
-- `clearResponses()` - Aborts all pending requests before clearing
+- `pendingProcesses: []` - Tracks curl/Grabber processes for cleanup
+- `pendingTimers: []` - Tracks timeout timers for cleanup
+- `clearResponses()` - Aborts XHRs, kills processes, resets `runningRequests`, aborts tag search
+- `requestIdCounter` / `tagRequestCounter` - Monotonic counters for stale response detection
 - Prevents stale responses from updating UI after user clears
 
 **Response Limiting**:
@@ -430,10 +441,12 @@ source: {
     "filenameTemplate": "%website% %id% - %artist%.%ext%",
     "gelbooruApiKey": "",
     "gelbooruUserId": "",
-    "rule34ApiKey": "",
-    "rule34UserId": "",
     "wallhavenApiKey": "",
-    "wallhavenResolution": "3840x2160"
+    "danbooruLogin": "",
+    "danbooruApiKey": "",
+    "maxSidebarPlayers": 10,
+    "videoAutoplay": false,
+    "idleExitMinutes": 3
   },
   "appearance": {
     "transparency": 0.5,
@@ -444,18 +457,12 @@ source: {
       "uiFont": "Noto Sans",
       "iconFont": "Material Symbols Rounded",
       "codeFont": "JetBrainsMono Nerd Font Mono"
-    },
-    "pixelSize": {
-      "textSmall": 13,
-      "textBase": 15,
-      "textMedium": 16,
-      "textLarge": 19
     }
   }
 }
 ```
 
-API keys: Gelbooru at `gelbooru.com/index.php?page=account&s=options`, Rule34 at `rule34.xxx/index.php?page=account&s=options`, Wallhaven at `wallhaven.cc/settings/account` (required for NSFW content)
+API keys: Gelbooru at `gelbooru.com/index.php?page=account&s=options`, Rule34 at `rule34.xxx/index.php?page=account&s=options`, Wallhaven at `wallhaven.cc/settings/account` (required for NSFW content), Danbooru at `danbooru.donmai.us/profile` (API Key section)
 
 ## Testing
 
@@ -468,7 +475,7 @@ API keys: Gelbooru at `gelbooru.com/index.php?page=account&s=options`, Rule34 at
 - Edge cases: null URL fallbacks (`solo` tag on e621/e926)
 - Cloudflare bypass requirements (curl with User-Agent for e621/e926/zerochan)
 
-Providers skipped in tests: `danbooru` (strict Cloudflare JS challenge)
+Providers skipped in tests: `danbooru`, `hypnohub`, `3dbooru` (Cloudflare/API blocks), `anime_pictures`, `e_shuushuu` (Grabber-only). Tests also skip `gelbooru`/`rule34` when no API key configured.
 
 ## Provider-Specific Notes
 
@@ -476,7 +483,7 @@ Providers skipped in tests: `danbooru` (strict Cloudflare JS challenge)
 - **e621/e926**: Require User-Agent header; `solo` tag often has null `sample_url`
 - **Zerochan**: Requires simple User-Agent (blocks browser UAs), tag in URL path with `+` separator
 - **Wallhaven**: Has separate `order` param (asc/desc) in addition to `sorting`
-- **waifu.im**: Tags returned as objects; only supports specific tag names
+- **waifu.im**: Uses v2 API (`/images` endpoint with `items` wrapper); tags returned as objects; only supports specific tag names
 - **nekos_best**: Random images only, ignores search tags
 
 ## Sorting Options
@@ -493,8 +500,10 @@ Each provider has API-specific sort options. Use `/sort <option>` command.
 | **Gelbooru** | gelbooru, safebooru, rule34, xbooru | `score`, `score:asc`, `score:desc`, `id`, `id:asc`, `updated`, `random` |
 | **Gelbooru** | tbib, hypnohub | `score`, `score:asc`, `score:desc`, `id`, `id:asc`, `updated` |
 | **Wallhaven** | wallhaven | `toplist`, `random`, `date_added`, `relevance`, `views`, `favorites`, `hot` |
-| **Sankaku** | sankaku, idol_sankaku | `popularity`, `date`, `quality`, `score`, `favcount`, `random`, `id`, `id_asc`, `recently_favorited`, `recently_voted` |
+| **Sankaku** | sankaku, idol_sankaku | `popularity`, `date`, `quality`, `score`, `random`, `id`, `id_asc`, `recently_favorited`, `recently_voted` |
 | **None** | waifu.im, nekos_best, paheal | No sorting support |
+| **Zerochan** | zerochan | `id`, `fav` |
+| **Derpibooru** | derpibooru | `score`, `wilson_score`, `relevance`, `random`, `created_at`, `updated_at`, `first_seen_at`, `width`, `height`, `comment_count`, `tag_count` |
 
 ### Age Filter
 
@@ -502,7 +511,7 @@ Providers supporting the `age:` metatag show an age chip in the UI. This prevent
 
 **Supported providers**: `danbooru`, `aibooru`, `yandere`, `konachan`
 
-**Options**: `1d`, `1w`, `1M`, `3M`, `1y`, `All`
+**Options**: `1day`, `1week`, `1month`, `3months`, `1year`, `any` (UI labels: 1d, 1w, 1M, 3M, 1y, All)
 
 **Properties** (`Booru.qml`):
 - `ageFilter` - Current age filter value (default: "1month")
@@ -544,14 +553,24 @@ The sidebar integrates with [imgbrd-grabber](https://github.com/Bionus/imgbrd-gr
 ### Grabber Source Mapping
 
 ```javascript
-// services/Booru.qml - grabberSources
+// services/providers/ProviderRegistry.qml - grabberSources
 {
     "yandere": "yande.re",
     "konachan": "konachan.com",
+    "sakugabooru": "www.sakugabooru.com",
     "danbooru": "danbooru.donmai.us",
     "gelbooru": "gelbooru.com",
+    "safebooru": "safebooru.org",
+    "rule34": "api.rule34.xxx",
     "e621": "e621.net",
-    "wallhaven": "wallhaven.cc"
+    "wallhaven": "wallhaven.cc",
+    "xbooru": "xbooru.com",
+    "aibooru": "aibooru.online",
+    "zerochan": "www.zerochan.net",
+    "sankaku": "chan.sankakucomplex.com",
+    "derpibooru": "derpibooru.org",
+    "anime_pictures": "anime-pictures.net",
+    "e_shuushuu": "e-shuushuu.net"
     // waifu.im, nekos_best, tbib, paheal not supported
 }
 ```
