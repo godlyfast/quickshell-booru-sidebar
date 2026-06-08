@@ -20,12 +20,27 @@ SIDEBAR_DIR="$CONFIG_DIR/booru-sidebar"
 echo "=== Booru Sidebar Deploy ==="
 
 # 1. Kill running sidebar instance (both -c booru-sidebar and --path variants)
+#
+# Patterns are ANCHORED with '^qs ' so they only match processes whose command
+# line *starts* with the qs binary — never an unrelated shell/editor/pgrep that
+# merely contains "qs -c booru-sidebar" in its arguments (matching those would
+# kill the wrong process, e.g. this script's own terminal). The '|| true' keeps
+# `set -e` from aborting the deploy when a pattern matches nothing: pkill exits
+# non-zero on no match, which previously killed the old instance and then bailed
+# out *before* copying/restarting, leaving the sidebar down.
 echo "[1/3] Stopping running instance..."
 killed=0
-pkill -f "qs.*-c.*booru-sidebar" 2>/dev/null && { echo "  Killed qs -c booru-sidebar"; killed=1; }
-pkill -f "qs.*--path.*/quickshell-booru-sidebar" 2>/dev/null && { echo "  Killed qs --path instance"; killed=1; }
-pkill -f "qs.*--path \." 2>/dev/null && { echo "  Killed qs --path . instance"; killed=1; }
-[ $killed -eq 0 ] && echo "  No running instance found"
+for pat in \
+    '^qs .*-c .*booru-sidebar' \
+    '^qs .*--path .*quickshell-booru-sidebar' \
+    '^qs .*--path \.( |$)'
+do
+    if pkill -f "$pat"; then
+        echo "  Killed: $pat"
+        killed=1
+    fi
+done
+[ "$killed" -eq 0 ] && echo "  No running instance found"
 sleep 0.5
 
 # 2. Copy fresh assets
@@ -69,8 +84,8 @@ disown
 sleep 1
 
 # Verify it's running
-if pgrep -f "qs.*-c.*booru-sidebar" > /dev/null; then
-    echo "  Sidebar started successfully (PID: $(pgrep -f 'qs.*-c.*booru-sidebar'))"
+if pgrep -f '^qs .*-c .*booru-sidebar' > /dev/null; then
+    echo "  Sidebar started successfully (PID: $(pgrep -f '^qs .*-c .*booru-sidebar'))"
 else
     echo "  Warning: Sidebar may not have started"
 fi
