@@ -478,7 +478,7 @@ Providers skipped in tests: `danbooru`, `hypnohub`, `3dbooru` (Cloudflare/API bl
 
 ## Provider-Specific Notes
 
-- **Danbooru**: Uses Grabber fallback by default (Cloudflare bypass)
+- **Danbooru**: Uses Grabber fallback by default (Cloudflare bypass) for *search*. **Hi-res images must be fetched with an EMPTY User-Agent**: `cdn.donmai.us` returns `403` to browser-style (`Mozilla/*`) UAs on `/original/` (full-res) paths, but `200` to plain/absent ones — `/180x180/` thumbnails are unaffected. The hi-res path therefore uses curl-with-empty-UA (`danbooruHighResDownloader` in `BooruImage.qml`, `userAgent: ""`), **not** Grabber, whose browser UA gets 403'd → cards silently stuck on the low-res thumbnail. Regression test: `tests/danbooru_hires_ua_test.sh`.
 - **e621/e926**: Require User-Agent header; `solo` tag often has null `sample_url`
 - **Zerochan**: Requires simple User-Agent (blocks browser UAs), tag in URL path with `+` separator
 - **Wallhaven**: Has separate `order` param (asc/desc) in addition to `sorting`

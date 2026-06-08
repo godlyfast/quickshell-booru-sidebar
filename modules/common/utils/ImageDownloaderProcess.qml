@@ -17,6 +17,10 @@ Item {
     property int imageWidth: 0
     property int imageHeight: 0
     property string referer: ""     // HTTP Referer header (e.g., Gelbooru hotlink protection)
+    // User-Agent sent to curl. Empty string omits -A entirely, which is REQUIRED for
+    // danbooru: cdn.donmai.us/original/ returns 403 to browser-style (Mozilla/*) UAs
+    // but 200 to plain/absent ones. (Its /180x180/ thumbnails are unaffected.)
+    property string userAgent: "Mozilla/5.0 BooruSidebar/1.0"
     property int timeoutMs: 300000  // Kill process after 5 min (yande.re can be very slow)
     property bool timedOut: false
 
@@ -45,13 +49,17 @@ Item {
     readonly property string refererOpt: root.referer.length > 0
         ? "-e '" + shellEscape(root.referer) + "' " : ""
 
+    // Curl User-Agent option: "-A '...' " or "" (empty UA → no -A, see userAgent above)
+    readonly property string uaOpt: root.userAgent.length > 0
+        ? "-A '" + shellEscape(root.userAgent) + "' " : ""
+
     // Build fallback chain: || curl url1 || curl url2 || ...
     property string fallbackChain: {
         if (!fallbackUrls || fallbackUrls.length === 0) return ""
         var chain = ""
         for (var i = 0; i < fallbackUrls.length; i++) {
             if (fallbackUrls[i] && fallbackUrls[i].length > 0) {
-                chain += " || curl -4 -fsSL " + root.refererOpt + "-A 'Mozilla/5.0 BooruSidebar/1.0' '" + shellEscape(fallbackUrls[i]) + "' -o '" + shellEscape(filePath) + "'"
+                chain += " || curl -4 -fsSL " + root.refererOpt + root.uaOpt + "'" + shellEscape(fallbackUrls[i]) + "' -o '" + shellEscape(filePath) + "'"
             }
         }
         return chain
@@ -72,7 +80,7 @@ Item {
             // Re-download if: file missing, empty, or HTML error page
             "if [ ! -s '" + root.shellEscape(root.filePath) + "' ] || file '" + root.shellEscape(root.filePath) + "' | grep -q 'HTML'; then " +
             "  rm -f '" + root.shellEscape(root.filePath) + "'; " +
-            "  (curl -4 -fsSL " + root.refererOpt + "-A 'Mozilla/5.0 BooruSidebar/1.0' '" + root.shellEscape(root.sourceUrl) + "' -o '" + root.shellEscape(root.filePath) + "'" + root.fallbackChain + "); " +
+            "  (curl -4 -fsSL " + root.refererOpt + root.uaOpt + "'" + root.shellEscape(root.sourceUrl) + "' -o '" + root.shellEscape(root.filePath) + "'" + root.fallbackChain + "); " +
             "fi && " +
             "if [ -s '" + root.shellEscape(root.filePath) + "' ] && file -b '" + root.shellEscape(root.filePath) + "' | grep -qiE 'image|JPEG|PNG|WebP|GIF|bitmap'; then " +
             // Fix extension mismatch (e.g., PNG saved as .jpg from fallback chain)

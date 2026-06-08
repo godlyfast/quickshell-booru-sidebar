@@ -551,64 +551,44 @@ Button {
         }
     }
 
-    GrabberDownloader {
-        id: grabberHighResDownloader
-        source: "danbooru.donmai.us"
-        imageId: root.imageData.id ? String(root.imageData.id) : ""
-        outputPath: root.previewDownloadPath
-        filenameTemplate: "hires_%md5%.%ext%"
-        user: Services.Booru.danbooruLogin
-        password: Services.Booru.danbooruApiKey
-        onDownloadingChanged: {
+    // Danbooru hi-res: download the /original/ file_url via curl with an EMPTY User-Agent.
+    // We used to go through Grabber here, but Grabber sends a browser-style UA and
+    // cdn.donmai.us now returns 403 to any Mozilla/* UA on /original/ paths — so every
+    // hi-res upgrade silently failed and the card stayed on the 180x180 thumbnail
+    // ("low quality"). A plain/absent UA gets 200, so curl-with-empty-UA restores it.
+    // Writes to grabberHighResPath (hires_<md5>.<ext>) to keep the cache-check and
+    // CacheIndex registration consistent with the rest of the danbooru path.
+    ImageDownloaderProcess {
+        id: danbooruHighResDownloader
+        enabled: root.manualDownload && root.provider === "danbooru"
+                 && !root.isGif && !root.isVideo && !root.isArchive
+                 && root.highResCacheChecked && root.localHighResSource === ""
+                 && imageDownloader.downloadedPath.length > 0
+                 && root.imageData.file_url && root.imageData.file_url.length > 0
+        filePath: root.grabberHighResPath
+        sourceUrl: root.imageData.file_url ? root.imageData.file_url : ""
+        userAgent: ""  // cdn.donmai.us blocks Mozilla/* UAs on /original/
+        onDone: (path, width, height) => {
             if (root.destroying) return
-            if (downloading) {
-                Services.Logger.info("BooruImage", `Grabber DOWNLOADING: id=${root.imageData.id}`)
-            }
-        }
-        onDone: (success, message) => {
-            if (root.destroying) return
-            if (success) {
-                Services.Logger.info("BooruImage", `Grabber SUCCESS: id=${root.imageData.id}`)
-                var fullPath = root.grabberHighResPath
-                var cachedPath = FileUtils.toFileUrl(fullPath)
+            if (path.length > 0) {
+                var cachedPath = FileUtils.toFileUrl(path)
                 root.localHighResSource = cachedPath
 
-                // CRITICAL: Register hi-res file in CacheIndex!
-                // Without this, quickRefresh might register preview first,
-                // and cachedImageSource binding would return preview instead of hires.
-                var hiresFilename = fullPath.substring(fullPath.lastIndexOf('/') + 1)
-                Services.CacheIndex.register(hiresFilename, fullPath)
-                Services.Logger.debug("BooruImage", `Grabber registered: ${hiresFilename}`)
+                // CRITICAL: Register hi-res file in CacheIndex so cachedImageSource
+                // returns the hires file instead of the preview.
+                var hiresFilename = path.substring(path.lastIndexOf('/') + 1)
+                Services.CacheIndex.register(hiresFilename, path)
+                Services.Logger.info("BooruImage", `Danbooru hi-res SUCCESS: id=${root.imageData.id}`)
 
                 // Update preview if it's showing this image
                 if (root.isPreviewActive) {
                     root.updatePreviewSource(cachedPath)
                 }
             } else {
-                Services.Logger.error("BooruImage", `Grabber FAILED: id=${root.imageData.id} msg=${message}`)
+                Services.Logger.error("BooruImage", `Danbooru hi-res FAILED: id=${root.imageData.id} url=${Services.Booru.sanitizeUrlForLogging(root.imageData.file_url || "")}`)
                 // Fallback to preview
                 root.localHighResSource = FileUtils.toFileUrl(imageDownloader.downloadedPath)
             }
-        }
-    }
-
-    // Trigger Grabber download for Danbooru (only if not cached)
-    Timer {
-        id: grabberTrigger
-        interval: root.triggerDelay
-        running: root.manualDownload && root.provider === "danbooru" && !root.isGif && !root.isVideo && !root.isArchive && imageDownloader.downloadedPath.length > 0 && !grabberHighResDownloader.downloading && root.localHighResSource === "" && root.highResCacheChecked
-        onRunningChanged: {
-            if (root.destroying) return
-            if (running) {
-                Services.Logger.debug("BooruImage", `grabberTrigger ARMED: id=${root.imageData.id} delay=${root.triggerDelay}ms`)
-            }
-        }
-        onTriggered: {
-            if (root.destroying) return
-            // Guard against race condition - check flag inside handler
-            if (grabberHighResDownloader.downloading || root.localHighResSource !== "") return
-            Services.Logger.info("BooruImage", `grabberTrigger FIRED: id=${root.imageData.id}`)
-            grabberHighResDownloader.startDownload()
         }
     }
 
